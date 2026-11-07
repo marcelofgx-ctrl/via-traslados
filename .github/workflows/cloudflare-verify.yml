@@ -1,0 +1,41 @@
+name: Via Traslados - verificar conexion Cloudflare (solo lectura)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comprobar credenciales sin publicarlas
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Falta CLOUDFLARE_API_TOKEN o CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+          if [[ ! "$CLOUDFLARE_ACCOUNT_ID" =~ ^[a-fA-F0-9]{32}$ ]]; then
+            echo "::error::El Account ID no tiene el formato esperado (32 caracteres hexadecimales)."
+            exit 1
+          fi
+          status=$(curl -sS --retry 2 --connect-timeout 10 --max-time 25 -o token-check.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            'https://api.cloudflare.com/client/v4/user/tokens/verify')
+          if [[ "$status" != "200" ]]; then
+            echo "::error::Cloudflare no pudo validar el token (HTTP $status)."
+            exit 1
+          fi
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const r=JSON.parse(fs.readFileSync("token-check.json","utf8"));
+            if(r.success!==true || r.result?.status!=="active"){
+              console.error("::error::El token no aparece como activo en Cloudflare");
+              process.exit(1);
+            }
+            console.log("Token de Cloudflare activo. La comprobación NO despliega ni modifica recursos.");
+          '
+          rm -f token-check.json
