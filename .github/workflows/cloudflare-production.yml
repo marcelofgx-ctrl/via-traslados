@@ -1,0 +1,53 @@
+name: Via Traslados - produccion (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Escribir PUBLICAR-VIA para autorizar despliegue exclusivo'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: via-traslados-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event.inputs.confirmation == 'PUBLICAR-VIA'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Comprobar codigo y pruebas antes de desplegar
+        run: |
+          test -f backend/worker.js
+          test -f backend/auth.js
+          npm test
+          npm run check
+      - run: npm install --no-save wrangler@4
+      - name: Generar configuracion SOLO de Via Traslados
+        env:
+          VIA_D1_DATABASE_ID: ${{ vars.VIA_D1_DATABASE_ID }}
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: node scripts/create-wrangler.mjs
+      - name: Validar credenciales sin exponerlas
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+      - name: Aplicar esquema D1 exclusiva
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 execute via-traslados-db --remote --config wrangler.toml --file backend/schema.sql
+      - name: Publicar exclusivamente via-traslados-api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler.toml
