@@ -1,0 +1,22 @@
+name: Via Traslados - comprobaciones QA
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar aislamiento y ausencia de secretos conocidos
+        shell: bash
+        run: |
+          test -f README.md
+          if grep -RIlE '(^|[[:space:]])(sk_re_|CLOUDFLARE_API_TOKEN[[:space:]]*=)' --include='*.js' --include='*.json' --include='*.md' .github README.md 2>/dev/null | grep -q .; then
+            echo 'Posible secreto en archivos del repositorio'
+            exit 1
+          fi
+          echo 'Comprobación inicial terminada. No despliega.'
