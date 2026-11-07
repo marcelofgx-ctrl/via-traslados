@@ -27,19 +27,16 @@ jobs:
           npm test
           npm run check
       - run: npm install --no-save wrangler@4
-      - name: Generar configuracion SOLO de Via Traslados
-        env:
-          VIA_D1_DATABASE_ID: ${{ vars.VIA_D1_DATABASE_ID }}
-          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
-          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
-        run: node scripts/create-wrangler.mjs
-      - name: Validar credenciales sin exponerlas
+      - name: Validar credenciales y recuperar D1 exclusivamente de Via Traslados
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          test -n "$CLOUDFLARE_API_TOKEN"
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
+        run: node scripts/cloudflare-d1.mjs
+      - name: Generar configuracion SOLO de Via Traslados
+        env:
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: node scripts/create-wrangler.mjs
       - name: Aplicar esquema D1 exclusiva
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
