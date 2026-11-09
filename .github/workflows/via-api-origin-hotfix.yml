@@ -1,0 +1,89 @@
+name: Via Traslados - corregir CORS del backend productivo
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/worker.js"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-traslados-api-origin-fix
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Comprobar aplicación Vía Traslados
+        run: |
+          set -euo pipefail
+          test -f backend/worker.js
+          test -f backend/auth.js
+          npm test
+          npm run check
+      - name: Recuperar ID D1 exclusivo de Vía Traslados
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/cloudflare-d1.mjs
+      - name: Generar configuración de backend con el origen canonizado
+        env:
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: |
+          node scripts/create-wrangler.mjs
+          grep -F 'PUBLIC_ORIGIN = "https://viatraslados.com"' wrangler.toml
+          grep -F 'OPERATOR_ORIGIN = "https://viatraslados.com"' wrangler.toml
+      - name: Desplegar exclusivamente via-traslados-api
+        id: deploy
+        continue-on-error: true
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4 deploy --config wrangler.toml 2>&1 | tee via-api-deploy.log
+      - name: Verificar backend con Origin real
+        id: verify
+        if: steps.deploy.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -i -fsS --retry 6 --retry-delay 2 --connect-timeout 10 --max-time 20 \
+            -H 'Origin: https://viatraslados.com' \
+            'https://via-traslados-api.marcelof-gx.workers.dev/api/health' \
+            -o via-api-check.log
+          grep -Eq 'HTTP/(2|1.1) 200' via-api-check.log
+          grep -iEq 'access-control-allow-origin: https://viatraslados.com' via-api-check.log
+          grep -q '"otpAvailable":true' via-api-check.log
+          echo "API Vía Traslados: Origin, CORS y OTP configurados correctamente."
+      - name: Guardar resultados del backend en GitHub
+        if: always()
+        env:
+          DEPLOY_RESULT: ${{ steps.deploy.outcome }}
+          VERIFY_RESULT: ${{ steps.verify.outcome }}
+        run: |
+          set +e
+          mkdir -p .ci
+          {
+            echo "Proyecto: via-traslados-api"
+            echo "Despliegue: $DEPLOY_RESULT"
+            echo "Verificación CORS y OTP: $VERIFY_RESULT"
+            echo "Origen: https://viatraslados.com"
+            echo "Commit: $GITHUB_SHA"
+            echo "Registro de Wrangler:"
+            if test -f via-api-deploy.log; then tail -30 via-api-deploy.log; fi
+            echo "Respuesta de API:"
+            if test -f via-api-check.log; then head -30 via-api-check.log; fi
+          } > .ci/via-api-origin-status.txt
+          git config user.name "via-traslados-ci"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci/via-api-origin-status.txt
+          git commit -m "ci(via-api): registrar comprobación de origen" || true
+          git push origin HEAD:main || true
+      - name: Fallar si backend o autenticación aún no funcionan
+        if: steps.deploy.outcome != 'success' || steps.verify.outcome != 'success'
+        run: exit 1
