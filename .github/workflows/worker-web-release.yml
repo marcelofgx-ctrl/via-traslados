@@ -47,15 +47,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 \
+          curl -v -fsSL --retry 8 --retry-delay 3 --connect-timeout 10 \
             'https://via-traslados-web-prod.marcelof-gx.workers.dev/' \
-            -o /tmp/via-web-index.html
-          grep -q "Vía Traslados" /tmp/via-web-index.html
-          curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 \
+            -o /tmp/via-web-index.html 2> via-web-check.log
+          grep -q "Vía Traslados" /tmp/via-web-index.html || { echo "No contiene el título esperado" >> via-web-check.log; exit 1; }
+          curl -v -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 \
             'https://via-traslados-web-prod.marcelof-gx.workers.dev/config.js' \
-            -o /tmp/via-web-config.js
+            -o /tmp/via-web-config.js 2>> via-web-check.log
           grep -q "turnstileSiteKey" /tmp/via-web-config.js
-          echo 'Página e integración pública verificadas.'
+          echo 'Página e integración pública verificadas.'\n          curl -I -sS --max-time 15 https://viatraslados.com/ >> via-web-check.log 2>&1 || true
       - name: Guardar diagnóstico legible en el repositorio
         if: always()
         shell: bash
@@ -70,11 +70,11 @@ jobs:
             echo "Publicacion: $OUTCOME"
             echo "Verificacion web: $VERIFY"
             echo "URL: https://via-traslados-web-prod.marcelof-gx.workers.dev/"
-            echo "Dominio viatraslados.com: no configurado en esta fase"
+            echo "Dominio viatraslados.com: se solicita la vinculación; revisar respuesta de Wrangler"
             echo "Commit: $GITHUB_SHA"
             echo "Ultimas 45 lineas del despliegue:"
             if test -f via-web-deploy.log; then tail -45 via-web-deploy.log; else echo "No se genero log de Wrangler"; fi
-          } > .ci/worker-web-status.txt
+            echo "Diagnóstico HTTP/DNS del Worker y dominio:"\n            if test -f via-web-check.log; then tail -60 via-web-check.log; else echo "La verificación no se ejecutó."; fi\n          } > .ci/worker-web-status.txt
           git config user.name "via-traslados-ci"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .ci/worker-web-status.txt
