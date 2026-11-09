@@ -233,44 +233,36 @@ public final class MainActivity extends Activity {
             int status = 0;
             String result = "";
             String error = "";
-            HttpURLConnection conn = null;
             try {
-                URL url = new URL(API + path);
-                if (!"https".equals(url.getProtocol())) throw new Exception("Se requiere HTTPS");
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout(12000);
-                conn.setReadTimeout(16000);
-                conn.setRequestMethod(method);
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setRequestProperty("X-Operator-Key", key == null ? "" : key);
-                conn.setUseCaches(false);
+                okhttp3.Request.Builder builder = new okhttp3.Request.Builder()
+                    .url(API + path)
+                    .header("Accept", "application/json")
+                    .header("X-Operator-Key", key == null ? "" : key)
+                    .header("Cache-Control", "no-cache");
                 if (payload != null) {
-                    conn.setDoOutput(true);
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
-                    try (OutputStream out = conn.getOutputStream()) { out.write(bytes); }
-                }
-                status = conn.getResponseCode();
-                InputStream stream = status < 400 ? conn.getInputStream() : conn.getErrorStream();
-                if (stream != null) {
-                    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                    byte[] buf = new byte[4096];
-                    int n;
-                    while ((n = stream.read(buf)) != -1) {
-                        bytes.write(buf, 0, n);
-                        if (bytes.size() > 2000000) throw new Exception("Respuesta demasiado grande");
+                    okhttp3.MediaType media = okhttp3.MediaType.get("application/json; charset=utf-8");
+                    okhttp3.RequestBody body = okhttp3.RequestBody.create(payload.toString(), media);
+                    builder.method(method, body);
+                } else builder.get();
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(16, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+                try (okhttp3.Response response = client.newCall(builder.build()).execute()) {
+                    status = response.code();
+                    okhttp3.ResponseBody reply = response.body();
+                    if (reply != null) {
+                        if (reply.contentLength() > 2000000) throw new Exception("Respuesta demasiado grande");
+                        result = reply.string();
+                        if (result.length() > 2000000) throw new Exception("Respuesta demasiado grande");
                     }
-                    stream.close();
-                    result = bytes.toString("UTF-8");
-                }
-                if (status >= 400) {
-                    JSONObject obj = new JSONObject(result);
-                    error = obj.optString("error", "Error del servidor (" + status + ")");
+                    if (status >= 400) {
+                        JSONObject obj = new JSONObject(result);
+                        error = obj.optString("error", "Error del servidor (" + status + ")");
+                    }
                 }
             } catch (Exception e) {
                 error = "No se pudo conectar. Revisá la conexión a Internet.";
-            } finally {
-                if (conn != null) conn.disconnect();
             }
             final int code = status;
             final String body = result;
@@ -507,8 +499,9 @@ public final class MainActivity extends Activity {
         }
         if (!next.isEmpty()) {
             String target=next;
+            String actionTitle=title;
             spacer(body,8);
-            body.addView(button(title,true,v->confirmStatus(item,target,title)),
+            body.addView(button(actionTitle,true,v->confirmStatus(item,target,actionTitle)),
                 new LinearLayout.LayoutParams(-1,dp(50)));
         }
         if ("requested".equals(state)||"quoted".equals(state)||
