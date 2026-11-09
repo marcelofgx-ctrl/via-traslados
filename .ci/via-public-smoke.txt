@@ -1,0 +1,9 @@
+Portada HTTPS: OK
+Panel de conductor HTTPS: OK
+Configuracion productiva: OK
+Backend OTP habilitado: OK
+CORS permitido: OK
+Preflight: OK
+Operador sin clave: rechazado correctamente
+No se enviaron emails ni se crearon reservas.
+Resultado final: success
