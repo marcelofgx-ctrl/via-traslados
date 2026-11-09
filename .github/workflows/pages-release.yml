@@ -1,0 +1,113 @@
+name: Via Traslados - publicacion automatica Cloudflare Pages
+on:
+  push:
+    branches: [pages-release]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-traslados-pages-release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recuperar copia aprobada de Vía Traslados y adaptar para producción
+        shell: bash
+        env:
+          VIA_SOURCE: https://via-traslados-inicial-r0adt0zuv-marcelofgx-1927.vercel.app
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,hashlib,pathlib,urllib.request,re
+          p=pathlib.Path('pages');p.mkdir(exist_ok=True)
+          source=os.environ['VIA_SOURCE']
+          files={
+            'index.html':'45d2790206b9b23448469e15daf1e604f1ec1771',
+            'app.js':'f2b070a7113f930440f1d182cc63cee08f84fe8e',
+            'conductor.html':'8083f613e17c1dc77c3df3fc0c01efa7806d467b',
+            'mis-reservas.html':'f165a42444762bc6566777aafc676ff2d88b2b3a',
+            'reserva.html':'751fe2ba356928c42dd7fc818ebbdd3669f3bcff',
+            'store.js':'da041762fd32cc06fe68281871cef980688530b7',
+            'styles.css':'ac455a162de2658c461926bb81930524f67a6a73',
+            'premium.css':'44b6a8008c579104d619c68e0c57e9e7195eb0e1',
+            'reference.css':'3e553b621b8b161dcfa0e520bfd3afb660244643',
+            'reference.js':'9c03444b3a9c94592db715c07f447b6d2244098f',
+            'address-autocomplete.css':'4f989792559eaa57754965efce584e68cb0fdc25',
+            'address-autocomplete.js':'89a770d1ed90cc39258c14f78966cde0751ee82b',
+            'map.js':'ba59ec250d97686d88b33977e459cd96d943e618',
+            'icon.svg':'ac7f79f4708ab1a347e294ede888e43ca32824b0',
+            'manifest.webmanifest':'805d9aaec38c8859d08a0e11eed0a1c22a5b506b',
+            'rambla-atmosfera.webp':'e158e36879e31f51de877961c099e4c93815c3ff',
+            'rambla-skyline-v09.webp':'aaf5096ceb855bbd01ef2731771a513874850db5',
+            'rambla-skyline.webp':'cb607a4a1d29a53f3d2d5fe88aa61c6084a4e512',
+            'sw.js':'397c086643ec75e3f195590c5d318b87b01deda4'
+          }
+          if not (p/'index.html').exists():
+            for name,sha1 in files.items():
+              url=f'{source}/{name}'
+              req=urllib.request.Request(url,headers={'User-Agent':'ViaTrasladosPagesRelease/1.0','Accept-Encoding':'identity'})
+              with urllib.request.urlopen(req,timeout=25) as response:
+                if response.status!=200: raise RuntimeError(f'{name}: HTTP {response.status}')
+                body=response.read()
+              actual=hashlib.sha1(body).hexdigest()
+              if actual!=sha1:raise RuntimeError(f'Archivo no coincide con versión aprobada: {name}; {actual}')
+              (p/name).write_bytes(body)
+            def patch(name,old,new):
+              fn=p/name;s=fn.read_text('utf-8')
+              if old not in s:raise RuntimeError(f'No se encontró el texto de producción en {name}: {old[:40]}')
+              fn.write_text(s.replace(old,new,1),'utf-8')
+            patch('index.html','<a href="./conductor.html">Panel conductor · QA</a>','')
+            patch('index.html','<b>VERSIÓN DE PRUEBA</b> · Cotizaciones ficticias. No se envían emails ni se crean reservas reales.','<b>RESERVAS POR CONFIRMAR</b> · Toda solicitud está sujeta a una propuesta del conductor.')
+            patch('index.html','Panel conductor <small>QA</small>','Panel conductor')
+            patch('index.html','Vía Traslados · Marca provisoria <span>v0.9 · QA</span>','Vía Traslados · Traslados privados <span>Uruguay</span>')
+            patch('conductor.html','<div class="demo-strip" id="demo-strip"><span class="demo-dot"></span> DEMOSTRACIÓN LOCAL · Sin conexión a pasajeros reales.</div>','')
+            patch('conductor.html','Registradas en esta demo','Registradas en la plataforma')
+            patch('conductor.html','Acceso administrativo · prototipo','Acceso administrativo')
+            patch('mis-reservas.html','<div class="demo-strip"><span class="demo-dot"></span> DEMO · Estas reservas existen únicamente en este navegador.</div>','')
+            patch('reserva.html','<div class="demo-strip" id="demo-strip"><span class="demo-dot"></span> DEMO · No se ha comunicado ninguna solicitud real.</div>','')
+            sw=(p/'sw.js').read_text('utf-8')
+            (p/'sw.js').write_text(re.sub(r"const VERSION='[^']+'","const VERSION='via-traslados-pages-v1'",sw,count=1),'utf-8')
+            (p/'config.js').write_text("""/* Vía Traslados: configuración pública. Nunca incluir secretos. */
+          window.VIA_CONFIG = Object.freeze({
+            demo: false,
+            apiUrl: 'https://via-traslados-api.marcelof-gx.workers.dev',
+            turnstileSiteKey: '0x4AAAAAAF4VvUKNEQsTbewm'
+          });
+          """,'utf-8')
+            (p/'_routes.json').write_text('{"version":1,"include":["/api/*"],"exclude":[]}', 'utf-8')
+            (p/'_headers').write_text('/*\\n  X-Content-Type-Options: nosniff\\n  Referrer-Policy: strict-origin-when-cross-origin\\n  Permissions-Policy: camera=(), microphone=()\\n/config.js\\n  Cache-Control: no-store, must-revalidate\\n','utf-8')
+          for required in ['index.html','app.js','config.js','_worker.js','_routes.json','rambla-skyline-v09.webp']:
+            assert (p/required).is_file(),f'Falta {required}'
+          assert 'demo: false' in (p/'config.js').read_text('utf-8')
+          assert 'VERSIÓN DE PRUEBA' not in (p/'index.html').read_text('utf-8')
+          assert (p/'rambla-skyline-v09.webp').stat().st_size>30000
+          print('Site snapshot verified; only via-traslados-pasajeros will deploy')
+          PY
+      - name: Conservar fuente de producción en GitHub (solo pages-release)
+        shell: bash
+        run: |
+          git config user.name "via-traslados-pages-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pages/
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(via-pages): snapshot approved production assets"
+            git push origin HEAD:pages-release
+          fi
+      - name: Verificar Worker aislado
+        run: |
+          node --check pages/_worker.js
+          test -f pages/index.html
+      - name: Crear proyecto Pages si aún no existe
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages project create via-traslados-pasajeros --production-branch main || true
+      - name: Publicar solo via-traslados-pasajeros
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages deploy pages --project-name via-traslados-pasajeros --branch main
