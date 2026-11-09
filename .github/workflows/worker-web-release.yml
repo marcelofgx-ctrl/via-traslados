@@ -1,0 +1,85 @@
+name: Via Traslados - alternativa web en Worker independiente
+on:
+  push:
+    branches: [worker-web-release]
+    paths:
+      - "pages/**"
+      - "wrangler.via-web.jsonc"
+      - ".github/workflows/worker-web-release.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-traslados-worker-web-release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar fuente exclusiva de Via Traslados
+        run: |
+          set -euo pipefail
+          test -f pages/index.html
+          test -f pages/_worker.js
+          test -f pages/rambla-skyline-v09.webp
+          test -f pages/config.js
+          test -f wrangler.via-web.jsonc
+          node --check pages/_worker.js
+          grep -q "via-traslados-api.marcelof-gx.workers.dev" pages/config.js
+          grep -q '"via-traslados-web-prod"' wrangler.via-web.jsonc
+          grep -q '"./pages"' wrangler.via-web.jsonc
+          echo "Validación lista: sin tocar proyectos de Quick Trip ni otros Workers."
+      - name: Desplegar Worker independiente con recursos web
+        id: publish
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4 deploy --config wrangler.via-web.jsonc 2>&1 | tee via-web-deploy.log
+      - name: Verificar página web
+        id: verify
+        if: steps.publish.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 \
+            'https://via-traslados-web-prod.marcelof-gx.workers.dev/' \
+            -o /tmp/via-web-index.html
+          grep -q "Vía Traslados" /tmp/via-web-index.html
+          curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 10 \
+            'https://via-traslados-web-prod.marcelof-gx.workers.dev/config.js' \
+            -o /tmp/via-web-config.js
+          grep -q "turnstileSiteKey" /tmp/via-web-config.js
+          echo 'Página e integración pública verificadas.'
+      - name: Guardar diagnóstico legible en el repositorio
+        if: always()
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.publish.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+        run: |
+          set +e
+          mkdir -p .ci
+          {
+            echo "Proyecto: via-traslados-web-prod"
+            echo "Publicacion: $OUTCOME"
+            echo "Verificacion web: $VERIFY"
+            echo "URL: https://via-traslados-web-prod.marcelof-gx.workers.dev/"
+            echo "Dominio viatraslados.com: no configurado en esta fase"
+            echo "Commit: $GITHUB_SHA"
+            echo "Ultimas 45 lineas del despliegue:"
+            if test -f via-web-deploy.log; then tail -45 via-web-deploy.log; else echo "No se genero log de Wrangler"; fi
+          } > .ci/worker-web-status.txt
+          git config user.name "via-traslados-ci"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci/worker-web-status.txt
+          git commit -m "ci(via-web): registrar resultado de publicación" || true
+          git push origin HEAD:worker-web-release || true
+      - name: Marcar fallo si Cloudflare no aceptó o no se pudo verificar
+        if: steps.publish.outcome != 'success' || steps.verify.outcome != 'success'
+        run: exit 1
