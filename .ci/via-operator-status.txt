@@ -1,4 +1,4 @@
 Proyecto: via-traslados-api
 Secreto de conductor: success
-Comprobación: failure
+Comprobación: success
 Se conservó la API OTP y el dominio viatraslados.com.
