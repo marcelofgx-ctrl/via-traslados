@@ -1,0 +1,61 @@
+name: Via Traslados - prueba pública sin crear reservas
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/via-public-smoke.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probar HTTPS, interfaz, OTP, CORS y privacidad
+        id: test
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci
+          curl -fsSL --max-time 20 'https://viatraslados.com/' -o /tmp/via-index.html
+          grep -q 'Vía Traslados' /tmp/via-index.html
+          curl -fsSL --max-time 20 'https://viatraslados.com/conductor.html' -o /tmp/via-driver.html
+          grep -q 'ACCESO PRIVADO' /tmp/via-driver.html
+          curl -fsSL --max-time 20 'https://viatraslados.com/config.js' -o /tmp/via-config.js
+          grep -q 'demo: false' /tmp/via-config.js
+          curl -i -fsS --max-time 20 \
+            -H 'Origin: https://viatraslados.com' \
+            'https://via-traslados-api.marcelof-gx.workers.dev/api/health' -o /tmp/via-health.txt
+          grep -q '"otpAvailable":true' /tmp/via-health.txt
+          grep -iq 'access-control-allow-origin: https://viatraslados.com' /tmp/via-health.txt
+          preflight=$(curl -sS -o /tmp/via-options.txt -D /tmp/via-options-headers.txt -w '%{http_code}' \
+            --max-time 20 -X OPTIONS \
+            -H 'Origin: https://viatraslados.com' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: Content-Type' \
+            'https://via-traslados-api.marcelof-gx.workers.dev/api/auth/start')
+          test "$preflight" = "204"
+          grep -iq 'access-control-allow-origin: https://viatraslados.com' /tmp/via-options-headers.txt
+          unauthorized=$(curl -sS -o /tmp/via-private.txt -w '%{http_code}' \
+            --max-time 20 -H 'Origin: https://viatraslados.com' \
+            'https://via-traslados-api.marcelof-gx.workers.dev/api/operator/requests')
+          test "$unauthorized" = "401"
+          printf '%s\n' 'Portada HTTPS: OK' 'Panel de conductor HTTPS: OK' 'Configuracion productiva: OK' 'Backend OTP habilitado: OK' 'CORS permitido: OK' 'Preflight: OK' 'Operador sin clave: rechazado correctamente' 'No se enviaron emails ni se crearon reservas.' > .ci/via-public-smoke.txt
+      - name: Registrar los resultados de la prueba sin secretos
+        if: always()
+        env:
+          RESULT: ${{ steps.test.outcome }}
+        run: |
+          mkdir -p .ci
+          test -f .ci/via-public-smoke.txt || echo "Prueba parcial o fallida; revisar el log de GitHub Actions." > .ci/via-public-smoke.txt
+          echo "Resultado final: $RESULT" >> .ci/via-public-smoke.txt
+          git config user.name "via-traslados-ci"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci/via-public-smoke.txt
+          git commit -m "ci(via): comprobación pública sin modificar datos" || true
+          git push origin HEAD:main || true
+      - name: Reportar falla de comprobación
+        if: steps.test.outcome != 'success'
+        run: exit 1
