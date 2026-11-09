@@ -46,6 +46,11 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout root;
     private String operatorKey;
+    private String staffToken;
+    private String staffRole = "driver";
+    private String staffName = "";
+    private JSONArray approvedDrivers = new JSONArray();
+    private boolean siteEnabled = true;
     private JSONArray bookings = new JSONArray();
     private String lastPayload = "";
     private String tab = "solicitudes";
@@ -54,7 +59,7 @@ public final class MainActivity extends Activity {
     private boolean visible = false;
     private final Runnable poll = new Runnable() {
         @Override public void run() {
-            if (visible && operatorKey != null) fetchBookings(false);
+            if (visible && (operatorKey != null || staffToken != null)) fetchBookings(false);
             if (visible) handler.postDelayed(this, 30000);
         }
     };
@@ -77,7 +82,7 @@ public final class MainActivity extends Activity {
         visible = true;
         handler.removeCallbacks(poll);
         handler.postDelayed(poll, 30000);
-        if (operatorKey != null) fetchBookings(false);
+        if (operatorKey != null || staffToken != null) fetchBookings(false);
     }
 
     @Override protected void onPause() {
@@ -88,6 +93,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         operatorKey = null;
+        staffToken = null;
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -171,6 +177,9 @@ public final class MainActivity extends Activity {
     private void loginScreen() {
         root.removeAllViews();
         operatorKey = null;
+        staffToken = null;
+        staffRole = "driver";
+        staffName = "";
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -209,8 +218,13 @@ public final class MainActivity extends Activity {
             fetchBookings(true);
         });
         authCard.addView(signIn, new LinearLayout.LayoutParams(-1, dp(54)));
-        appendCard(pane, authCard, 24);
-
+        appendCard(pane, authCard, 15);
+        pane.addView(button("Ingresar con usuario y contraseña", false, v -> accountLogin()),
+            new LinearLayout.LayoutParams(-1, dp(54)));
+        spacer(pane, 11);
+        pane.addView(button("Registrarme como conductor", false, v -> driverRegister()),
+            new LinearLayout.LayoutParams(-1, dp(54)));
+        spacer(pane, 24);
         addLine(pane, "Solo para el conductor autorizado · Vía Traslados", 12, MUTED, false, 10);
         addLine(pane, "No hay comisiones de plataforma ni cargos por cada oferta.",
             12, MUTED, false, 0);
@@ -229,6 +243,7 @@ public final class MainActivity extends Activity {
     private interface Done { void call(int status, String body, String error); }
     private void api(String method, String path, JSONObject payload, Done done) {
         final String key = operatorKey;
+        final String token = staffToken;
         executor.execute(() -> {
             int status = 0;
             String result = "";
@@ -237,8 +252,9 @@ public final class MainActivity extends Activity {
                 okhttp3.Request.Builder builder = new okhttp3.Request.Builder()
                     .url(API + path)
                     .header("Accept", "application/json")
-                    .header("X-Operator-Key", key == null ? "" : key)
                     .header("Cache-Control", "no-cache");
+                if (token != null && !token.isEmpty()) builder.header("Authorization", "Bearer " + token);
+                else if (key != null && !key.isEmpty()) builder.header("X-Operator-Key", key);
                 if (payload != null) {
                     okhttp3.MediaType media = okhttp3.MediaType.get("application/json; charset=utf-8");
                     okhttp3.RequestBody body = okhttp3.RequestBody.create(payload.toString(), media);
@@ -272,7 +288,7 @@ public final class MainActivity extends Activity {
     }
 
     private void fetchBookings(boolean login) {
-        if (operatorKey == null || loading) return;
+        if ((operatorKey == null && staffToken == null) || loading) return;
         loading = true;
         api("GET", "/api/operator/requests", null, (status, result, error) -> {
             loading = false;
@@ -306,14 +322,14 @@ public final class MainActivity extends Activity {
     }
 
     private void dashboard() {
-        if (operatorKey == null) return;
+        if (operatorKey == null && staffToken == null) return;
         root.removeAllViews();
         LinearLayout header = row();
         header.setPadding(dp(17), dp(13), dp(17), dp(13));
         header.setBackgroundColor(Color.WHITE);
         LinearLayout brand = column();
         addLine(brand, "Vía Traslados", 21, INK, true, 0);
-        addLine(brand, "CONDUCTOR · EN LÍNEA", 11, TEAL, true, 0);
+        addLine(brand, "admin".equals(staffRole) ? "ADMINISTRADOR · EN LÍNEA" : "CONDUCTOR · EN LÍNEA", 11, TEAL, true, 0);
         header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         Button refresh = button("↻", false, v -> fetchBookings(true));
         refresh.setMinWidth(dp(48));
@@ -327,7 +343,8 @@ public final class MainActivity extends Activity {
         content.setPadding(dp(17), dp(19), dp(17), dp(20));
         scroll.addView(content);
 
-        if ("ajustes".equals(tab)) settings(content);
+        if ("administrar".equals(tab)) manage(content);
+        else if ("ajustes".equals(tab)) settings(content);
         else if ("historial".equals(tab)) lists(content, "historial");
         else if ("viajes".equals(tab)) lists(content, "viajes");
         else lists(content, "solicitudes");
@@ -588,7 +605,9 @@ public final class MainActivity extends Activity {
         addLine(c,"La clave permanece únicamente en memoria mientras la aplicación está abierta.",
             14,MUTED,false,14);
         c.addView(button("Cerrar sesión",false,v->{
+            if (staffToken != null) api("POST", "/api/staff/logout", new JSONObject(), (status,response,error)->{});
             operatorKey=null;
+            staffToken=null;
             bookings=new JSONArray();
             lastPayload="";
             loginScreen();
@@ -616,9 +635,10 @@ public final class MainActivity extends Activity {
         LinearLayout bar=row();
         bar.setPadding(dp(9),dp(5),dp(9),dp(5));
         bar.setBackgroundColor(Color.WHITE);
-        String[] titles={"Solicitudes","Viajes","Historial","Ajustes"};
-        String[] icons={"≡","▣","◷","⚙"};
-        String[] values={"solicitudes","viajes","historial","ajustes"};
+        boolean admin="admin".equals(staffRole);
+        String[] titles=admin?new String[]{"Solicitudes","Viajes","Historial","Administrar","Ajustes"}:new String[]{"Solicitudes","Viajes","Historial","Ajustes"};
+        String[] icons=admin?new String[]{"≡","▣","◷","⚙","☷"}:new String[]{"≡","▣","◷","⚙"};
+        String[] values=admin?new String[]{"solicitudes","viajes","historial","administrar","ajustes"}:new String[]{"solicitudes","viajes","historial","ajustes"};
         for(int i=0;i<titles.length;i++) {
             final String next=values[i];
             LinearLayout slot=column();
