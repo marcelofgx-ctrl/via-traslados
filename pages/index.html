@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es-UY"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f4f7f5"><meta name="description" content="Vía Traslados: reservá un traslado privado programado."><meta name="robots" content="noindex,nofollow"><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./premium.css"><link rel="stylesheet" href="./reference.css?v=9"><link rel="stylesheet" href="./address-autocomplete.css?v=11"><title>Vía Traslados · Reservá tu viaje</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoTz7t0B5U8s=" crossorigin=""></head>
+<body data-page="passenger" class="premium-page">
+<div class="app-shell premium-shell">
+  <header class="premium-header design-header">
+  <button class="icon-control" type="button" id="menu-toggle" aria-label="Abrir menú" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  <a class="premium-brand" href="./index.html" aria-label="Vía Traslados, inicio"><span class="new-brand-emblem">V</span><span class="wordmark">ía Traslados<small>TRASLADOS PRIVADOS</small></span></a>
+  <a class="icon-control alert-link" href="./mis-reservas.html" aria-label="Ver reservas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></svg><span class="alert-dot"></span></a>
+</header><nav id="header-menu" class="header-menu hidden" aria-label="Menú"><a href="./index.html">Inicio</a><a href="./mis-reservas.html">Mis reservas</a></nav>
+  <main class="premium-main"><div class="preview-message"><span class="preview-circle"></span><b>RESERVAS POR CONFIRMAR</b> · Toda solicitud está sujeta a una propuesta del conductor.</div>
+    <div class="map-stage" id="map-stage"><div id="trip-map" role="img" aria-label="Mapa interactivo de Uruguay; vista orientativa de la zona. No muestra todavía el trayecto calculado."><div class="map-placeholder">Mapa de Uruguay · Vista de referencia</div></div><div class="rambla-atmosphere" aria-hidden="true"></div><div class="map-shade"></div><div class="map-overlay-copy"><div class="map-caption"><span class="map-caption-dot"></span> MONTEVIDEO · URUGUAY</div><h1>Reservá tu traslado<br><em>con tranquilidad.</em></h1><p>Un viaje privado, cómodo y a tu medida.</p><div class="hero-perks"><span>✧ Servicio privado</span><span>◷ Reserva anticipada</span><span>♢ Atención personalizada</span></div></div><div class="map-watermark">MAPA DE REFERENCIA · SIN RUTA CALCULADA</div></div>
+    <div class="sheet-stack"><section class="mobile-sheet arrival-hero reference-home" id="inicio">
+ <div class="home-intro"><h1>Reservá tu traslado</h1><p>Rápido, seguro y programado</p><div class="intro-line"></div></div>
+ <div class="home-highlights">
+  <div class="highlight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m5 11 2-5h10l2 5M4 11h16v7H4zM7 18v2m10-2v2M7 14h.01M17 14h.01"/></svg><span>Servicio<br>privado</span></div>
+  <div class="highlight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/></svg><span>Reservá con<br>anticipación</span></div>
+  <div class="highlight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 2 8 4v6c0 5-3.2 8.2-8 10-4.8-1.8-8-5-8-10V6z"/><path d="m8 12 3 3 5-6"/></svg><span>Traslados<br>confiables</span></div>
+  <div class="highlight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg><span>Equipaje<br>incluido</span></div>
+ </div>
+ <div class="reference-booking">
+  <div class="reference-route-fields">
+    <label class="reference-field"><span class="pin-graphic" aria-hidden="true">●</span><span class="field-copy"><strong>Origen</strong><input id="home-origin" autocomplete="off" placeholder="¿Dónde te buscamos?" aria-label="Origen de tu traslado"></span><button type="button" id="location-shortcut" class="locate-btn" aria-label="Utilizar mi ubicación">◎</button></label>
+    <div class="route-dash"></div>
+    <label class="reference-field"><span class="pin-graphic destination">●</span><span class="field-copy"><strong>Destino</strong><input id="home-destination" placeholder="¿A dónde vas?" aria-label="Destino de tu traslado"></span></label>
+  </div>
+  <div class="reference-options">
+   <label class="reference-option"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/></svg><span><strong>Fecha</strong><input type="date" id="home-date" aria-label="Fecha del traslado"></span></label>
+   <label class="reference-option"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span><strong>Hora</strong><input type="time" id="home-time" aria-label="Hora del traslado"></span></label>
+   <label class="reference-option"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg><span><strong>Pasajeros</strong><select id="home-passengers" aria-label="Número de pasajeros"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></span></label>
+  </div>
+  <button type="button" class="primary-btn sheet-action reference-action" id="start-booking"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg> Solicitar traslado <span>›</span></button>
+  <a class="reference-reservations" href="./mis-reservas.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/></svg>Mis reservas</a>
+ </div>
+</section>
+    <section class="booking-panel wizard-panel hidden" id="solicitar" aria-labelledby="booking-heading">
+      <div class="wizard-top"><button type="button" id="wizard-back" class="back-link" aria-label="Volver al paso anterior">← Volver</button><div class="wizard-progress"><span id="wizard-progress-label">PASO 1 DE 3</span><div class="progress-track"><div id="progress-bar" class="progress-fill" style="width:33.33%"></div></div></div></div>
+      <div id="form-result" class="notice hidden" role="alert"></div>
+      <form id="booking-form" novalidate>
+        <section data-step="1" class="wizard-step">
+          <div class="section-eyebrow">PRIMER PASO</div><h2 id="booking-heading">¿A dónde vamos?</h2><p class="wizard-description">Contanos los datos de tu traslado. Todavía no es una reserva.</p>
+          <div class="route-stack"><label class="route-field"><span class="route-marker origin-marker"></span><span class="field-wrap"><span class="field-label">ORIGEN</span><input id="origin" name="origin" placeholder="Lugar de recogida" required minlength="4" maxlength="200"></span></label><div class="route-connector" aria-hidden="true"></div><label class="route-field"><span class="route-marker destination-marker"></span><span class="field-wrap"><span class="field-label">DESTINO</span><input id="destination" name="destination" placeholder="¿A dónde viajás?" required minlength="4" maxlength="200"></span></label></div>
+          <div class="form-grid"><label class="control"><span class="field-label">FECHA</span><input type="date" id="date" name="date" required></label><label class="control"><span class="field-label">HORA</span><input type="time" id="time" name="time" required value="10:00"></label><label class="control"><span class="field-label">PASAJEROS</span><select name="passengers" id="passengers"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label><label class="control"><span class="field-label">VALIJAS</span><select id="bags" name="bags"><option value="0">Ninguna</option><option value="1" selected>1 valija</option><option value="2">2 valijas</option><option value="3">3 valijas</option><option value="4">4 valijas</option><option value="5">5 o más</option></select></label></div>
+          <label class="control notes-field"><span class="field-label">COMENTARIOS <span class="optional">(OPCIONAL)</span></span><textarea id="notes" name="notes" rows="2" maxlength="500" placeholder="Número de vuelo, equipaje especial... "></textarea></label>
+          <button type="button" class="primary-btn wizard-next" id="to-contact">Continuar <span>→</span></button>
+        </section>
+        <section data-step="2" class="wizard-step hidden">
+          <div class="section-eyebrow">SEGUNDO PASO</div><h2>¿Cómo te contactamos?</h2><p class="wizard-description">Validamos tu correo electrónico para filtrar solicitudes falsas. El celular nos sirve para coordinar el viaje.</p>
+          <label class="control"><span class="field-label">NOMBRE Y APELLIDO</span><input id="name" name="name" autocomplete="name" placeholder="Tu nombre completo" minlength="2" maxlength="100" required></label>
+          <label class="control contact-control"><span class="field-label">CELULAR DE CONTACTO</span><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="099 123 456" required minlength="7" maxlength="30"></label>
+          <label class="control contact-control"><span class="field-label">CORREO ELECTRÓNICO <span class="optional">(OBLIGATORIO)</span></span><input id="email" name="email" type="email" autocomplete="email" maxlength="200" required placeholder="nombre@ejemplo.com"></label>
+          <label class="privacy-check"><input type="checkbox" id="privacy-consent" required><span>Acepto que se utilicen estos datos para gestionar mi solicitud de traslado.</span></label>
+          <div class="turnstile-container hidden" id="turnstile-box"></div>
+          <div class="trust-caption"><span aria-hidden="true">◇</span> Tus datos no se publican ni se muestran a otros pasajeros.</div>
+          <button type="button" class="primary-btn wizard-next" id="send-code">Recibir código de verificación <span>→</span></button>
+        </section>
+        <section data-step="3" class="wizard-step hidden">
+          <div class="section-eyebrow">ÚLTIMO PASO</div><h2>Verificá tu correo</h2><p class="wizard-description" id="verification-description">Ingresá el código enviado por email.</p>
+          <label class="control otp-control"><span class="field-label">CÓDIGO DE VERIFICACIÓN</span><input id="otp-code" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,10}" minlength="4" maxlength="10" placeholder="••••••" aria-describedby="otp-guidance"></label>
+          <p id="otp-guidance" class="otp-guidance"></p><button class="primary-btn wizard-next" id="verify-and-book" type="submit">Verificar y enviar solicitud <span>→</span></button>
+          <button class="text-button" type="button" id="resend-code">Reenviar código</button>
+        </section>
+      </form>
+    </section>
+
+
+    </div>
+    <div class="bottom-quick legacy-quick"><a href="./mis-reservas.html">◷ <span>Mis reservas</span></a><a href="./conductor.html">⚙ <span>Panel conductor</span></a></div>
+  <nav class="reference-tabs" aria-label="Navegación principal"><a class="selected" href="./index.html"><span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg></span>Inicio</a><a href="./mis-reservas.html"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/></svg></span>Reservas</a><a href="./index.html#solicitar" id="services-nav"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 11 2-5h10l2 5M4 11h16v7H4zM7 18v2m10-2v2M7 14h.01M17 14h.01"/></svg></span>Servicios</a><a href="./mis-reservas.html"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></svg></span>Mi cuenta</a></nav></main><footer class="premium-footer">Vía Traslados · Traslados privados <span>Uruguay</span></footer>
+</div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script><script src="./map.js"></script><script src="./config.js"></script><script src="./store.js"></script><script src="./app.js"></script><script src="./reference.js?v=10"></script><script src="./address-autocomplete.js?v=11"></script></body></html>

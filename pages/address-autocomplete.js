@@ -1,0 +1,48 @@
+/* Vía Traslados: sugerencias IDE Uruguay para origen y destino.
+   La lista no altera el diseño aprobado: se dibuja como superposición. */
+(()=>{'use strict';
+const ids=['home-origin','home-destination','origin','destination'];
+const fields=ids.map(id=>document.getElementById(id)).filter(Boolean);
+let gps=null;window.ViaSearchLocation={update(lat,lng){if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng)))gps={lat:Number(lat),lng:Number(lng)}},get(){return gps}};
+try{if(navigator.permissions&&navigator.geolocation)navigator.permissions.query({name:'geolocation'}).then(p=>{if(p.state==='granted')navigator.geolocation.getCurrentPosition(pos=>window.ViaSearchLocation.update(pos.coords.latitude,pos.coords.longitude),()=>{},{maximumAge:120000,timeout:3500})}).catch(()=>{});}catch{}
+if(!fields.length)return;
+let active=null,seq=0,abort=null,timer=null;
+const panel=document.createElement('div');panel.id='address-suggestions';panel.className='address-suggestions hidden';panel.setAttribute('role','listbox');document.body.appendChild(panel);
+const clear=()=>{panel.replaceChildren();panel.classList.add('hidden');active=null};
+const setMeta=(input,place)=>{
+ for(const key of ['lat','lng','accuracy','city','department','kind']){
+  if(place&&place[key]!=null)input.dataset[key]=String(place[key]);else delete input.dataset[key];
+ }
+ input.dataset.addressSelected=place?'true':'false';
+};
+window.ViaAddress={set(id,place){const el=document.getElementById(id);if(!el)return;el.value=place.label||'';setMeta(el,place)},copy(from,to){const a=document.getElementById(from),b=document.getElementById(to);if(!a||!b)return;b.value=a.value;setMeta(b,a.dataset.addressSelected==='true'?a.dataset:null)},get(id){const el=document.getElementById(id);if(!el)return null;return {label:el.value,lat:el.dataset.lat?Number(el.dataset.lat):null,lng:el.dataset.lng?Number(el.dataset.lng):null,accuracy:el.dataset.accuracy||'unconfirmed',city:el.dataset.city||'',department:el.dataset.department||''}}};
+function position(input){const r=input.getBoundingClientRect(),w=Math.min(Math.max(r.width,286),window.innerWidth-20);panel.style.width=w+'px';panel.style.left=Math.min(Math.max(10,r.left),window.innerWidth-w-10)+'px';const bottomSpace=window.innerHeight-r.bottom;const h=Math.min(295,Math.max(138,bottomSpace-12));panel.style.maxHeight=h+'px';panel.style.top=(r.bottom+3)+'px';if(bottomSpace<152){panel.style.top='auto';panel.style.bottom='10px';panel.style.maxHeight='min(34dvh,235px)'}else panel.style.bottom='auto'}
+function line(message,css){const node=document.createElement('div');node.className='address-line '+(css||'');node.textContent=message;panel.appendChild(node)}
+function display(input,items){if(active!==input)return;panel.replaceChildren();position(input);panel.classList.remove('hidden');if(!items.length){line('No encontramos coincidencias. Probá con calle, número y localidad.','address-empty');return}
+ items.forEach(place=>{const btn=document.createElement('button');btn.type='button';btn.className='address-choice';btn.setAttribute('role','option');const main=document.createElement('strong'),sub=document.createElement('small');main.textContent=place.street;sub.textContent=([place.city,place.department].filter(Boolean).join(' · ')||'Uruguay')+(place.kind==='place'?' · Lugar de interés'+(Number.isFinite(place.distanceKm)?' · '+place.distanceKm+' km en línea recta':''):place.accuracy==='portal'?' · Puerta identificada':' · Verificá el número');btn.append(main,sub);btn.addEventListener('pointerdown',e=>e.preventDefault());btn.addEventListener('click',async()=>{const source=input;
+  const written=source.value;const number=(written.match(/\b[1-9]\d{2,4}\b/g)||[]).pop();
+  let chosen=place;
+  if(number&&place.kind!=='place'){const endNumber=(place.street.match(/\b[1-9]\d{2,4}\b$/)||[])[0];
+   if(endNumber!==number){const street=place.street.replace(/\s+[1-9]\d{2,4}$/, '')+' '+number;
+    chosen={...place,street,label:[street,place.city,place.department].filter(Boolean).join(', '),accuracy:'street',lat:null,lng:null};
+   }
+  }
+  source.value=chosen.label;setMeta(source,chosen);clear();source.blur();/* resolver portal o calle de manera asíncrona */
+  if(chosen.kind==='place'){source.dispatchEvent(new CustomEvent('via:address',{detail:chosen}));return;}
+  try{const r=await fetch('/api/direcciones?mode=resolve&q='+encodeURIComponent(chosen.label));if(!r.ok)return;const d=await r.json();const best=(d.results||[])[0];if(best&&source.value===chosen.label){setMeta(source,best);source.dispatchEvent(new CustomEvent('via:address',{detail:best}))}}catch{/* se conserva la calle seleccionada */}
+ });panel.append(btn)})}
+function search(input){const q=input.value.trim();clearTimeout(timer);if(abort)abort.abort();const mySeq=++seq;if(q.length<3){clear();return}active=input;position(input);panel.replaceChildren();line('Buscando direcciones y lugares…','address-loading');panel.classList.remove('hidden');timer=setTimeout(async()=>{
+ abort=new AbortController();try{
+  const point=window.ViaSearchLocation.get()||[document.getElementById('home-origin'),document.getElementById('origin')].map(e=>e?.dataset).find(d=>d?.lat&&d?.lng);
+  const position=point?'&lat='+encodeURIComponent(point.lat)+'&lng='+encodeURIComponent(point.lng):'';
+  const endpoint='/api/direcciones?q='+encodeURIComponent(q)+position;
+  const [streets,places]=await Promise.allSettled([fetch(endpoint+'&mode=suggest',{signal:abort.signal}).then(r=>{if(!r.ok)throw Error();return r.json()}),fetch(endpoint+'&mode=places',{signal:abort.signal}).then(r=>{if(!r.ok)throw Error();return r.json()})]);
+  if(mySeq!==seq||active!==input)return;
+  const results=[...(places.status==='fulfilled'?places.value.results||[]:[]),...(streets.status==='fulfilled'?streets.value.results||[]:[])];
+  const unique=new Map();for(const p of results){const key=(p.label||'').toLocaleLowerCase('es');if(!unique.has(key))unique.set(key,p)}
+  display(input,[...unique.values()].slice(0,12));
+ }catch(e){if(mySeq!==seq||e.name==='AbortError')return;panel.replaceChildren();line('No se pudo buscar. Podés escribir la dirección manualmente.','address-empty')}
+},410)}
+fields.forEach(input=>{input.setAttribute('autocomplete','off');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-controls','address-suggestions');input.addEventListener('input',()=>{setMeta(input,null);search(input)});input.addEventListener('focus',()=>{if(input.value.trim().length>=3)search(input)});input.addEventListener('keydown',e=>{if(e.key==='Escape'){clear();return}if(e.key==='ArrowDown'&&!panel.classList.contains('hidden')){e.preventDefault();panel.querySelector('button')?.focus()}})});
+document.addEventListener('pointerdown',e=>{if(!panel.contains(e.target)&&!fields.includes(e.target))clear()});window.addEventListener('resize',()=>active&&position(active));
+})();
