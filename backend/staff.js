@@ -51,7 +51,7 @@ export async function identity(req,env){
 }
 
 export async function webEnabled(env){
- const row=await env.DB.prepare("SELECT setting_value FROM service_settings WHERE setting_key='public_web_enabled'").first();
+ const row=await env.DB.prepare('SELECT setting_value FROM service_settings WHERE setting_key=?').bind('public_web_enabled').first();
  return row?.setting_value!=='0';
 }
 
