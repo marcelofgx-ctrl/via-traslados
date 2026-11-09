@@ -1,9 +1,11 @@
 Proyecto: via-traslados-web-prod
 Publicacion: success
-Verificacion web: failure
+Verificacion web: success
+Verificacion dominio: success
+Verificacion backend/CORS: failure
 URL: https://via-traslados-web-prod.marcelof-gx.workers.dev/
-Dominio viatraslados.com: no configurado en esta fase
-Commit: a2cf3acf6d6f9d840945fce8d2b69d7e768f88b6
+Dominio viatraslados.com: vinculación solicitada con Workers Custom Domain
+Commit: fba37837cf48c728105084dcdaae66ac2e92975a
 Ultimas 45 lineas del despliegue:
 
  ⛅️ wrangler 4.159.0
@@ -11,41 +13,133 @@ Ultimas 45 lineas del despliegue:
 🌀 Building list of assets...
 ✨ Read 24 files from the assets directory /home/runner/work/via-traslados/via-traslados/pages
 🌀 Starting asset upload...
-🌀 Found 20 new or modified static assets to upload. Proceeding with upload...
-+ /config.js
-+ /map.js
-+ /reserva.html
-+ /conductor.html
-+ /premium.css
-+ /rambla-skyline.webp
-+ /reference.css
-+ /icon.svg
-+ /sw.js
-+ /mis-reservas.html
-+ /store.js
-+ /index.html
-+ /rambla-atmosfera.webp
-+ /rambla-skyline-v09.webp
-+ /manifest.webmanifest
-+ /address-autocomplete.css
-+ /reference.js
-+ /address-autocomplete.js
-+ /app.js
-+ /styles.css
-Uploaded 6 of 20 assets
-Uploaded 13 of 20 assets
-Uploaded 20 of 20 assets
-✨ Success! Uploaded 20 files (1.07 sec)
-
+No updated asset files to upload. Proceeding with deployment...
 Total Upload: 8.45 KiB / gzip: 3.14 KiB
 Worker Startup Time: 2 ms
 Your Worker has access to the following bindings:
 Binding            Resource      
 env.ASSETS         Assets        
 
-Uploaded via-traslados-web-prod (3.27 sec)
-Deployed via-traslados-web-prod triggers (0.39 sec)
+Uploaded via-traslados-web-prod (3.79 sec)
+Deployed via-traslados-web-prod triggers (2.23 sec)
   https://via-traslados-web-prod.marcelof-gx.workers.dev
-Current Version ID: fd0a106d-55aa-4f7a-8354-51c3ce343e57
+  viatraslados.com (custom domain)
+Current Version ID: 8f8e8f02-d5a0-42da-ac53-1872a372756b
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
+Diagnóstico HTTP/DNS del Worker y dominio:
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [3459 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [78 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [52 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [52 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384 / X25519 / id-ecPublicKey
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: CN=marcelof-gx.workers.dev
+*  start date: Oct  3 22:29:18 2026 GMT
+*  expire date: Jan  1 22:29:17 2027 GMT
+*  subjectAltName: host "via-traslados-web-prod.marcelof-gx.workers.dev" matched cert's "*.marcelof-gx.workers.dev"
+*  issuer: C=US; O=Let's Encrypt; CN=YE1
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type EC/prime256v1 (256/128 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 1: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 2: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 3: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+} [5 bytes data]
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://via-traslados-web-prod.marcelof-gx.workers.dev/config.js
+* [HTTP/2] [1] [:method: GET]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: via-traslados-web-prod.marcelof-gx.workers.dev]
+* [HTTP/2] [1] [:path: /config.js]
+* [HTTP/2] [1] [user-agent: curl/8.5.0]
+* [HTTP/2] [1] [accept: */*]
+} [5 bytes data]
+> GET /config.js HTTP/2
+> Host: via-traslados-web-prod.marcelof-gx.workers.dev
+> User-Agent: curl/8.5.0
+> Accept: */*
+> 
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [230 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [230 bytes data]
+* old SSL session ID is stale, removing
+{ [5 bytes data]
+< HTTP/2 200 
+< date: Mon, 09 Nov 2026 23:06:03 GMT
+< content-type: text/javascript
+< content-length: 236
+< cf-cache-status: HIT
+< cache-control: public, max-age=0, must-revalidate
+< etag: "3e9c7f295b5bab2ae39796a80fafaf5b"
+< report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=uXNc1cQfArDT2v3lh5ISP9tveGouuCHtSf0CmmLr53ojBljrm1LZNZGLo%2BHMF2fzKsQXarOrRJEfy1Lx94PhikVPrANI4kk7Ok1O07L6CkdgXEs7BynGKWJnZX%2B6lwZeGR5QLaViG4lRHfJVRmi1PAYA3PDKsNHIwue4x98isLq7"}]}
+< nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+< server: cloudflare
+< cf-ray: a580773e0f498f43-STL
+< alt-svc: h3=":443"; ma=86400
+< 
+{ [236 bytes data]
+* Connection #0 to host via-traslados-web-prod.marcelof-gx.workers.dev left intact
+Últimas líneas de verificación del dominio:
+} [5 bytes data]
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://viatraslados.com/
+* [HTTP/2] [1] [:method: GET]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: viatraslados.com]
+* [HTTP/2] [1] [:path: /]
+* [HTTP/2] [1] [user-agent: curl/8.5.0]
+* [HTTP/2] [1] [accept: */*]
+} [5 bytes data]
+> GET / HTTP/2
+> Host: viatraslados.com
+> User-Agent: curl/8.5.0
+> Accept: */*
+> 
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [230 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [230 bytes data]
+* old SSL session ID is stale, removing
+{ [5 bytes data]
+< HTTP/2 200 
+< date: Mon, 09 Nov 2026 23:06:04 GMT
+< content-type: text/html
+< cf-cache-status: HIT
+< cache-control: public, max-age=0, must-revalidate
+< nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+< report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=Lb5NDnAdgMV%2FqOYugusBToIQMbqGNsqzccORKAP0uXwYv8MW6GF8ct13%2Bj4pqePepDzsOypQvc6pVwBlJ%2FpD5Vrud1JS7LVUL9jMiCwIu5NOdDklsBGX%2BTOrSloIsEjR3nm9"}]}
+< server: cloudflare
+< cf-ray: a580773f2fe5fab5-STL
+< alt-svc: h3=":443"; ma=86400
+< 
+{ [9565 bytes data]
+* Connection #0 to host viatraslados.com left intact
+Respuesta del backend con Origin del dominio:
+HTTP/2 403 
+date: Mon, 09 Nov 2026 23:06:04 GMT
+content-type: application/json; charset=utf-8
+content-length: 32
+access-control-allow-origin: null
+cache-control: no-store
+vary: Origin
+access-control-allow-headers: Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token
+access-control-allow-methods: GET,POST,PATCH,OPTIONS
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=SbXzXr8TegOpcaLVWutNE%2FxAH0irqSsb6aCS9lED8A6ZmotnKChLFEFRelzoaHoxf08KJEnJVqxgQ%2BuSK3XZg%2B7ThzxKHk0zzCMN%2F6360lddxOG6Hl58g73g%2FXsaT0bRB6T%2BtsI5cTxHlbZENEQk%2BBIQBIqb1fcW%2FZGPlA%3D%3D"}]}
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+server: cloudflare
+cf-ray: a58077405b498f43-STL
+alt-svc: h3=":443"; ma=86400
+
+{"error":"Origen no autorizado"}
