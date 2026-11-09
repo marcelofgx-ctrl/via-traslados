@@ -1,0 +1,97 @@
+name: Vía Traslados - cuentas y superadministrador (QA)
+on:
+  push:
+    branches: [via-admin-drivers-qa]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "android-driver/**"
+      - ".github/workflows/via-admin-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-admin-drivers-qa
+  cancel-in-progress: true
+jobs:
+  test_and_build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Revisar sintaxis y probar permisos de seguridad
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          node --check backend/staff.js
+      - name: Validar esquema SQL sin tocar Cloudflare
+        run: |
+          python3 - <<'PY'
+          import pathlib,sqlite3
+          conn=sqlite3.connect(':memory:')
+          conn.execute("PRAGMA foreign_keys=ON")
+          conn.executescript(pathlib.Path('backend/schema.sql').read_text())
+          conn.executescript(pathlib.Path('backend/schema.sql').read_text())
+          row=conn.execute("SELECT setting_value FROM service_settings WHERE setting_key='public_web_enabled'").fetchone()
+          assert row==('1',),row
+          conn.execute("UPDATE service_settings SET setting_value='0' WHERE setting_key='public_web_enabled'")
+          conn.executescript(pathlib.Path('backend/schema.sql').read_text())
+          assert conn.execute("SELECT setting_value FROM service_settings WHERE setting_key='public_web_enabled'").fetchone()==('0',)
+          assert {x[0] for x in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")} >= {'staff_users','staff_sessions','service_settings','driver_assignments','admin_audit'}
+          print('Migración D1 idempotente; servicio habilitado por defecto; estado de bloqueo preservado')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Instalar Android SDK 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Validar aislamiento de Vía Traslados
+        run: |
+          test -f android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -q 'via-traslados-api.marcelof-gx.workers.dev' android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -q 'uy.viatraslados.conductor.qa' android-driver/app/build.gradle
+          if grep -R -i 'quicktrip\|quick-trip' android-driver/app/src/main/java android-driver/app/src/main/AndroidManifest.xml; then exit 1; fi
+      - name: Compilar APK con administración integrada
+        run: gradle -p android-driver :app:assembleDebug --no-daemon
+      - name: Preparar archivo Android
+        run: |
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-admin-qa-v0.2.0.apk
+          cd dist
+          sha256sum via-traslados-admin-qa-v0.2.0.apk > SHA256SUMS.txt
+          unzip -t via-traslados-admin-qa-v0.2.0.apk | tail -2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-traslados-admin-qa-apk
+          path: dist/*
+          retention-days: 30
+      - name: Publicar descarga QA independiente
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: via-admin-qa-v0.2.0
+          target_commitish: via-admin-drivers-qa
+          name: "Vía Traslados · Admin / Conductor QA 0.2.0"
+          body: |
+            Versión QA en rama aislada. Registro de conductores, inicio de sesión,
+            aprobación y bloqueo, asignación de viajes, control de web.
+            API backend y web deben desplegarse después de validar migración D1.
+            Instalable junto a la APK 0.1 anterior, por diferente identificador QA.
+          files: |
+            dist/via-traslados-admin-qa-v0.2.0.apk
+            dist/SHA256SUMS.txt
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
