@@ -1,0 +1,4 @@
+Proyecto: via-traslados-api
+Secreto de conductor: failure
+Comprobación: skipped
+Se conservó la API OTP y el dominio viatraslados.com.
