@@ -21,7 +21,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          printf '%s' 'b8db91e34c9d4d777fb642afb505805137a41b4bd7cc7b9339058a80ab24d924' | npx --yes wrangler@4 secret put OPERATOR_KEY_HASH --name via-traslados-api --keep-vars
+          printf '%s' 'b8db91e34c9d4d777fb642afb505805137a41b4bd7cc7b9339058a80ab24d924' | npx --yes wrangler@4 secret put OPERATOR_KEY_HASH --name via-traslados-api
       - name: Verificar presencia de secreto sin revelar su valor
         id: verify
         if: steps.setup.outcome == 'success'
