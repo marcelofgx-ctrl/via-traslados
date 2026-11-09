@@ -27,7 +27,7 @@ const getBooking=async(req,env,id)=>{const token=req.headers.get('X-Booking-Toke
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
 export default {async fetch(req,env){
  const url=new URL(req.url),origin=req.headers.get('Origin');
- const allowed=[env.PUBLIC_ORIGIN,env.OPERATOR_ORIGIN].filter(Boolean);
+ const allowed=[env.PUBLIC_ORIGIN,env.OPERATOR_ORIGIN].filter(Boolean).map(value=>{try{return new URL(value).origin}catch{return String(value).replace(/\/+$/,'')}});
  const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token','Vary':'Origin'};
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
  if(origin&&!allowed.includes(origin))return reply({error:'Origen no autorizado'},403,cors);
