@@ -55,13 +55,41 @@ jobs:
             'https://via-traslados-web-prod.marcelof-gx.workers.dev/config.js' \
             -o /tmp/via-web-config.js 2>> via-web-check.log
           grep -q "turnstileSiteKey" /tmp/via-web-config.js
-          echo 'Página e integración pública verificadas.'\n          curl -I -sS --max-time 15 https://viatraslados.com/ >> via-web-check.log 2>&1 || true
+          echo 'Página e integración pública verificadas.'
+      - name: Verificar el dominio viatraslados.com
+        id: domain
+        if: steps.publish.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -v -fsSL --retry 4 --retry-delay 3 --connect-timeout 10 --max-time 20 \
+            'https://viatraslados.com/' -o /tmp/via-domain.html 2> via-domain-check.log
+          grep -q "Vía Traslados" /tmp/via-domain.html
+          echo "El dominio principal responde con la portada de Vía Traslados."
+      - name: Verificar backend y CORS del dominio
+        id: backend
+        if: steps.publish.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -i -sS --connect-timeout 10 --max-time 20 \
+            -H 'Origin: https://viatraslados.com' \
+            'https://via-traslados-api.marcelof-gx.workers.dev/api/health' \
+            -o via-api-health.log
+          cat via-api-health.log | head -30
+          grep -q 'HTTP/2 200' via-api-health.log || grep -q 'HTTP/1.1 200' via-api-health.log
+          grep -q '"otpAvailable":true' via-api-health.log
+          echo "Backend accesible desde el dominio."
       - name: Guardar diagnóstico legible en el repositorio
         if: always()
         shell: bash
         env:
           OUTCOME: ${{ steps.publish.outcome }}
           VERIFY: ${{ steps.verify.outcome }}
+          DOMAIN: ${{ steps.domain.outcome }}
+          BACKEND: ${{ steps.backend.outcome }}
         run: |
           set +e
           mkdir -p .ci
@@ -69,17 +97,25 @@ jobs:
             echo "Proyecto: via-traslados-web-prod"
             echo "Publicacion: $OUTCOME"
             echo "Verificacion web: $VERIFY"
+            echo "Verificacion dominio: $DOMAIN"
+            echo "Verificacion backend/CORS: $BACKEND"
             echo "URL: https://via-traslados-web-prod.marcelof-gx.workers.dev/"
-            echo "Dominio viatraslados.com: se solicita la vinculación; revisar respuesta de Wrangler"
+            echo "Dominio viatraslados.com: vinculación solicitada con Workers Custom Domain"
             echo "Commit: $GITHUB_SHA"
             echo "Ultimas 45 lineas del despliegue:"
             if test -f via-web-deploy.log; then tail -45 via-web-deploy.log; else echo "No se genero log de Wrangler"; fi
-            echo "Diagnóstico HTTP/DNS del Worker y dominio:"\n            if test -f via-web-check.log; then tail -60 via-web-check.log; else echo "La verificación no se ejecutó."; fi\n          } > .ci/worker-web-status.txt
+            echo "Diagnóstico HTTP/DNS del Worker y dominio:"
+            if test -f via-web-check.log; then tail -60 via-web-check.log; else echo "La verificación del Worker no se ejecutó."; fi
+            echo "Últimas líneas de verificación del dominio:"
+            if test -f via-domain-check.log; then tail -35 via-domain-check.log; else echo "Dominio no verificado."; fi
+            echo "Respuesta del backend con Origin del dominio:"
+            if test -f via-api-health.log; then head -30 via-api-health.log; else echo "Backend no verificado."; fi
+          } > .ci/worker-web-status.txt
           git config user.name "via-traslados-ci"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .ci/worker-web-status.txt
           git commit -m "ci(via-web): registrar resultado de publicación" || true
           git push origin HEAD:worker-web-release || true
       - name: Marcar fallo si Cloudflare no aceptó o no se pudo verificar
-        if: steps.publish.outcome != 'success' || steps.verify.outcome != 'success'
+        if: steps.publish.outcome != 'success' || steps.verify.outcome != 'success' || steps.domain.outcome != 'success' || steps.backend.outcome != 'success'
         run: exit 1
