@@ -51,6 +51,8 @@ public final class MainActivity extends Activity {
     private String staffName = "";
     private JSONArray approvedDrivers = new JSONArray();
     private boolean siteEnabled = true;
+    private boolean adminLoaded = false;
+    private JSONArray managedDrivers = new JSONArray();
     private JSONArray bookings = new JSONArray();
     private String lastPayload = "";
     private String tab = "solicitudes";
@@ -488,6 +490,11 @@ public final class MainActivity extends Activity {
         addLine(body,item.optString("name","Sin nombre"),15,INK,true,3);
         addLine(body,item.optString("phone",""),14,MUTED,false,3);
         addLine(body,item.optString("email",""),13,MUTED,false,14);
+        if ("admin".equals(staffRole) && ("requested".equals(item.optString("status")) || "quoted".equals(item.optString("status")))) {
+            Button assign=button("Asignar conductor",true,v->driverAssignmentDialog(item));
+            body.addView(assign,new LinearLayout.LayoutParams(-1,dp(50)));
+            spacer(body,8);
+        }
         Button map=button("Abrir ruta en Google Maps", false, v -> openMaps(item));
         body.addView(map,new LinearLayout.LayoutParams(-1,dp(50)));
         spacer(body,8);
@@ -596,13 +603,307 @@ public final class MainActivity extends Activity {
         });
     }
 
+
+    private EditText formInput(LinearLayout parent, String hint, int type) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(hint);
+        input.setInputType(type);
+        input.setTextSize(15);
+        input.setPadding(dp(13), dp(8), dp(13), dp(8));
+        input.setBackground(bg(LIGHT, 12, Color.rgb(212, 230, 226)));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(53));
+        p.bottomMargin = dp(11);
+        parent.addView(input, p);
+        return input;
+    }
+
+    private LinearLayout formContainer() {
+        LinearLayout layout = column();
+        layout.setPadding(dp(20), dp(12), dp(20), dp(7));
+        return layout;
+    }
+
+    private void accountLogin() {
+        LinearLayout form = formContainer();
+        EditText email = formInput(form, "Correo electrónico", InputType.TYPE_CLASS_TEXT
+            | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password = formInput(form, "Contraseña", InputType.TYPE_CLASS_TEXT
+            | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+            .setTitle("Ingreso de conductores y administradores")
+            .setView(form)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Ingresar", (dialog, which) -> {
+                JSONObject p = new JSONObject();
+                try {
+                    p.put("email", email.getText().toString().trim());
+                    p.put("password", password.getText().toString());
+                } catch (Exception ignored) {}
+                password.setText("");
+                signInPending();
+                api("POST", "/api/staff/login", p, (status, result, error) -> {
+                    if (status == 200) {
+                        try {
+                            JSONObject data = new JSONObject(result);
+                            JSONObject user = data.getJSONObject("user");
+                            staffToken = data.getString("token");
+                            operatorKey = null;
+                            staffRole = user.getString("role");
+                            staffName = user.optString("name", "");
+                            tab = "solicitudes";
+                            adminLoaded = false;
+                            fetchBookings(true);
+                        } catch (Exception e) {
+                            loginScreen();
+                            message("Respuesta de acceso incorrecta.");
+                        }
+                    } else {
+                        loginScreen();
+                        new AlertDialog.Builder(this)
+                            .setTitle("No se pudo ingresar")
+                            .setMessage(error.isEmpty() ? "Revisá tus datos de acceso." : error)
+                            .setPositiveButton("Entendido", null).show();
+                    }
+                });
+            }).show();
+    }
+
+    private void driverRegister() {
+        LinearLayout form = formContainer();
+        EditText name = formInput(form, "Nombre y apellido", InputType.TYPE_CLASS_TEXT
+            | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        EditText email = formInput(form, "Correo electrónico", InputType.TYPE_CLASS_TEXT
+            | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password = formInput(form, "Contraseña propia, mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this).setTitle("Solicitar cuenta de conductor")
+            .setMessage("El administrador deberá aprobar la solicitud antes de que puedas operar.")
+            .setView(form)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Registrarme", (dialog, which) -> {
+                JSONObject p = new JSONObject();
+                try {
+                    p.put("name", name.getText().toString().trim());
+                    p.put("email", email.getText().toString().trim());
+                    p.put("password", password.getText().toString());
+                } catch (Exception ignored) {}
+                password.setText("");
+                api("POST", "/api/staff/register", p, (status, result, error) -> {
+                    if (status == 201) new AlertDialog.Builder(this)
+                        .setTitle("Registro enviado")
+                        .setMessage("Tu cuenta está pendiente de aprobación. No podrás iniciar sesión hasta que el administrador te habilite.")
+                        .setPositiveButton("Entendido", null).show();
+                    else new AlertDialog.Builder(this)
+                        .setTitle("No se pudo registrar")
+                        .setMessage(error.isEmpty() ? "Revisá los datos e intentá nuevamente." : error)
+                        .setPositiveButton("Entendido", null).show();
+                });
+            }).show();
+    }
+
+    private void bootstrapAdmin() {
+        if (operatorKey == null) {
+            message("Para el primer administrador se requiere la clave maestra.");
+            return;
+        }
+        LinearLayout form = formContainer();
+        EditText name = formInput(form, "Nombre y apellido del administrador",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        EditText email = formInput(form, "Correo del administrador",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password = formInput(form, "Contraseña nueva, mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this).setTitle("Crear administrador principal")
+            .setMessage("Solo puede crearse una vez mediante la clave maestra. El rol administrativo no puede asignarse desde un registro público.")
+            .setView(form)
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Crear administrador",(d,w)->{
+                JSONObject p = new JSONObject();
+                try {
+                    p.put("name",name.getText().toString().trim());
+                    p.put("email",email.getText().toString().trim());
+                    p.put("password",password.getText().toString());
+                }catch(Exception ignored){}
+                password.setText("");
+                api("POST","/api/admin/bootstrap",p,(status,result,error)->{
+                    new AlertDialog.Builder(this)
+                        .setTitle(status==201?"Administrador creado":"No se pudo crear")
+                        .setMessage(status==201?
+                            "Cuenta creada. Podés entrar con tu correo y contraseña desde la pantalla inicial.":error)
+                        .setPositiveButton("Entendido",null).show();
+                });
+            }).show();
+    }
+
+    private void loadAdmin() {
+        api("GET", "/api/admin/drivers", null, (status, result, error) -> {
+            if (status != 200) { message(error.isEmpty()?"No se pudieron consultar conductores":error); return; }
+            try { managedDrivers = new JSONObject(result).getJSONArray("drivers"); }
+            catch (Exception e) { message("Lista de conductores inválida"); return; }
+            api("GET", "/api/admin/settings", null, (code, data, err) -> {
+                if (code != 200) { message(err.isEmpty()?"No se pudo consultar configuración":err); return; }
+                try {
+                    siteEnabled = new JSONObject(data).getBoolean("publicEnabled");
+                    adminLoaded = true;
+                    if ("administrar".equals(tab)) dashboard();
+                } catch (Exception e) { message("Configuración inválida"); }
+            });
+        });
+    }
+
+    private void manage(LinearLayout content) {
+        if (!"admin".equals(staffRole)) { addLine(content,"Acceso restringido",18,ORANGE,true,0); return; }
+        addLine(content, "Administración", 27, INK, true, 4);
+        addLine(content, "Control general de Vía Traslados", 14, MUTED, false, 19);
+        if (!adminLoaded) {
+            addLine(content, "Consultando la base de datos…", 15, MUTED, false, 12);
+            loadAdmin();
+            return;
+        }
+        LinearLayout service = card();
+        addLine(service, "Servicio público", 19, INK, true, 10);
+        addLine(service, siteEnabled ? "WEB HABILITADA" : "WEB SUSPENDIDA",
+            18, siteEnabled ? TEAL : ORANGE, true, 9);
+        addLine(service, siteEnabled ?
+            "Los pasajeros pueden ingresar y solicitar reservas." :
+            "Los pasajeros no pueden crear reservas. La administración continúa disponible.",
+            13, MUTED, false, 16);
+        service.addView(button(siteEnabled ? "Suspender web de pasajeros" : "Reactivar web de pasajeros",
+            !siteEnabled, v -> confirmServiceSwitch()),
+            new LinearLayout.LayoutParams(-1, dp(53)));
+        appendCard(content, service, 16);
+
+        LinearLayout h = row();
+        TextView t = text("Conductores ("+managedDrivers.length()+")",20,INK,true);
+        h.addView(t,new LinearLayout.LayoutParams(0,-2,1));
+        Button refresh=button("↻",false,v->loadAdmin());
+        h.addView(refresh,new LinearLayout.LayoutParams(dp(52),dp(45)));
+        content.addView(h);
+        spacer(content,12);
+        if (managedDrivers.length()==0) {
+            LinearLayout empty=card();
+            addLine(empty,"Todavía no hay conductores registrados.",14,MUTED,false,0);
+            appendCard(content,empty,14);
+        }
+        for (int i=0;i<managedDrivers.length();i++) {
+            JSONObject driver=managedDrivers.optJSONObject(i);
+            if (driver==null) continue;
+            String id=driver.optString("id");
+            String status=driver.optString("status");
+            LinearLayout c=card();
+            addLine(c,driver.optString("name","Sin nombre"),18,INK,true,5);
+            addLine(c,driver.optString("email",""),13,MUTED,false,8);
+            String caption="pending".equals(status)?"PENDIENTE":
+                "approved".equals(status)?"APROBADO":"BLOQUEADO";
+            addLine(c,caption,13,"approved".equals(status)?TEAL:ORANGE,true,14);
+            String target="approved".equals(status)?"blocked":"approved";
+            String action="approved".equals(status)?"Bloquear conductor":"Aprobar / reactivar conductor";
+            c.addView(button(action,!"approved".equals(status),
+                v -> confirmDriverStatus(id,driver.optString("name"),target)),
+                new LinearLayout.LayoutParams(-1,dp(50)));
+            appendCard(content,c,12);
+        }
+        addLine(content,"Las cuentas bloqueadas quedan sin acceso de inmediato, incluso si habían iniciado sesión.",
+            12,MUTED,false,12);
+    }
+
+    private void confirmServiceSwitch() {
+        boolean target=!siteEnabled;
+        if (!target) {
+            LinearLayout form=formContainer();
+            EditText verification=formInput(form,"Escribí SUSPENDER para confirmar",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+            new AlertDialog.Builder(this)
+                .setTitle("Suspender la web pública")
+                .setMessage("Este cambio impedirá solicitudes nuevas de pasajeros. Los conductores y el administrador conservarán el acceso.")
+                .setView(form)
+                .setNegativeButton("Volver",null)
+                .setPositiveButton("Suspender",(d,w)->{
+                    if (!"SUSPENDER".equals(verification.getText().toString().trim().toUpperCase(java.util.Locale.ROOT))) {
+                        message("No se cambió nada: faltó la confirmación SUSPENDER.");
+                        return;
+                    }
+                    changeSite(false);
+                }).show();
+        } else new AlertDialog.Builder(this).setTitle("Reactivar Vía Traslados")
+            .setMessage("¿Volvés a habilitar las reservas públicas?")
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Reactivar",(d,w)->changeSite(true)).show();
+    }
+
+    private void changeSite(boolean enabled) {
+        try {
+            JSONObject patch=new JSONObject().put("publicEnabled",enabled);
+            api("PATCH","/api/admin/settings",patch,(status,result,error)->{
+                if(status==200) {
+                    siteEnabled=enabled;
+                    message(enabled?"Web habilitada":"Web suspendida");
+                    loadAdmin();
+                }else message(error.isEmpty()?"No se pudo cambiar el estado":error);
+            });
+        }catch(Exception e){message("No se pudo preparar la operación");}
+    }
+
+    private void confirmDriverStatus(String id,String name,String target) {
+        boolean block="blocked".equals(target);
+        new AlertDialog.Builder(this)
+            .setTitle(block?"Bloquear conductor":"Habilitar conductor")
+            .setMessage(block?"Se revocará inmediatamente el acceso de "+name+".":
+                "¿Aprobás o reactivás a "+name+" para operar?")
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Confirmar",(d,w)->{
+                try {
+                    JSONObject patch=new JSONObject().put("status",target);
+                    api("PATCH","/api/admin/drivers/"+Uri.encode(id),patch,(status,result,error)->{
+                        if(status==200){message("Estado actualizado");loadAdmin();}
+                        else message(error.isEmpty()?"No se pudo modificar el conductor":error);
+                    });
+                }catch(Exception e){message("No se pudo preparar la operación");}
+            }).show();
+    }
+
+    private void driverAssignmentDialog(JSONObject booking) {
+        if (!"admin".equals(staffRole)) return;
+        api("GET","/api/admin/drivers",null,(status,response,error)->{
+            if(status!=200){message(error);return;}
+            try {
+                JSONArray arr=new JSONObject(response).getJSONArray("drivers");
+                java.util.ArrayList<String> names=new java.util.ArrayList<>();
+                java.util.ArrayList<String> ids=new java.util.ArrayList<>();
+                names.add("Sin conductor asignado");
+                ids.add("");
+                for(int i=0;i<arr.length();i++){
+                    JSONObject d=arr.getJSONObject(i);
+                    if("approved".equals(d.optString("status"))){
+                        names.add(d.optString("name")+" · "+d.optString("email"));
+                        ids.add(d.getString("id"));
+                    }
+                }
+                new AlertDialog.Builder(this).setTitle("Asignar solicitud "+booking.optString("id"))
+                    .setItems(names.toArray(new String[0]),(d,which)->{
+                        try {
+                            JSONObject payload=new JSONObject();
+                            if(which==0) payload.put("driverId",JSONObject.NULL);
+                            else payload.put("driverId",ids.get(which));
+                            api("POST","/api/admin/requests/"+Uri.encode(booking.optString("id"))+"/assign",
+                                payload,(code,body,err)->{
+                                    if(code==200){message("Asignación guardada");fetchBookings(true);}
+                                    else message(err.isEmpty()?"No se pudo asignar":err);
+                                });
+                        }catch(Exception e){message("Asignación inválida");}
+                    }).setNegativeButton("Cancelar",null).show();
+            }catch(Exception e){message("No se pudo leer la lista de conductores");}
+        });
+    }
+
     private void settings(LinearLayout body) {
         addLine(body, "Configuración", 27, INK, true, 5);
         addLine(body, "Vía Traslados · Conductor", 14, MUTED, false, 20);
         LinearLayout c=card();
         addLine(c,"Cuenta del conductor",19,INK,true,9);
         addLine(c,"Sesión activa en este dispositivo",14,TEAL,true,14);
-        addLine(c,"La clave permanece únicamente en memoria mientras la aplicación está abierta.",
+        addLine(c,"Las credenciales permanecen únicamente en memoria mientras la aplicación está abierta.",
             14,MUTED,false,14);
         c.addView(button("Cerrar sesión",false,v->{
             if (staffToken != null) api("POST", "/api/staff/logout", new JSONObject(), (status,response,error)->{});
@@ -613,6 +914,13 @@ public final class MainActivity extends Activity {
             loginScreen();
         }),new LinearLayout.LayoutParams(-1,dp(50)));
         appendCard(body,c,14);
+        if ("admin".equals(staffRole) && operatorKey!=null) {
+            LinearLayout bootstrap=card();
+            addLine(bootstrap,"Administrador con usuario personal",18,INK,true,7);
+            addLine(bootstrap,"Creá tu cuenta administrativa una sola vez, usando la clave maestra actual.",13,MUTED,false,12);
+            bootstrap.addView(button("Crear mi usuario administrador",true,v->bootstrapAdmin()),new LinearLayout.LayoutParams(-1,dp(51)));
+            appendCard(body,bootstrap,13);
+        }
         LinearLayout info=card();
         addLine(info,"Información",19,INK,true,10);
         addLine(info,"Versión 0.1.0 · Pruebas QA",14,INK,false,5);
