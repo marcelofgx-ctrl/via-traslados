@@ -31,9 +31,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
+          sleep 3
           npx --yes wrangler@4 secret list --name via-traslados-api --format json > /tmp/via-secret-names.json
-          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/via-secret-names.json','utf8'));if(!x.some(a=>a.name==='OPERATOR_KEY_HASH'))process.exit(1);console.log('Clave del operador registrada correctamente')"
+          node -e "const x=JSON.parse(require('fs').readFileSync('/tmp/via-secret-names.json','utf8'));console.log('Secretos disponibles (solo nombres):',x.map(a=>a.name).join(','));if(!x.some(a=>a.name==='OPERATOR_KEY_HASH'))process.exit(1);console.log('Clave del operador registrada correctamente')"
           curl -fsS --max-time 20 'https://via-traslados-api.marcelof-gx.workers.dev/api/health' > /tmp/via-health.json
+          cat /tmp/via-health.json
           grep -q '"otpAvailable":true' /tmp/via-health.json
       - name: Guardar estado, sin escribir la contraseña ni su hash
         if: always()
