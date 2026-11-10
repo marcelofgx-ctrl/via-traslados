@@ -8,7 +8,8 @@ const HEX=a=>Array.from(new Uint8Array(a)).map(v=>v.toString(16).padStart(2,'0')
 const sha=async x=>HEX(await crypto.subtle.digest('SHA-256',TE.encode(x)));
 const rand=(n=32)=>HEX(crypto.getRandomValues(new Uint8Array(n)));
 const now=()=>Math.floor(Date.now()/1000);
-const ITERATIONS=150000;
+// Cloudflare Workers limita WebCrypto PBKDF2 a 100.000 iteraciones por operación.
+const ITERATIONS=100000;
 const EQUAL=(x,y)=>{if(typeof x!=='string'||typeof y!=='string'||x.length!==y.length)return false;let diff=0;for(let i=0;i<x.length;i++)diff|=x.charCodeAt(i)^y.charCodeAt(i);return diff===0};
 const allowedStatus=new Set(['approved','blocked']);
 function bodyLimit(req,max=3500) {
