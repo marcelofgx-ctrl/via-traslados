@@ -667,6 +667,7 @@ public final class MainActivity extends Activity {
         authFlow = false;
         routeLabels.clear();
         routeSpinners.clear();
+        routeCredits.clear();
         routeCards.clear();
         routeCardBookings.clear();
         root.removeAllViews();
@@ -804,6 +805,7 @@ public final class MainActivity extends Activity {
     private final java.util.Map<String,View> routeCards=new java.util.HashMap<>();
     private final java.util.Map<String,JSONObject> routeCardBookings=new java.util.HashMap<>();
     private final java.util.Map<String,android.widget.ProgressBar> routeSpinners=new java.util.HashMap<>();
+    private final java.util.Map<String,TextView> routeCredits=new java.util.HashMap<>();
     private boolean routeProviderMissing=false;
 
     private String prettyAddress(String raw) {
@@ -850,6 +852,8 @@ public final class MainActivity extends Activity {
         JSONObject route=routeResults.get(id);
         boolean pending=routeStarted.contains(id) && route==null && !routeFailures.containsKey(id);
         if(spinner!=null)spinner.setVisibility(pending?View.VISIBLE:View.GONE);
+        TextView credits=routeCredits.get(id);
+        if(credits!=null)credits.setVisibility(route!=null?View.VISIBLE:View.GONE);
         if(route!=null){
             label.setText(routeMetrics(route));
             label.setTextColor(TEAL_DARK);
@@ -978,14 +982,31 @@ public final class MainActivity extends Activity {
         route.addView(metric);
         facts.addView(route);
         tile.addView(facts);
+        // Geoapify Free y OpenStreetMap requieren atribución visible y enlaces.
+        TextView credit=text("",10,MUTED,false);
+        String attributionText="Powered by Geoapify · © OpenStreetMap contributors";
+        android.text.SpannableString linked=new android.text.SpannableString(attributionText);
+        int geoStart=attributionText.indexOf("Geoapify");
+        int osmStart=attributionText.indexOf("© OpenStreetMap");
+        linked.setSpan(new android.text.style.URLSpan("https://www.geoapify.com/"),
+            geoStart,geoStart+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        linked.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
+            osmStart,attributionText.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        credit.setText(linked);
+        credit.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        LinearLayout.LayoutParams cr=new LinearLayout.LayoutParams(-1,-2);
+        cr.topMargin=dp(5);
+        tile.addView(credit,cr);
         if(!id.isEmpty()){
             routeLabels.put(id,metric);
             routeSpinners.put(id,spinner);
+            routeCredits.put(id,credit);
             routeCards.put(id,tile);
             routeCardBookings.put(id,item);
             showRouteState(id);
         }else{
             spinner.setVisibility(View.GONE);
+            credit.setVisibility(View.GONE);
             metric.setText("Ruta pendiente");
         }
         spacer(tile,12);
@@ -1043,7 +1064,17 @@ public final class MainActivity extends Activity {
         JSONObject route=routeResults.get(item.optString("id"));
         addLine(body,"DISTANCIA POR CARRETERA",11,MUTED,true,4);
         addLine(body,route==null?"Pendiente de calcular":routeMetrics(route),
-            15,route==null?MUTED:TEAL_DARK,true,13);
+            15,route==null?MUTED:TEAL_DARK,true,route==null?13:5);
+        if(route!=null) {
+            TextView powered=text("Powered by Geoapify · © OpenStreetMap contributors",11,MUTED,false);
+            powered.setOnClickListener(v->{
+                try{startActivity(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://www.geoapify.com/")));}
+                catch(Exception ignored){}
+            });
+            body.addView(powered);
+            spacer(body,13);
+        }
         addLine(body, "PASAJEROS Y EQUIPAJE", 11, MUTED, true, 4);
         addLine(body, item.optInt("passengers",1) + " pasajero(s), " +
             item.optInt("bags",0) + " valija(s)", 15, INK, false, 13);
@@ -1974,7 +2005,7 @@ public final class MainActivity extends Activity {
         LinearLayout info=card();
         addLine(info,"INFORMACIÓN",11,MUTED,true,9);
         addLine(info,"Vía Traslados",17,INK,true,7);
-        addLine(info,"Versión 0.4.0 · Diseño renovado",13,MUTED,false,5);
+        addLine(info,"Versión 0.9.0 · Rutas Geoapify",13,MUTED,false,5);
         addLine(info,"Actualización de viajes: cada 30 segundos",13,MUTED,false,12);
         info.addView(button("Comprobar conexión",false,v->fetchBookings(true)),
             new LinearLayout.LayoutParams(-1,dp(46)));
