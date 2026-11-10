@@ -491,6 +491,12 @@ public final class MainActivity extends Activity {
         });
         spacer(page, 16);
 
+        TextView forgot = actionText("¿Olvidaste tu contraseña?", TEAL_DARK,
+            v -> passwordResetStart(phone.getText().toString()));
+        forgot.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        page.addView(forgot);
+        spacer(page, 7);
+
         Button enter = button("Ingresar   →", true, v ->
             loginPhone(phone.getText().toString(), password.getText().toString()));
         enter.setTextSize(16);
@@ -1199,6 +1205,108 @@ public final class MainActivity extends Activity {
             else message("Ingresá un correo electrónico válido.");
         });
         page.addView(go, new LinearLayout.LayoutParams(-1, dp(52)));
+    }
+
+
+    private void passwordResetStart(String previousPhone) {
+        LinearLayout page = authPage("RECUPERAR ACCESO", "Tu contraseña",
+            "Ingresá el celular con el que te registraste. Si tu cuenta tiene el correo confirmado, enviaremos allí un código de recuperación.");
+        EditText phone = authField(page,"CELULAR","099 123 456",
+            InputType.TYPE_CLASS_PHONE,false);
+        phone.setText(previousPhone == null || previousPhone.trim().isEmpty() ?
+            getSharedPreferences("via_preferences", MODE_PRIVATE).getString("last_phone", "") :
+            previousPhone.trim());
+        Button send = button("Enviar código  →",true,null);
+        page.addView(send,new LinearLayout.LayoutParams(-1,dp(52)));
+        LinearLayout wait = authWaiting(page);
+        TextView error = authError(page);
+        spacer(page,16);
+        addLine(page, "Por seguridad, no indicamos si un celular está registrado. El código solamente llega al correo ya verificado.",
+            12,MUTED,false,0);
+        send.setOnClickListener(v->{
+            String number=phone.getText().toString().trim();
+            if(number.replaceAll("[^0-9]","").length()<9){
+                authErrorText(error,"Ingresá un celular válido.");
+                return;
+            }
+            authErrorText(error,"");
+            authBusy(wait,send,true,"Preparando tu recuperación de forma segura…");
+            JSONObject p=new JSONObject();
+            try{p.put("phone",number);}catch(Exception ignored){}
+            api("POST","/api/staff/password-reset/request",p,(status,body,reason)->{
+                authBusy(wait,send,false,"");
+                if(status==200){
+                    getSharedPreferences("via_preferences", MODE_PRIVATE)
+                        .edit().putString("last_phone",number).apply();
+                    passwordResetConfirm(number);
+                }else authErrorText(error,reason.isEmpty()?
+                    "No pudimos solicitar el código. Intentá nuevamente." : reason);
+            });
+        });
+    }
+
+    private void passwordResetConfirm(String phone) {
+        LinearLayout page=authPage("RECUPERAR ACCESO  /  02", "Creá una contraseña",
+            "Si tu correo estaba verificado, recibirás un código de seis cifras. Ingresalo junto con tu nueva contraseña.");
+        EditText code=authField(page,"CÓDIGO DE SEIS CIFRAS","·  ·  ·  ·  ·  ·",
+            InputType.TYPE_CLASS_NUMBER,false);
+        code.setFilters(new android.text.InputFilter[]{
+            new android.text.InputFilter.LengthFilter(6)});
+        EditText pass=authField(page,"NUEVA CONTRASEÑA","Mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD,true);
+        EditText repeat=authField(page,"REPETIR CONTRASEÑA","Repetí la contraseña",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD,true);
+        Button update=button("Guardar contraseña  →",true,null);
+        page.addView(update,new LinearLayout.LayoutParams(-1,dp(52)));
+        LinearLayout wait=authWaiting(page);
+        TextView error=authError(page);
+        spacer(page,13);
+        addLine(page,"El código vence en 10 minutos y solo puede usarse una vez. Revisá spam si no encontrás el correo.",
+            12,MUTED,false,11);
+        TextView resend=actionText("Solicitar otro código",TEAL_DARK,v->
+            passwordResetStart(phone));
+        page.addView(resend);
+        update.setOnClickListener(v->{
+            String digits=code.getText().toString().trim();
+            String password=pass.getText().toString();
+            if(!digits.matches("[0-9]{6}")){
+                authErrorText(error,"Ingresá las seis cifras que recibiste.");
+                return;
+            }
+            if(password.length()<12||password.length()>128){
+                authErrorText(error,"Usá una contraseña de 12 a 128 caracteres.");
+                return;
+            }
+            if(!password.equals(repeat.getText().toString())){
+                authErrorText(error,"Las contraseñas no coinciden.");
+                return;
+            }
+            authErrorText(error,"");
+            authBusy(wait,update,true,"Guardando tu contraseña de forma segura…");
+            JSONObject p=new JSONObject();
+            try{
+                p.put("phone",phone);
+                p.put("code",digits);
+                p.put("newPassword",password);
+            }catch(Exception ignored){}
+            api("POST","/api/staff/password-reset/confirm",p,(status,body,reason)->{
+                authBusy(wait,update,false,"");
+                pass.setText("");repeat.setText("");code.setText("");
+                if(status==200){
+                    BiometricVault.clear(this);
+                    LinearLayout done=authPage("ACCESO RESTABLECIDO","Todo pronto.",
+                        "Tu contraseña fue actualizada. Ya podés ingresar con tu celular y la nueva clave.");
+                    LinearLayout success=card();
+                    addLine(success,"✓  Contraseña cambiada",17,TEAL_DARK,true,8);
+                    addLine(success,"Las sesiones anteriores se cerraron para proteger tu cuenta.",
+                        13,MUTED,false,0);
+                    appendCard(done,success,18);
+                    done.addView(button("Ir a ingresar  →",true,x->loginScreen()),
+                        new LinearLayout.LayoutParams(-1,dp(52)));
+                } else authErrorText(error,reason.isEmpty()?
+                    "El código es inválido o venció. Solicitá uno nuevo." : reason);
+            });
+        });
     }
 
     private void driverRegister() {
