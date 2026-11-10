@@ -12,6 +12,13 @@ function initPassenger(){
  let step=1,verificationEmail='',lastPayload=null,turnstileToken='';
  const showError=msg=>{errorPlace('form-result',msg);$('form-result').scrollIntoView({behavior:'smooth',block:'nearest'})};
  const clearError=()=>{$('form-result').classList.add('hidden')};
+ const demo=S.isDemo();
+ // Nunca simular un envío real de email en una versión de pruebas.
+ if(demo){
+   const note=$('demo-identity-note');if(note)note.classList.remove('hidden');
+   const send=$('send-code');if(send)send.innerHTML='Continuar con código de prueba <span>→</span>';
+   const title=$('verification-heading');if(title)title.textContent='Confirmá tu solicitud de prueba';
+ }
  const changeStep=n=>{
   clearError();step=n;document.body.classList.toggle('in-booking',true);document.body.classList.toggle('in-identity',n>1);document.querySelectorAll('.wizard-step').forEach(el=>el.classList.toggle('hidden',Number(el.dataset.step)!==n));
   $('wizard-progress-label').textContent=`PASO ${n} DE 3`;$('progress-bar').style.width=(n/3*100)+'%';
@@ -48,21 +55,28 @@ function initPassenger(){
    const result=await S.startVerification(p.email,turnstileToken);
    verificationEmail=result.email;lastPayload={...p,email:result.email};
    $('verification-description').textContent=S.isDemo()?'Código de demostración. No se envía ningún correo.':'Enviamos un código al correo '+result.maskedEmail+'.';
-   $('otp-guidance').textContent=S.isDemo()?'DEMO: ingresá 123456. Esto no verifica un correo real.':'El código vence en 10 minutos. No lo compartas con nadie.';
-   changeStep(3);$('otp-code').focus();turnstileToken='';
-  }catch(e){showError(e.message||'No fue posible enviar el código')}finally{button.disabled=false;button.innerHTML='Recibir código de verificación <span>→</span>'}
+   $('otp-guidance').textContent=demo?'Código de prueba 123456. No se envía un correo y no se crea una reserva real.':'El código vence en 10 minutos. No lo compartas con nadie.';
+   if(demo){
+     $('otp-code').value='123456';
+     $('verify-and-book').innerHTML='Registrar solicitud de prueba <span>→</span>';
+   }else $('otp-code').value='';
+   changeStep(3);if(!demo)$('otp-code').focus();turnstileToken='';
+  }catch(e){showError(e.message||'No fue posible enviar el código')}finally{button.disabled=false;button.innerHTML=demo?'Continuar con código de prueba <span>→</span>':'Recibir código de verificación <span>→</span>'}
  }
  $('send-code').addEventListener('click',sendCode);
- $('resend-code').addEventListener('click',async()=>{changeStep(2);$('email').focus();showError('Revisá el correo y solicitá un código nuevo.')});
+ $('resend-code').addEventListener('click',async()=>{
+   if(demo){$('otp-code').value='123456';$('otp-guidance').textContent='Código de prueba: 123456. No se envía un correo.';return;}
+   changeStep(2);$('email').focus();showError('Revisá el correo y solicitá un código nuevo.');
+ });
  form.addEventListener('submit',async e=>{e.preventDefault();if(step!==3)return;
-  const code=$('otp-code').value.trim();if(!/^\d{4,10}$/.test(code))return showError('Ingresá el código numérico recibido.');
+  const code=$('otp-code').value.trim();if(!/^\d{4,10}$/.test(code))return showError(demo?'Usá el código de prueba 123456.':'Ingresá el código numérico recibido.');
   const button=$('verify-and-book');button.disabled=true;button.textContent='Comprobando…';
   try{
    await S.verifyCode(verificationEmail,code);
    if(!lastPayload)throw new Error('Volvé a cargar los datos del viaje.');
    const result=await S.create(lastPayload);
    location.href='./reserva.html?id='+encodeURIComponent(result.id);
-  }catch(err){showError(err.message||'No se pudo verificar y registrar la solicitud');button.disabled=false;button.innerHTML='Verificar y enviar solicitud <span>→</span>'}
+  }catch(err){showError(err.message||'No se pudo verificar y registrar la solicitud');button.disabled=false;button.innerHTML=demo?'Registrar solicitud de prueba <span>→</span>':'Verificar y enviar solicitud <span>→</span>'}
  });
 }
 let lastRender='';
