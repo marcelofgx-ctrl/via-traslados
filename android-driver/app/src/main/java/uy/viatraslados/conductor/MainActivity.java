@@ -437,6 +437,7 @@ public final class MainActivity extends Activity {
         routeCards.clear();
         routeCardBookings.clear();
         routeProviderMissing=false;
+        routeLastFailureAt=0;
         canManageRoles = false;
         managedAdmins = new JSONArray();
         root.setBackgroundColor(LIGHT);
@@ -627,10 +628,24 @@ public final class MainActivity extends Activity {
             if (status == 200) {
                 try {
                     JSONArray next = new JSONArray(result);
+                    for(int i=0;i<next.length();i++){
+                        JSONObject item=next.optJSONObject(i);
+                        if(item==null)continue;
+                        String routeId=item.optString("id","");
+                        JSONObject saved=item.optJSONObject("route");
+                        if(!routeId.isEmpty()&&saved!=null&&
+                            saved.optDouble("distanceKm",0)>0&&saved.optInt("durationMinutes",0)>0){
+                            routeResults.put(routeId,saved);
+                            routeFailures.remove(routeId);
+                            routeProviderMissing=false;
+                        }
+                    }
                     bookings = next;
                     if (login || !result.equals(lastPayload)) {
                         lastPayload = result;
                         dashboard();
+                    } else {
+                        requestVisibleRoutes();
                     }
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
@@ -693,6 +708,7 @@ public final class MainActivity extends Activity {
         TextView refresh = actionText("↻", TEAL_DARK, v -> {
             routeProviderMissing=false;
             routeFailures.clear();
+            routeLastFailureAt=0;
             fetchBookings(true);
         });
         refresh.setTextSize(21);
@@ -807,6 +823,7 @@ public final class MainActivity extends Activity {
     private final java.util.Map<String,android.widget.ProgressBar> routeSpinners=new java.util.HashMap<>();
     private final java.util.Map<String,TextView> routeCredits=new java.util.HashMap<>();
     private boolean routeProviderMissing=false;
+    private long routeLastFailureAt=0;
 
     private String prettyAddress(String raw) {
         if(raw==null)return "";
@@ -872,6 +889,12 @@ public final class MainActivity extends Activity {
     private void requestVisibleRoutes() {
         if(!"solicitudes".equals(tab)&&!"viajes".equals(tab)&&!"historial".equals(tab))
             return;
+        if(routeLastFailureAt>0 &&
+            android.os.SystemClock.elapsedRealtime()-routeLastFailureAt>120000L){
+            routeFailures.clear();
+            routeProviderMissing=false;
+            routeLastFailureAt=0;
+        }
         for(java.util.Map.Entry<String,View> entry:routeCards.entrySet()){
             android.graphics.Rect visibleRect=new android.graphics.Rect();
             View card=entry.getValue();
@@ -901,6 +924,7 @@ public final class MainActivity extends Activity {
                     if(route.optDouble("distanceKm",0)>0 && route.optInt("durationMinutes",0)>0){
                         routeResults.put(id,route);
                         routeFailures.remove(id);
+                        routeLastFailureAt=0;
                         showRouteState(id);
                         return;
                     }
@@ -916,6 +940,7 @@ public final class MainActivity extends Activity {
                     }else routeFailures.put(id,"unavailable");
                 }catch(Exception ignored){routeFailures.put(id,"unavailable");}
             }else routeFailures.put(id,"unavailable");
+            routeLastFailureAt=android.os.SystemClock.elapsedRealtime();
             showRouteState(id);
         });
     }
