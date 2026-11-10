@@ -2,25 +2,13 @@ Proyecto: via-traslados-api
 Despliegue: success
 Verificación CORS y OTP: success
 Origen: https://viatraslados.com
-Commit: bce5774a94235093c0a5ad739cebe5c412029112
+Commit: aab45b16df059a67c3d9c7b67b316c75e5f903de
 Registro de Wrangler:
-  +    PUBLIC_ORIGIN: "[4mhttps://viatraslados.com"[0m
-  -    OPERATOR_ORIGIN: "[4mhttps://viatraslados.com/"[0m
-  +    OPERATOR_ORIGIN: "[4mhttps://viatraslados.com"[0m
-     }
-     d1_databases: [
-       {
-  +      database_name: "via-traslados-db"
-       }
-     ]
-   }
-  
-  
-  Uploading the Worker will override the remote configuration with your local one.
 
-
-Total Upload: 17.25 KiB / gzip: 5.42 KiB
-Worker Startup Time: 1 ms
+ ⛅️ wrangler 4.159.0
+────────────────────
+Total Upload: 32.14 KiB / gzip: 8.65 KiB
+Worker Startup Time: 3 ms
 Your Worker has access to the following bindings:
 Binding                                                               Resource                  
 env.DB (via-traslados-db)                                             D1 Database               
@@ -28,28 +16,28 @@ env.PUBLIC_ORIGIN ("https://viatraslados.com")                        Environmen
 env.OPERATOR_ORIGIN ("https://viatraslados.com")                      Environment Variable      
 env.RESEND_FROM ("Vía Traslados <reservas@viatraslados....")          Environment Variable      
 
-Uploaded via-traslados-api (1.85 sec)
-Deployed via-traslados-api triggers (0.49 sec)
+Uploaded via-traslados-api (2.25 sec)
+Deployed via-traslados-api triggers (0.50 sec)
   https://via-traslados-api.marcelof-gx.workers.dev
-Current Version ID: faa1b2a7-9428-4ca0-b133-b9d8a81e7774
+Current Version ID: f2c5c328-ce84-425d-b7bb-f232a33cdbbe
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
 Respuesta de API:
 HTTP/2 200 
-date: Mon, 09 Nov 2026 23:09:12 GMT
+date: Tue, 10 Nov 2026 00:06:50 GMT
 content-type: application/json; charset=utf-8
 content-length: 54
 access-control-allow-origin: https://viatraslados.com
 cache-control: no-store
 vary: Origin
-access-control-allow-headers: Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token
+access-control-allow-headers: Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization
 access-control-allow-methods: GET,POST,PATCH,OPTIONS
 referrer-policy: no-referrer
 x-content-type-options: nosniff
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=8kboFt7noXy%2F06tRXWcRVXv5Xm2DHvFI4Cll39pxeULcDsfra6BrPE8yf6HxYAHkIkcmCeZ%2FIeMz2Lbcqp0c%2Bpb%2BXoK7xqlSRURB4WYPU9aNe4eRGJMnrCG2l2t4Nxl1s2YUt6cK0t9bjXPf1t6SItH6%2Bijuu2brVlaCzQ%3D%3D"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=1wl6nfHnCXGV7o75NPYd6F1ci3WWRoGEUYIYjXzN61zqMLLZw9TjhYHdXYXHW5Y5NumLGoPIeYMBb5ToRN3fWf1A6h%2BQQx7iTM0hIuNuvpOjNmLEgh6LwY8VZkI2H8Frw77Vh8Ip%2FeuySnVnQTTE3Jyu7GVD2PW5ThH3qg%3D%3D"}]}
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 server: cloudflare
-cf-ray: a5807bd92afb66a1-LAX
+cf-ray: a580d043cbffda5c-IAD
 alt-svc: h3=":443"; ma=86400
 
 {"ok":true,"name":"via-traslados","otpAvailable":true}
