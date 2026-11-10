@@ -714,23 +714,15 @@ public final class MainActivity extends Activity {
             addLine(body, "Solicitudes", 25, INK, true, 4);
             addLine(body, "Revisá solicitudes y cotizaciones", 13, MUTED, false, 12);
 
-            LinearLayout stats = row();
-            LinearLayout.LayoutParams first=new LinearLayout.LayoutParams(0,-2,1);
-            stats.addView(statTile(String.valueOf(count("requested")), "Sin cotizar", true),first);
-            LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,-2,1);
-            second.leftMargin=dp(9);
-            stats.addView(statTile(String.valueOf(count("quoted")), "Con oferta", false),second);
-            body.addView(stats);
-            spacer(body,12);
-
+            // Evitamos repetir los contadores: ya aparecen en los filtros.
             LinearLayout filters=row();
             Button newer=button("Nuevas ("+count("requested")+")",
                 "nuevas".equals(subtab),v->{subtab="nuevas";dashboard();});
             Button offers=button("Con ofertas ("+count("quoted")+")",
                 "ofertas".equals(subtab),v->{subtab="ofertas";dashboard();});
             newer.setTextSize(13);offers.setTextSize(13);
-            filters.addView(newer,new LinearLayout.LayoutParams(0,dp(45),1));
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(45),1);
+            filters.addView(newer,new LinearLayout.LayoutParams(0,dp(43),1));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(43),1);
             lp.leftMargin=dp(8);filters.addView(offers,lp);
             body.addView(filters);
             spacer(body,12);
