@@ -1,11 +1,11 @@
 Vía Traslados — resultado de publicación en Cloudflare Pages
 pages_deploy=failure
-commit=be98d07cacb007486f7bfad224fb520cf54775f8
+commit=6aa9c6863a27a37a3d4bf50af313692e1abc8ca4
 project=via-traslados-pasajeros
 origin=https://via-traslados-pasajeros.pages.dev
 Últimas líneas del despliegue:
 
- ⛅️ wrangler 4.159.0
+ ⛅️ wrangler 4.160.0
 ────────────────────
 
 [31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/aeda5eba5536ca3ffad786c099abb71a/pages/projects/via-traslados-pasajeros) failed.[0m
@@ -27,4 +27,4 @@ Getting User settings...
 └─────────────────────────────────┴──────────────────────────────────┘
 🔓 To see token permissions visit https://dash.cloudflare.com/profile/api-tokens
 🎢 Unable to get membership roles. Make sure you have permissions to read the account. Are you missing the `User->Memberships->Read` permission?
-🪵  Logs were written to "/home/runner/.config/.wrangler/logs/wrangler-2026-11-09_21-54-53_571.log"
+🪵  Logs were written to "/home/runner/.config/.wrangler/logs/wrangler-2026-11-10_17-00-28_520.log"
