@@ -121,6 +121,38 @@ const toOutput=(r,cached)=>({
  attribution:'© OpenStreetMap contributors · Powered by Geoapify',
  attributionUrl:'https://www.geoapify.com/'
 });
+// Misma lógica para cualquier consumidor: al crearse la reserva, al recuperarse
+// una reserva antigua o al pedir una ruta explícitamente; no requiere
+// credenciales de operador para las tareas internas del Worker.
+export async function precalculateBookingRoute(env,booking,scope='system'){
+ if(!booking?.id)return{status:422,data:{error:'Reserva inválida'}};
+ const id=booking.id;
+ const cached=await env.DB.prepare('SELECT distance_m,duration_s,provider,updated_at FROM booking_routes WHERE booking_id=?').bind(id).first();
+ if(cached?.provider==='geoapify'&&now()-Number(cached.updated_at)<7*86400)
+  return{status:200,data:toOutput(cached,true)};
+ const key=env.VIA_GEOAPIFY_API_KEY;
+ if(typeof key!=='string'||key.trim().length<10)
+  return{status:503,data:{error:'Motor gratuito de distancias no configurado.',reason:'route_provider_missing'}};
+ // Capacidad del plan Free: el cálculo no se repite en refrescos normales;
+ // este límite protege también las tareas del sistema.
+ if(!await limit(env,'user:'+scope,30,3600))
+  return{status:429,data:{error:'Límite de cálculos temporalmente alcanzado.'}};
+ if(!await limit(env,'free-budget',250,86400))
+  return{status:429,data:{error:'Presupuesto diario de rutas agotado.'}};
+ if(!trim(booking.origin)||!trim(booking.destination))
+  return{status:422,data:{error:'Direcciones insuficientes para calcular la ruta.'}};
+ const [origin,destination]=await Promise.all([
+  locate(trim(booking.origin),key),locate(trim(booking.destination),key)
+ ]);
+ if(!origin||!destination)
+  return{status:422,data:{error:'No se pudo localizar origen o destino con suficiente precisión.'}};
+ const result=await drivingRoute(origin,destination,key);
+ if(result.error)return{status:result.status,data:{error:result.error}};
+ await env.DB.prepare('INSERT INTO booking_routes(booking_id,distance_m,duration_s,provider,updated_at) VALUES (?,?,?,?,unixepoch()) ON CONFLICT(booking_id) DO UPDATE SET distance_m=excluded.distance_m,duration_s=excluded.duration_s,provider=excluded.provider,updated_at=excluded.updated_at')
+  .bind(id,result.distance,result.time,'geoapify').run();
+ return{status:200,data:toOutput({distance_m:result.distance,duration_s:result.time},false)};
+}
+
 export async function routeEstimateRoutes(req,env,path,send){
  const respond=send||json;
  const route=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]{5,64})\/route$/);
@@ -134,28 +166,6 @@ export async function routeEstimateRoutes(req,env,path,send){
  }
  const booking=await env.DB.prepare('SELECT id,origin,destination FROM bookings WHERE id=?').bind(id).first();
  if(!booking)return respond({error:'Solicitud no encontrada'},404);
- // Preservar únicamente cachés Geoapify: no atribuir recorridos Google al nuevo proveedor.
- const cached=await env.DB.prepare('SELECT distance_m,duration_s,provider,updated_at FROM booking_routes WHERE booking_id=?').bind(id).first();
- if(cached?.provider==='geoapify'&&now()-Number(cached.updated_at)<7*86400)
-  return respond(toOutput(cached,true));
- const key=env.VIA_GEOAPIFY_API_KEY;
- if(typeof key!=='string'||key.trim().length<10)
-  return respond({error:'Falta activar la clave gratuita de Geoapify en Cloudflare.',reason:'route_provider_missing'},503);
- if(!await limit(env,'user:'+actor.id,30,3600))
-  return respond({error:'Límite de cálculos por usuario alcanzado temporalmente.'},429);
- // Presupuesto conservador: como máximo 250 rutas/día, ~750 créditos con 2 geocodificaciones.
- if(!await limit(env,'free-budget',250,86400))
-  return respond({error:'Se alcanzó el presupuesto diario del motor gratuito.'},429);
- if(!trim(booking.origin)||!trim(booking.destination))
-  return respond({error:'Direcciones insuficientes para calcular la ruta.'},422);
- const [origin,destination]=await Promise.all([
-  locate(trim(booking.origin),key),locate(trim(booking.destination),key)
- ]);
- if(!origin||!destination)
-  return respond({error:'No pudimos identificar con suficiente precisión origen o destino. Revisá la dirección.'},422);
- const calculated=await drivingRoute(origin,destination,key);
- if(calculated.error)return respond({error:calculated.error},calculated.status);
- await env.DB.prepare('INSERT INTO booking_routes(booking_id,distance_m,duration_s,provider,updated_at) VALUES (?,?,?,?,unixepoch()) ON CONFLICT(booking_id) DO UPDATE SET distance_m=excluded.distance_m,duration_s=excluded.duration_s,provider=excluded.provider,updated_at=excluded.updated_at')
-  .bind(id,calculated.distance,calculated.time,'geoapify').run();
- return respond(toOutput({distance_m:calculated.distance,duration_s:calculated.time},false));
+ const result=await precalculateBookingRoute(env,booking,actor.id);
+ return respond(result.data,result.status);
 }
