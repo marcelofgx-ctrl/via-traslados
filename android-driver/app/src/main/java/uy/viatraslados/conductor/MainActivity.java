@@ -1072,99 +1072,262 @@ public final class MainActivity extends Activity {
         return "requested".equals(state) ? ORANGE : TEAL;
     }
 
+    // Acciones del detalle: menos botones tipo formulario y jerarquía clara.
+    private TextView detailButton(String label, boolean primary, View.OnClickListener click) {
+        TextView v=text(label,13,primary?Color.WHITE:TEAL_DARK,true);
+        v.setGravity(Gravity.CENTER);
+        v.setBackground(ripple(primary?TEAL:Color.WHITE,primary?0:BORDER,12));
+        v.setPadding(dp(12),dp(9),dp(12),dp(9));
+        v.setMinHeight(dp(45));
+        v.setClickable(true);
+        v.setFocusable(true);
+        v.setOnClickListener(click);
+        return v;
+    }
+
+    private void detailRouteStop(LinearLayout parent,String marker,String label,String address){
+        LinearLayout stop=row();
+        stop.setGravity(Gravity.TOP);
+        TextView point=text(marker,14,TEAL,true);
+        point.setGravity(Gravity.CENTER);
+        point.setBackground(bg(Color.WHITE,12,0));
+        LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(dp(29),dp(29));
+        pp.topMargin=dp(4);
+        stop.addView(point,pp);
+        LinearLayout content=column();
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);
+        cp.leftMargin=dp(11);
+        stop.addView(content,cp);
+        addLine(content,label,11,MUTED,true,3);
+        TextView line=text(prettyAddress(address),14,INK,true);
+        line.setLineSpacing(dp(2),1f);
+        content.addView(line);
+        parent.addView(stop);
+    }
+
     private void details(JSONObject item) {
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout body = column();
-        body.setPadding(dp(22),dp(10),dp(22),dp(16));
+        // Hoja modal premium. El pasajero arriba; el código al final como referencia.
+        final android.app.Dialog dialog=new android.app.Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout surface=column();
+        surface.setBackground(bg(Color.WHITE,20,0));
+
+        LinearLayout top=column();
+        top.setPadding(dp(20),dp(14),dp(20),dp(13));
+        LinearLayout overline=row();
+        TextView section=text("DETALLE DEL TRASLADO",10,MUTED,true);
+        section.setLetterSpacing(.11f);
+        overline.addView(section,new LinearLayout.LayoutParams(0,-2,1));
+        TextView close=text("×",25,MUTED,false);
+        close.setGravity(Gravity.CENTER);
+        close.setContentDescription("Cerrar detalle del traslado");
+        close.setBackground(ripple(LIGHT,0,15));
+        close.setOnClickListener(v->dialog.dismiss());
+        overline.addView(close,new LinearLayout.LayoutParams(dp(33),dp(33)));
+        top.addView(overline);
+
+        String passenger=item.optString("name","").trim();
+        if(passenger.isEmpty()||"null".equals(passenger))passenger="Pasajero";
+        TextView name=text(passenger,22,INK,true);
+        name.setMaxLines(2);
+        name.setLineSpacing(dp(1),1f);
+        LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,-2);
+        np.topMargin=dp(1);
+        top.addView(name,np);
+
+        LinearLayout metadata=row();
+        LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(-1,-2);
+        mp.topMargin=dp(9);
+        TextView moment=text(compactDate(item.optString("date",""))+
+            "  ·  "+item.optString("time",""),12,MUTED,true);
+        metadata.addView(moment,new LinearLayout.LayoutParams(0,-2,1));
+        String state=item.optString("status");
+        TextView badge=text(statusName(state),11,stateColor(state),true);
+        badge.setPadding(dp(10),dp(5),dp(10),dp(5));
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(bg(SOFT,12,0));
+        metadata.addView(badge);
+        top.addView(metadata,mp);
+        surface.addView(top);
+
+        View separator=new View(this);
+        separator.setBackgroundColor(BORDER);
+        surface.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
+
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout body=column();
+        body.setPadding(dp(16),dp(15),dp(16),dp(14));
         scroll.addView(body);
-        addLine(body, item.optString("id"), 15, TEAL, true, 12);
-        addLine(body, statusName(item.optString("status")), 17, INK, true, 13);
-        addLine(body, "FECHA Y HORA", 11, MUTED, true, 4);
-        addLine(body, item.optString("date") + "  ·  " + item.optString("time"),
-            17, INK, true, 16);
-        addLine(body, "ORIGEN", 11, MUTED, true, 4);
-        addLine(body, item.optString("origin"), 16, INK, true, 13);
-        addLine(body, "DESTINO", 11, MUTED, true, 4);
-        addLine(body, item.optString("destination"), 16, INK, true, 13);
-        JSONObject route=routeResults.get(item.optString("id"));
-        addLine(body,"DISTANCIA POR CARRETERA",11,MUTED,true,4);
-        addLine(body,route==null?"Pendiente de calcular":routeMetrics(route),
-            15,route==null?MUTED:TEAL_DARK,true,route==null?13:5);
-        if(route!=null) {
-            TextView powered=text("Powered by Geoapify · © OpenStreetMap contributors",11,MUTED,false);
-            powered.setOnClickListener(v->{
-                try{startActivity(new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://www.geoapify.com/")));}
+        surface.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+
+        // La ruta es lo más relevante al preparar una cotización.
+        LinearLayout routePanel=column();
+        routePanel.setPadding(dp(14),dp(13),dp(14),dp(14));
+        routePanel.setBackground(bg(SOFT,14,0));
+        detailRouteStop(routePanel,"●","Origen",item.optString("origin"));
+        spacer(routePanel,14);
+        detailRouteStop(routePanel,"◆","Destino",item.optString("destination"));
+        View rule=new View(this);
+        rule.setBackgroundColor(BORDER);
+        LinearLayout.LayoutParams rulep=new LinearLayout.LayoutParams(-1,dp(1));
+        rulep.topMargin=dp(15);
+        rulep.bottomMargin=dp(11);
+        routePanel.addView(rule,rulep);
+
+        JSONObject measured=routeResults.get(item.optString("id"));
+        if(measured==null)measured=item.optJSONObject("route");
+        double km=measured==null?0:measured.optDouble("distanceKm",0);
+        int minutes=measured==null?0:measured.optInt("durationMinutes",0);
+        if(km>0&&minutes>0){
+            LinearLayout summary=row();
+            TextView kms=text(String.format(new java.util.Locale("es","UY"),"%.1f km",km),19,TEAL_DARK,true);
+            summary.addView(kms);
+            TextView middle=text("   ·   ",17,MUTED,false);
+            summary.addView(middle);
+            summary.addView(text(minutes+" min",17,INK,true));
+            routePanel.addView(summary);
+            TextView credit=text("Powered by Geoapify · © OpenStreetMap contributors",10,MUTED,false);
+            credit.setPadding(0,dp(5),0,0);
+            credit.setOnClickListener(v->{
+                try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.geoapify.com/")));}
                 catch(Exception ignored){}
             });
-            body.addView(powered);
-            spacer(body,13);
+            routePanel.addView(credit);
+        } else {
+            routePanel.addView(text("Distancia en proceso de cálculo",12,MUTED,true));
         }
-        addLine(body, "PASAJEROS Y EQUIPAJE", 11, MUTED, true, 4);
-        addLine(body, item.optInt("passengers",1) + " pasajero(s), " +
-            item.optInt("bags",0) + " valija(s)", 15, INK, false, 13);
-        String notes = item.optString("notes","");
-        if (!notes.isEmpty() && !"null".equals(notes)) {
-            addLine(body,"INDICACIONES",11,MUTED,true,4);
-            addLine(body,notes,15,INK,false,13);
+        body.addView(routePanel);
+        spacer(body,15);
+
+        int pax=item.optInt("passengers",1),bags=item.optInt("bags",0);
+        LinearLayout details=row();
+        details.setPadding(dp(4),0,dp(4),0);
+        TextView travel=text(pax+(pax==1?" pasajero":" pasajeros")+
+            "  ·  "+bags+(bags==1?" valija":" valijas"),13,MUTED,false);
+        details.addView(travel);
+        body.addView(details);
+
+        String notes=item.optString("notes","");
+        if(!notes.isEmpty()&&!"null".equalsIgnoreCase(notes)){
+            spacer(body,16);
+            addLine(body,"Indicaciones",12,MUTED,true,4);
+            addLine(body,notes,13,INK,false,0);
         }
-        int price = item.optInt("price",0);
-        if (price>0) addLine(body,"Precio ofrecido: $" + price + " UYU",
-                           18,TEAL,true,14);
-        addLine(body,"PASAJERO",11,MUTED,true,4);
-        addLine(body,item.optString("name","Sin nombre"),15,INK,true,3);
-        addLine(body,item.optString("phone",""),14,MUTED,false,3);
-        addLine(body,item.optString("email",""),13,MUTED,false,14);
-        if ("admin".equals(staffRole) && ("requested".equals(item.optString("status")) || "quoted".equals(item.optString("status")))) {
-            Button assign=button("Asignar conductor",true,v->driverAssignmentDialog(item));
-            body.addView(assign,new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(body,8);
+        int price=item.optInt("price",0);
+        if(price>0){
+            spacer(body,15);
+            LinearLayout amount=row();
+            amount.setPadding(dp(13),dp(11),dp(13),dp(11));
+            amount.setBackground(bg(LIGHT,12,0));
+            TextView amountTitle=text("Importe propuesto",12,MUTED,false);
+            amount.addView(amountTitle,new LinearLayout.LayoutParams(0,-2,1));
+            amount.addView(text("$ "+price+" UYU",16,TEAL_DARK,true));
+            body.addView(amount);
         }
-        Button map=button("Abrir ruta en Google Maps", false, v -> openMaps(item));
-        body.addView(map,new LinearLayout.LayoutParams(-1,dp(50)));
-        spacer(body,8);
-        String phone = item.optString("phone","");
-        if (!phone.isEmpty()) {
-            Button call=button("Llamar al pasajero", false, v -> {
-                try { startActivity(new Intent(Intent.ACTION_DIAL,
-                    Uri.parse("tel:" + Uri.encode(phone)))); }
-                catch (Exception e) { message("No se encontró una app de teléfono."); }
+        spacer(body,19);
+        addLine(body,"Contacto",13,INK,true,7);
+        LinearLayout contact=column();
+        contact.setPadding(dp(13),dp(12),dp(13),dp(12));
+        contact.setBackground(bg(LIGHT,12,0));
+        String phone=item.optString("phone","");
+        String email=item.optString("email","");
+        if(!phone.isEmpty())addLine(contact,"Teléfono  ·  "+phone,12,INK,false,5);
+        if(!email.isEmpty())addLine(contact,"Correo  ·  "+email,12,MUTED,false,0);
+        body.addView(contact);
+        spacer(body,14);
+        TextView ref=text("Referencia: "+item.optString("id"),10,MUTED,false);
+        body.addView(ref);
+
+        // Acciones permanentes, sin cubrir información ni ocupar cinco filas.
+        LinearLayout footer=column();
+        footer.setPadding(dp(16),dp(12),dp(16),dp(13));
+        footer.setBackground(bg(Color.WHITE,0,0));
+        View footerLine=new View(this);
+        footerLine.setBackgroundColor(BORDER);
+        surface.addView(footerLine,new LinearLayout.LayoutParams(-1,dp(1)));
+        surface.addView(footer);
+
+        boolean canAssign="admin".equals(staffRole)&&
+            ("requested".equals(state)||"quoted".equals(state));
+        String next="",nextTitle="";
+        switch(state){
+            case "accepted": next="confirmed";nextTitle="Confirmar servicio";break;
+            case "confirmed":next="en_route";nextTitle="Salir al origen";break;
+            case "en_route":next="arrived";nextTitle="Marcar llegada";break;
+            case "arrived":next="in_progress";nextTitle="Iniciar viaje";break;
+            case "in_progress":next="completed";nextTitle="Finalizar viaje";break;
+        }
+
+        LinearLayout primaryActions=row();
+        if("requested".equals(state)){
+            TextView quote=detailButton("Cotizar  →",true,v->{dialog.dismiss();quote(item);});
+            primaryActions.addView(quote,new LinearLayout.LayoutParams(0,dp(46),canAssign?1.2f:1f));
+        }else if(!next.isEmpty()){
+            final String target=next,actionTitle=nextTitle;
+            TextView progress=detailButton(nextTitle+"  →",true,
+                v->{dialog.dismiss();confirmStatus(item,target,actionTitle);});
+            primaryActions.addView(progress,new LinearLayout.LayoutParams(0,dp(46),1));
+        }
+        if(canAssign){
+            TextView assign=detailButton("Asignar",!"requested".equals(state),
+                v->{dialog.dismiss();driverAssignmentDialog(item);});
+            LinearLayout.LayoutParams assignLp=new LinearLayout.LayoutParams(
+                0,dp(46),"requested".equals(state)?0.9f:1f);
+            if(primaryActions.getChildCount()>0)assignLp.leftMargin=dp(8);
+            primaryActions.addView(assign,assignLp);
+        }
+        if(primaryActions.getChildCount()>0){
+            footer.addView(primaryActions);
+            spacer(footer,8);
+        }
+        LinearLayout secondary=row();
+        TextView map=detailButton("↗  Ver ruta",false,v->{dialog.dismiss();openMaps(item);});
+        secondary.addView(map,new LinearLayout.LayoutParams(0,dp(42),1));
+        if(!phone.isEmpty()){
+            TextView call=detailButton("☎  Llamar",false,v->{
+                try {startActivity(new Intent(Intent.ACTION_DIAL,
+                    Uri.parse("tel:"+Uri.encode(phone))));}
+                catch(Exception e){message("No se encontró la aplicación de teléfono.");}
             });
-            body.addView(call,new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(body,8);
+            LinearLayout.LayoutParams callP=new LinearLayout.LayoutParams(0,dp(42),1);
+            callP.leftMargin=dp(8);
+            secondary.addView(call,callP);
         }
-        String state=item.optString("status");
-        if ("requested".equals(state)) {
-            body.addView(button("Sugerir precio en pesos",true,v->quote(item)),
-                new LinearLayout.LayoutParams(-1,dp(50)));
-        }
-        String next="",title="";
-        switch(state) {
-            case "accepted": next="confirmed";title="Confirmar servicio";break;
-            case "confirmed": next="en_route";title="Salir hacia el pasajero";break;
-            case "en_route": next="arrived";title="Marcar llegada al origen";break;
-            case "arrived": next="in_progress";title="Iniciar traslado";break;
-            case "in_progress": next="completed";title="Finalizar traslado";break;
-        }
-        if (!next.isEmpty()) {
-            String target=next;
-            String actionTitle=title;
-            spacer(body,8);
-            body.addView(button(actionTitle,true,v->confirmStatus(item,target,actionTitle)),
-                new LinearLayout.LayoutParams(-1,dp(50)));
-        }
-        if ("requested".equals(state)||"quoted".equals(state)||
+        footer.addView(secondary);
+
+        if("requested".equals(state)||"quoted".equals(state)||
             "accepted".equals(state)||"confirmed".equals(state)||
-            "en_route".equals(state)||"arrived".equals(state)) {
-            spacer(body,9);
-            body.addView(button("Cancelar solicitud",false,v->confirmStatus(item,"cancelled","Cancelar solicitud")),
-                new LinearLayout.LayoutParams(-1,dp(50)));
+            "en_route".equals(state)||"arrived".equals(state)){
+            TextView cancel=text("Cancelar solicitud",12,Color.rgb(172,79,69),false);
+            cancel.setGravity(Gravity.CENTER);
+            cancel.setMinHeight(dp(35));
+            cancel.setOnClickListener(v->{
+                dialog.dismiss();
+                confirmStatus(item,"cancelled","Cancelar solicitud");
+            });
+            LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,dp(35));
+            cp.topMargin=dp(5);
+            footer.addView(cancel,cp);
         }
-        new AlertDialog.Builder(this)
-           .setTitle("Detalle del traslado")
-           .setView(scroll)
-           .setNegativeButton("Cerrar",null)
-           .show();
+
+        dialog.setContentView(surface);
+        android.view.Window w=dialog.getWindow();
+        if(w!=null){
+            w.setBackgroundDrawableResource(android.R.color.transparent);
+            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            android.view.WindowManager.LayoutParams p=w.getAttributes();
+            p.dimAmount=.52f;
+            w.setAttributes(p);
+        }
+        dialog.show();
+        if(w!=null){
+            int width=Math.min(getResources().getDisplayMetrics().widthPixels-dp(24),dp(500));
+            int height=Math.min(getResources().getDisplayMetrics().heightPixels-dp(84),dp(740));
+            w.setLayout(width,height);
+            w.setGravity(Gravity.CENTER);
+        }
     }
 
     private void openMaps(JSONObject item) {
