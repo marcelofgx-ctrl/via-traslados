@@ -1,9 +1,7 @@
 name: Via Traslados - corregir CORS del backend productivo
+# Despliegue de emergencia manual. El flujo admin despliega automáticamente
+# todas las modificaciones de la API, incluidos clientes y WebAuthn.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/worker.js"
   workflow_dispatch:
 permissions:
   contents: write
@@ -15,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar dependencia WebAuthn si se utiliza este hotfix manual
+        run: npm install --no-audit --no-fund
       - name: Comprobar aplicación Vía Traslados
         run: |
           set -euo pipefail
@@ -44,7 +47,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -o pipefail
-          npx --yes wrangler@4 deploy --config wrangler.toml 2>&1 | tee via-api-deploy.log
+          npx --yes wrangler@4 deploy --config wrangler.toml --keep-vars 2>&1 | tee via-api-deploy.log
       - name: Verificar backend con Origin real
         id: verify
         if: steps.deploy.outcome == 'success'
