@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - "backend/staff.js"
+      - "backend/staff-phone.js"
+      - "backend/worker.js"
+      - "backend/schema.sql"
       - ".github/workflows/via-admin-backend-deploy.yml"
   workflow_dispatch:
 permissions:
@@ -26,6 +29,7 @@ jobs:
           npm test
           npm run check
           node --check backend/staff.js
+          node --check backend/staff-phone.js
       - name: Consultar únicamente D1 exclusiva via-traslados-db
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -76,6 +80,20 @@ jobs:
           echo "Servicio público: $(cat /tmp/site.json)"
           curl -fsSL --retry 3 --retry-delay 1 -H 'Origin: https://viatraslados.com' "$BASE/api/public/status" -o /tmp/site-origin.json
           test -s /tmp/site-origin.json
+          # Nuevas rutas telefónicas: comprobaciones negativas sin crear usuarios.
+          [ "$(curl -sS -X POST -H 'Content-Type: application/json' \
+            -d '{"phone":"abc","password":"sin-permisos"}' -o /tmp/phone-login.json \
+            -w '%{http_code}' "$BASE/api/staff/login-phone")" = "401" ]
+          [ "$(curl -sS -X POST -H 'Content-Type: application/json' \
+            -d '{"refreshToken":"invalid"}' -o /tmp/refresh.json \
+            -w '%{http_code}' "$BASE/api/staff/refresh")" = "401" ]
+          [ "$(curl -sS -X POST -H 'Content-Type: application/json' \
+            -d '{"name":"QA Conductor","phone":"invalid","email":"qa@example.invalid","password":"PasswordDePrueba2026"}' -o /tmp/register-invalid.json \
+            -w '%{http_code}' "$BASE/api/staff/register-phone")" = "400" ]
+          [ "$(curl -sS -X POST -H 'Content-Type: application/json' \
+            -d '{"name":"Admin QA","phone":"099123456","email":"qa@example.invalid","password":"PasswordDePrueba2026"}' -o /tmp/admin-anon.json \
+            -w '%{http_code}' "$BASE/api/admin/bootstrap-phone")" = "403" ]
+          echo "Login telefónico, sesión biométrica y permisos comprobados sin crear usuarios"
       - name: Guardar resultado sin credenciales
         if: always()
         env:
