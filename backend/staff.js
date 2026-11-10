@@ -2,6 +2,7 @@
 // La contraseña maestra legacy solo sirve como recuperación/arranque del administrador.
 // Nunca se devuelve un hash, sal ni token de otras personas.
 import {normalizeEmail} from './auth.js';
+import {normalizeStaffPhone as normalizeFounderPhone} from './staff-phone.js';
 
 const TE=new TextEncoder();
 const HEX=a=>Array.from(new Uint8Array(a)).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -126,6 +127,41 @@ export async function staffRoutes(req,env,path,send,err){
  if(!path.startsWith('/api/admin/'))return null;
  const actor=await identity(req,env);
  if(actor?.role!=='admin')return err('Solo el administrador puede realizar esta operación',403);
+ // Solo el fundador, identificado por cuenta autenticada y par teléfono/correo
+ // previamente configurado, puede conceder o retirar permisos administrativos.
+ async function founderAuthorized(){
+  if(actor.master||!actor.id||!env.VIA_FOUNDER_PHONE||!env.VIA_FOUNDER_EMAIL)return false;
+  try{
+   const contact=await env.DB.prepare('SELECT phone,email_verified_at FROM staff_contacts WHERE staff_id=?').bind(actor.id).first();
+   return !!contact?.email_verified_at && contact.phone===normalizeFounderPhone(env.VIA_FOUNDER_PHONE)
+    &&actor.email===normalizeEmail(env.VIA_FOUNDER_EMAIL);
+  }catch{return false}
+ }
+ if(path==='/api/admin/team'&&req.method==='GET'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede gestionar otros administradores',403);
+  const result=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE u.role='admin' ORDER BY u.created_at ASC LIMIT 50").all();
+  return send({admins:result.results.map(publicStaff),canManageRoles:true,founderId:actor.id});
+ }
+ const roleMatch=path.match(/^\\/api\\/admin\\/team\\/([a-f0-9-]{36})\\/role$/i);
+ if(roleMatch&&req.method==='PATCH'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede gestionar otros administradores',403);
+  if(roleMatch[1]===actor.id)return err('No podés retirar tu propia cuenta fundadora',409);
+  let p;try{p=await bodyLimit(req)}catch{return err('Datos inválidos',400)}
+  if(p.role!=='admin'&&p.role!=='driver')return err('Rol inválido',400);
+  const target=await env.DB.prepare('SELECT u.id,u.role,u.status,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE u.id=?').bind(roleMatch[1]).first();
+  if(!target)return err('Cuenta no encontrada',404);
+  if(target.status!=='approved'||!target.email_verified_at)return err('La cuenta debe estar aprobada y con correo verificado',409);
+  if(target.role===p.role)return send({id:target.id,role:target.role,unchanged:true});
+  const update=await env.DB.prepare('UPDATE staff_users SET role=?,updated_at=unixepoch() WHERE id=? AND role=? AND status=?')
+   .bind(p.role,target.id,target.role,'approved').run();
+  if(update.meta?.changes!==1)return err('La cuenta cambió. Actualizá y volvé a intentar.',409);
+  await env.DB.batch([
+   env.DB.prepare('UPDATE staff_sessions SET revoked_at=unixepoch() WHERE staff_id=?').bind(target.id),
+   env.DB.prepare('UPDATE staff_refresh_tokens SET revoked_at=unixepoch() WHERE staff_id=?').bind(target.id)
+  ]);
+  await audit(env,actor,'team-role',target.id,target.role+' -> '+p.role);
+  return send({id:target.id,role:p.role,requiresNewLogin:true});
+ }
  if(path==='/api/admin/drivers'&&req.method==='GET'){
    const users=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE u.role='driver' ORDER BY CASE u.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,u.created_at DESC LIMIT 250").all();
    return send({drivers:users.results.map(publicStaff)});
