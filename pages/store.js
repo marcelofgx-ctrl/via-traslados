@@ -7,6 +7,7 @@ const DB='via-traslados-solo-demo-v3';
 const ACCESS='via-traslados-solo-demo-access-v3';
 const VERIFY='via-traslados-verified-session-v3';
 const ACCOUNT='via-customer-session-v1';
+const DEMO_PROFILE='via-demo-customer-profile-v1';
 const isDemo=()=>cfg.demo===true;
 function records(){try{return JSON.parse(localStorage.getItem(DB)||'[]')}catch{return []}}
 function save(list){localStorage.setItem(DB,JSON.stringify(list));global.dispatchEvent(new Event('via-updated'))}
@@ -60,8 +61,9 @@ async function verifyCode(email,code,profile){
   if(code!=='123456'||email!==sessionStorage.getItem('via-demo-otp-email-v3'))throw Error('Código de prueba incorrecto. Usá 123456.');
   setVerified({email,token:'demo-verified',expires:Date.now()+15*60*1000});
   if(profile) {
-   setCustomer({sessionToken:'demo-only',expiresAt:Math.floor(Date.now()/1000)+30*86400,
-    profile:{email,name:profile.name,phone:profile.phone}});
+   const known={email,name:profile.name,phone:profile.phone};
+   localStorage.setItem(DEMO_PROFILE,JSON.stringify(known));
+   setCustomer({sessionToken:'demo-only',expiresAt:Math.floor(Date.now()/1000)+30*86400,profile:known});
   }
   return {verified:true};
  }
@@ -87,20 +89,24 @@ async function resume(){
 }
 async function startPhoneLogin(phone,turnstileToken){
  if(isDemo()){
-  const c=customer();
-  if(!c||String(c.profile.phone||'').replace(/\D/g,'')!==String(phone||'').replace(/\D/g,''))
-   return{sent:false,recognized:false,message:'En la demo, primero verificá el correo con 123456.'};
+  let profile;try{profile=JSON.parse(localStorage.getItem(DEMO_PROFILE)||'null')}catch{}
+  const numbers=value=>String(value||'').replace(/\D/g,'').replace(/^598/,'0');
+  if(!profile||numbers(profile.phone)!==numbers(phone))
+   return{sent:false,recognized:false,message:'En esta demo, primero verificá tu correo una vez con el código 123456.'};
   sessionStorage.setItem('via-demo-phone-v1',phone);
-  return{sent:true,recognized:true,maskedEmail:c.profile.email.replace(/(^.{1,2})[^@]*(?=@)/,'$1•••'),
+  return{sent:true,recognized:true,maskedEmail:profile.email.replace(/(^.{1,2})[^@]*(?=@)/,'$1•••'),
    message:'DEMO: ingresá 123456. No se envía correo.'};
  }
  return request('/api/customer/login/start',{method:'POST',body:JSON.stringify({phone,turnstileToken})});
 }
 async function finishPhoneLogin(phone,code){
  if(isDemo()){
-  const c=customer();
-  if(code!=='123456'||!c)throw Error('Usá 123456 para esta demostración');
-  setCustomer(c);return c;
+  let profile;try{profile=JSON.parse(localStorage.getItem(DEMO_PROFILE)||'null')}catch{}
+  const requested=sessionStorage.getItem('via-demo-phone-v1');
+  if(code!=='123456'||!profile||requested!==phone)throw Error('Usá 123456 para esta demostración');
+  const data={sessionToken:'demo-only',expiresAt:Math.floor(Date.now()/1000)+30*86400,profile};
+  setCustomer(data);sessionStorage.removeItem('via-demo-phone-v1');
+  return data;
  }
  const result=await request('/api/customer/login/verify',{method:'POST',body:JSON.stringify({phone,code})});
  setCustomer(result);return result;
