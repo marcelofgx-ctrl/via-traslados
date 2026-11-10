@@ -4,7 +4,7 @@
 const ids=['home-origin','home-destination','origin','destination'];
 const fields=ids.map(id=>document.getElementById(id)).filter(Boolean);
 let gps=null;window.ViaSearchLocation={update(lat,lng){if(Number.isFinite(Number(lat))&&Number.isFinite(Number(lng)))gps={lat:Number(lat),lng:Number(lng)}},get(){return gps}};
-try{if(navigator.permissions&&navigator.geolocation)navigator.permissions.query({name:'geolocation'}).then(p=>{if(p.state==='granted')navigator.geolocation.getCurrentPosition(pos=>window.ViaSearchLocation.update(pos.coords.latitude,pos.coords.longitude),()=>{},{maximumAge:120000,timeout:3500})}).catch(()=>{});}catch{}
+// Privacidad: no consultar permisos ni solicitar GPS al cargar la web. El atajo de ubicación es siempre opcional y se activa solo tras tocarlo.
 if(!fields.length)return;
 let active=null,seq=0,abort=null,timer=null;
 const panel=document.createElement('div');panel.id='address-suggestions';panel.className='address-suggestions hidden';panel.setAttribute('role','listbox');document.body.appendChild(panel);

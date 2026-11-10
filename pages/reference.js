@@ -8,15 +8,70 @@ const start=$('start-booking');start?.addEventListener('click',()=>{
 const ids=[['home-origin','origin'],['home-destination','destination'],['home-date','date'],['home-time','time'],['home-passengers','passengers']];for(const [a,b] of ids){if($(a)&&$(b)&&$(a).value)$(b).value=$(a).value;if(window.ViaAddress&&(a.includes("origin")||a.includes("destination")))window.ViaAddress.copy(a,b);}
 },{capture:true});
 $('services-nav')?.addEventListener('click',e=>{e.preventDefault();start?.click()});
-$('location-shortcut')?.addEventListener('click',()=>{
-if(!navigator.geolocation){alert('Tu navegador no admite geolocalización. Podés escribir el origen manualmente.');return}
-navigator.geolocation.getCurrentPosition(async pos=>{const lat=pos.coords.latitude,lng=pos.coords.longitude;
-  if(!(-36<=lat&&lat<=-30&&-59<=lng&&lng<=-52)){alert('La ubicación está fuera de Uruguay. Ingresá una dirección manualmente.');return}
-  window.ViaSearchLocation?.update(lat,lng);
-  const fallback={label:`Ubicación GPS (${lat.toFixed(5)}, ${lng.toFixed(5)})`,lat,lng,accuracy:'gps',city:'',department:''};
-  try{const r=await fetch(`/api/direcciones?mode=reverse&lat=${lat}&lng=${lng}`);if(!r.ok)throw Error('Sin dirección');const d=await r.json();const addr=d.results?.[0];window.ViaAddress?.set('home-origin',addr?{...addr,lat,lng,accuracy:'gps'}:fallback);}
-  catch{window.ViaAddress?.set('home-origin',fallback)}
- },()=>{alert('No fue posible obtener tu ubicación. Ingresá el origen manualmente.');},{enableHighAccuracy:true,timeout:12000,maximumAge:120000});
+// El GPS es estrictamente opt-in: nunca pedir permisos al abrir la página ni
+// bloquear la reserva si Android impide mostrar su diálogo de ubicación.
+const gpsButton=$('location-shortcut');
+let locating=false;
+function gpsMessage(message){
+ const box=document.querySelector('.reference-route-fields');
+ if(!box)return;
+ let note=$('via-gps-feedback');
+ if(!note){
+  note=document.createElement('p');
+  note.id='via-gps-feedback';
+  note.className='via-gps-feedback';
+  note.setAttribute('role','status');
+  note.setAttribute('aria-live','polite');
+  box.insertAdjacentElement('afterend',note);
+ }
+ note.textContent=message;
+ note.hidden=!message;
+}
+gpsButton?.addEventListener('click',()=>{
+ if(locating)return;
+ // Si el usuario no usa el atajo, la búsqueda manual no requiere GPS.
+ if(!navigator.geolocation){
+  gpsMessage('Tu navegador no permite usar GPS. Escribí la dirección de origen.');
+  return;
+ }
+ locating=true;
+ gpsButton.disabled=true;
+ gpsButton.setAttribute('aria-busy','true');
+ gpsMessage('');
+ const done=()=>{
+  locating=false;
+  gpsButton.disabled=false;
+  gpsButton.removeAttribute('aria-busy');
+ };
+ const denied=()=>{
+  done();
+  gpsMessage('No pudimos usar tu ubicación. Podés escribir el origen manualmente sin dar permisos.');
+ };
+ try{
+  navigator.geolocation.getCurrentPosition(async pos=>{
+   try{
+    const lat=pos.coords.latitude,lng=pos.coords.longitude;
+    if(!(-36<=lat&&lat<=-30&&-59<=lng&&lng<=-52)){
+     gpsMessage('La ubicación está fuera de Uruguay. Escribí tu dirección.');
+     return;
+    }
+    window.ViaSearchLocation?.update(lat,lng);
+    const fallback={label:'Ubicación GPS ('+lat.toFixed(5)+', '+lng.toFixed(5)+')',lat,lng,accuracy:'gps',city:'',department:''};
+    try{
+     const r=await fetch('/api/direcciones?mode=reverse&lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng));
+     if(!r.ok)throw Error('Dirección no disponible');
+     const d=await r.json();
+     const addr=d.results?.[0];
+     window.ViaAddress?.set('home-origin',addr?{...addr,lat,lng,accuracy:'gps'}:fallback);
+    }catch{
+     window.ViaAddress?.set('home-origin',fallback);
+    }
+    gpsMessage('');
+   }catch{
+    gpsMessage('No pudimos interpretar tu ubicación. Escribí la dirección de origen.');
+   }finally{done();}
+  },denied,{enableHighAccuracy:true,timeout:12000,maximumAge:120000});
+ }catch{denied();}
 });
 })();
 

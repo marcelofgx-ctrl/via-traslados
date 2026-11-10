@@ -133,3 +133,8 @@ body.premium-page:not(.in-booking) .premium-footer{display:none}
  .reference-action{min-height:43px!important}.reference-reservations{min-height:39px!important}
  .reference-booking{padding:8px!important}.reference-tabs{min-height:57px!important}
 }
+
+/* v1.3: GPS opcional; nunca interrumpir el formulario con alertas o permisos. */
+.reference-booking .via-gps-feedback{display:block;margin:7px 5px 3px;padding:8px 11px;border-radius:11px;background:#edf6f3;color:#1d6156;font-size:12px;line-height:1.45;font-weight:600}
+.reference-booking .via-gps-feedback[hidden]{display:none!important}
+.reference-booking .locate-btn[disabled]{opacity:.55;cursor:progress}
