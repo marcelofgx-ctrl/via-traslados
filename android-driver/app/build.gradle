@@ -4,11 +4,11 @@ android {
     namespace 'uy.viatraslados.conductor'
     compileSdk 35
     defaultConfig {
-        applicationId 'uy.viatraslados.conductor.autoprecalcqa'
+        applicationId 'uy.viatraslados.conductor.premiumdetailqa'
         minSdk 26
         targetSdk 35
-        versionCode 10
-        versionName '1.0.0-auto-precalc-qa'
+        versionCode 11
+        versionName '1.1.0-premium-detail-qa'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
