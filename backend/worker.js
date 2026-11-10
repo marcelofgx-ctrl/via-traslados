@@ -1,7 +1,7 @@
 import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,emailOtpAvailable} from './auth.js';
 import {staffRoutes,identity,webEnabled} from './staff.js';
 import {staffPhoneRoutes} from './staff-phone.js';
-import {routeEstimateRoutes} from './route-estimate.js';
+import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
 const OP_FIELDS=FIELDS+',customer_name,phone,email';
@@ -24,11 +24,45 @@ export function validateBooking(p){
  return q
 }
 const publicRow=r=>({id:r.id,origin:r.origin,destination:r.destination,date:r.trip_date,time:r.trip_time,passengers:r.passengers,bags:r.bags,notes:r.notes,status:r.status,price:r.price_uyu,created_at:r.created_at,updated_at:r.updated_at});
-const operatorRow=r=>({...publicRow(r),name:r.customer_name,phone:r.phone,email:r.email,assignedDriverId:r.assigned_driver_id||null,assignedDriverName:r.assigned_driver_name||null});
+const operatorRow=r=>({...publicRow(r),name:r.customer_name,phone:r.phone,email:r.email,
+ assignedDriverId:r.assigned_driver_id||null,assignedDriverName:r.assigned_driver_name||null,
+ route:r.route_provider==='geoapify'&&Number(r.route_distance_m)>0&&Number(r.route_duration_s)>0?
+  {distanceKm:Math.round(Number(r.route_distance_m)/100)/10,
+   durationMinutes:Math.ceil(Number(r.route_duration_s)/60),
+   source:'Geoapify',estimate:true,trafficIncluded:false,
+   attribution:'© OpenStreetMap contributors · Powered by Geoapify',
+   attributionUrl:'https://www.geoapify.com/'}:null
+});
+const routeSelect=alias=>
+ "(SELECT distance_m FROM booking_routes WHERE booking_id="+alias+".id AND provider='geoapify') AS route_distance_m,"+
+ "(SELECT duration_s FROM booking_routes WHERE booking_id="+alias+".id AND provider='geoapify') AS route_duration_s,"+
+ "(SELECT provider FROM booking_routes WHERE booking_id="+alias+".id AND provider='geoapify') AS route_provider";
+function scheduleMissingRoutes(env,ctx,rows,max=2){
+ if(!ctx?.waitUntil)return;
+ const missing=rows.filter(x=>!x.route_distance_m&&
+  ['requested','quoted','accepted','confirmed'].includes(x.status)).slice(0,20);
+ if(!missing.length)return;
+ ctx.waitUntil((async()=>{
+  const tasks=[];
+  for(const booking of missing){
+   if(tasks.length>=max)break;
+   try{
+    // Reserva por 10 min para que dos teléfonos no pidan la misma ruta.
+    // Reintento automático posterior si el geocodificador no responde.
+    const claimed=await env.DB.prepare(
+     'INSERT INTO otp_rate_limits (rate_key,window_started,attempts) VALUES (?,unixepoch(),1) ON CONFLICT(rate_key) DO UPDATE SET window_started=CASE WHEN unixepoch()-window_started>=600 THEN unixepoch() ELSE window_started END,attempts=CASE WHEN unixepoch()-window_started>=600 THEN 1 ELSE attempts+1 END RETURNING attempts'
+    ).bind('via-autocalc:'+booking.id).first();
+    if(claimed?.attempts!==1)continue;
+    tasks.push(precalculateBookingRoute(env,booking,'auto:'+booking.id).catch(()=>null));
+   }catch{ /* Sin mapa, la reserva sigue intacta. */ }
+  }
+  await Promise.all(tasks);
+ })());
+}
 const authorized=async(req,env)=>identity(req,env);
 const getBooking=async(req,env,id)=>{const token=req.headers.get('X-Booking-Token')||'';if(!token||token.length>200)return null;const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();return row&&equal(await hash(token),row.access_token_hash)?row:null};
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
-export default {async fetch(req,env){
+export default {async fetch(req,env,ctx){
  const url=new URL(req.url),origin=req.headers.get('Origin');
  const allowed=[env.PUBLIC_ORIGIN,env.OPERATOR_ORIGIN].filter(Boolean).map(value=>{try{return new URL(value).origin}catch{return String(value).replace(/\/+$/,'')}});
  const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization','Vary':'Origin'};
@@ -55,6 +89,7 @@ export default {async fetch(req,env){
    const id='VIA-'+crypto.randomUUID().slice(0,12).toUpperCase(),token=random(),tokenHash=await hash(token);
    await env.DB.prepare('INSERT INTO bookings (id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,booking.name,booking.phone,booking.email,booking.origin,booking.destination,booking.date,booking.time,booking.passengers,booking.bags,booking.notes,tokenHash,'requested').run();
    await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,null,'requested','passenger').run();
+   scheduleMissingRoutes(env,ctx,[{id,origin:booking.origin,destination:booking.destination,status:'requested'}],1);
    return send({id,access_token:token,status:'requested'},201)
   }
   const item=path.match(/^\/api\/requests\/([A-Z0-9-]+)(?:\/(accept|cancel))?$/);
@@ -71,10 +106,12 @@ export default {async fetch(req,env){
   if(path==='/api/operator/requests'&&req.method==='GET'){
    const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
    if(actor.role==='admin'){
-     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
+     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS},${routeSelect('bookings')},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
+     scheduleMissingRoutes(env,ctx,rows.results);
      return send(rows.results.map(operatorRow));
    }
-   const rows=await env.DB.prepare('SELECT b.*,a.driver_id AS assigned_driver_id,u.display_name AS assigned_driver_name FROM bookings b JOIN driver_assignments a ON a.booking_id=b.id JOIN staff_users u ON u.id=a.driver_id WHERE a.driver_id=? ORDER BY b.trip_date DESC,b.trip_time DESC LIMIT 200').bind(actor.id).all();
+   const rows=await env.DB.prepare(`SELECT b.*,a.driver_id AS assigned_driver_id,u.display_name AS assigned_driver_name,${routeSelect('b')} FROM bookings b JOIN driver_assignments a ON a.booking_id=b.id JOIN staff_users u ON u.id=a.driver_id WHERE a.driver_id=? ORDER BY b.trip_date DESC,b.trip_time DESC LIMIT 200`).bind(actor.id).all();
+   scheduleMissingRoutes(env,ctx,rows.results);
    return send(rows.results.map(operatorRow))
   }
   const op=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)$/);
