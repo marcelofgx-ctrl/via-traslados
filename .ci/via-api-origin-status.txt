@@ -2,12 +2,12 @@ Proyecto: via-traslados-api
 Despliegue: success
 Verificación CORS y OTP: success
 Origen: https://viatraslados.com
-Commit: 691375b42055b0ff166e8c69e5c650f3ffa089b4
+Commit: 524963f6ea383c5f44c0d7ba33fd6d7b2b4e1302
 Registro de Wrangler:
 
- ⛅️ wrangler 4.159.0
+ ⛅️ wrangler 4.160.0
 ────────────────────
-Total Upload: 49.88 KiB / gzip: 11.68 KiB
+Total Upload: 64.64 KiB / gzip: 14.53 KiB
 Worker Startup Time: 2 ms
 Your Worker has access to the following bindings:
 Binding                                                               Resource                  
@@ -16,15 +16,15 @@ env.PUBLIC_ORIGIN ("https://viatraslados.com")                        Environmen
 env.OPERATOR_ORIGIN ("https://viatraslados.com")                      Environment Variable      
 env.RESEND_FROM ("Vía Traslados <reservas@viatraslados....")          Environment Variable      
 
-Uploaded via-traslados-api (2.42 sec)
-Deployed via-traslados-api triggers (0.40 sec)
+Uploaded via-traslados-api (1.82 sec)
+Deployed via-traslados-api triggers (0.51 sec)
   https://via-traslados-api.marcelof-gx.workers.dev
-Current Version ID: fe36ecaf-daff-45f7-91f1-731edb000f08
+Current Version ID: debf2c72-b594-43a8-8142-0a94adc97939
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
 Respuesta de API:
 HTTP/2 200 
-date: Tue, 10 Nov 2026 01:32:05 GMT
+date: Tue, 10 Nov 2026 14:37:26 GMT
 content-type: application/json; charset=utf-8
 content-length: 54
 access-control-allow-origin: https://viatraslados.com
@@ -34,10 +34,10 @@ access-control-allow-headers: Content-Type,X-Booking-Token,X-Operator-Key,X-Veri
 access-control-allow-methods: GET,POST,PATCH,OPTIONS
 referrer-policy: no-referrer
 x-content-type-options: nosniff
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=6aeWSSUCh096S%2BL%2BruxQcUdOBiocCG0ndfhGf%2B%2FDjL5dHarC74iauFQX%2BAbfT6tmS5KK2iqna33by76k1hxp0W2CDZaKVLsZAQbPhxGwo3m0QaDYYNLYyWbo1XARbCfIDN4K0vloXwE79bjD8a8d%2B6XhYEbMf30qiygbtA%3D%3D"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=d8g6m7sUa19rEYKNa7CyriYTuXkL%2FHOVVBnFboAT93OZ4uZAP7pAhPQnlP496MiN8%2BsoBcqRySu4e6oh4s1XeT8s5dcvSd1tzAjLJZ0m7quE2goLWOBLchfg0wQFdv%2BAAddU5lNFl%2BRor0FlBDWjiKAkWPZyor64e5BEVA%3D%3D"}]}
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 server: cloudflare
-cf-ray: a5814d236904dfd2-PDX
+cf-ray: a585cb8faf565b4c-LAX
 alt-svc: h3=":443"; ma=86400
 
 {"ok":true,"name":"via-traslados","otpAvailable":true}
