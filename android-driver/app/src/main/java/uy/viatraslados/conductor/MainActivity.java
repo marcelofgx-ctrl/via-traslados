@@ -431,6 +431,10 @@ public final class MainActivity extends Activity {
         staffRole = "driver";
         staffName = "";
         staffUserId = "";
+        routeResults.clear();
+        routeStarted.clear();
+        routeFailures.clear();
+        routeProviderMissing=false;
         canManageRoles = false;
         managedAdmins = new JSONArray();
         root.setBackgroundColor(LIGHT);
@@ -659,6 +663,8 @@ public final class MainActivity extends Activity {
     private void dashboard() {
         if (operatorKey == null && staffToken == null) return;
         authFlow = false;
+        routeLabels.clear();
+        routeSpinners.clear();
         root.removeAllViews();
         root.setBackgroundColor(LIGHT);
 
@@ -762,75 +768,121 @@ public final class MainActivity extends Activity {
             appendCard(body,empty,10);
         }
         spacer(body,4);
-        addLine(body,"Se actualiza cada 30 s. Calculá cada ruta cuando la necesites.",
+        addLine(body,"Solicitudes actualizadas cada 30 s · Distancias calculadas por ruta.",
             11,MUTED,false,0);
     }
 
 
+    // Los kilómetros permanecen vinculados a la reserva y se solicitan una sola vez
+    // por sesión. No repetimos llamadas de rutas con el refresco de 30 segundos.
     private final java.util.Map<String,JSONObject> routeResults=new java.util.HashMap<>();
+    private final java.util.Set<String> routeStarted=new java.util.HashSet<>();
+    private final java.util.Map<String,String> routeFailures=new java.util.HashMap<>();
+    private final java.util.Map<String,TextView> routeLabels=new java.util.HashMap<>();
+    private final java.util.Map<String,android.widget.ProgressBar> routeSpinners=new java.util.HashMap<>();
+    private boolean routeProviderMissing=false;
 
     private String prettyAddress(String raw) {
         if(raw==null)return "";
         String value=raw.trim().replaceAll("\\s+"," ");
         value=value.replaceAll("(?i),\\s*Montevideo\\s*,\\s*Montevideo\\s*$",", Montevideo");
+        String[] parts=value.split(",\\s*",-1);
         java.util.Locale es=new java.util.Locale("es","UY");
-        if(!value.equals(value.toUpperCase(es)))return value;
-        String lower=value.toLowerCase(es);
-        StringBuilder out=new StringBuilder();
-        boolean startWord=true;
-        for(int i=0;i<lower.length();i++){
-            char c=lower.charAt(i);
-            if(Character.isLetter(c)&&startWord){out.append(Character.toUpperCase(c));startWord=false;}
-            else{out.append(c);if(!Character.isLetterOrDigit(c))startWord=true;}
+        for(int p=0;p<parts.length;p++){
+            String segment=parts[p].trim();
+            String onlyLetters=segment.replaceAll("[^\\p{L}]","");
+            if(onlyLetters.length()<4 || !onlyLetters.equals(onlyLetters.toUpperCase(es)))continue;
+            String low=segment.toLowerCase(es);
+            StringBuilder pretty=new StringBuilder();
+            boolean wordStart=true;
+            for(int i=0;i<low.length();i++){
+                char c=low.charAt(i);
+                if(Character.isLetter(c)&&wordStart){pretty.append(Character.toUpperCase(c));wordStart=false;}
+                else {pretty.append(c);if(!Character.isLetterOrDigit(c))wordStart=true;}
+            }
+            parts[p]=pretty.toString();
         }
-        return out.toString();
+        return android.text.TextUtils.join(", ",parts);
     }
-    private String compactDate(String raw){
-        try{return java.time.LocalDate.parse(raw).format(
+
+    private String compactDate(String raw) {
+        try {return java.time.LocalDate.parse(raw).format(
             java.time.format.DateTimeFormatter.ofPattern("d MMM",new java.util.Locale("es","UY")));}
         catch(Exception ignored){return raw;}
     }
-    private String routeMetrics(JSONObject r){
-        if(r==null)return "Distancia pendiente";
-        double km=r.optDouble("distanceKm",Double.NaN);
-        int min=r.optInt("durationMinutes",-1);
-        if(!Double.isFinite(km)||km<=0||min<=0)return "Distancia pendiente";
-        return String.format(new java.util.Locale("es","UY"),"%.1f km  ·  %d min",km,min);
+
+    private String routeMetrics(JSONObject route) {
+        if(route==null)return "Ruta pendiente";
+        double distance=route.optDouble("distanceKm",Double.NaN);
+        int minutes=route.optInt("durationMinutes",-1);
+        if(!Double.isFinite(distance)||distance<=0||minutes<=0)return "Ruta pendiente";
+        return String.format(new java.util.Locale("es","UY"),"%.1f km  ·  %d min",distance,minutes);
     }
-    private void calculateRoute(JSONObject item,TextView metrics,TextView link){
-        String id=item.optString("id");
-        if(id.isEmpty()||!link.isEnabled())return;
-        link.setEnabled(false);
-        link.setText("Calculando…");
-        metrics.setText("Buscando ruta por carretera…");
-        api("GET","/api/operator/requests/"+Uri.encode(id)+"/route",null,
-            (status,payload,error)->{
-                link.setEnabled(true);
-                if(status==200){
-                    try{
-                        JSONObject r=new JSONObject(payload);
-                        if(r.optDouble("distanceKm",0)<=0)throw new Exception("Ruta vacía");
-                        routeResults.put(id,r);
-                        metrics.setText("↗  "+routeMetrics(r));
-                        metrics.setTextColor(TEAL_DARK);
-                        link.setText("Ruta ✓");
-                        link.setOnClickListener(v->details(item));
+
+    private void showRouteState(String id) {
+        TextView label=routeLabels.get(id);
+        android.widget.ProgressBar spinner=routeSpinners.get(id);
+        if(label==null)return;
+        JSONObject route=routeResults.get(id);
+        boolean pending=routeStarted.contains(id) && route==null && !routeFailures.containsKey(id);
+        if(spinner!=null)spinner.setVisibility(pending?View.VISIBLE:View.GONE);
+        if(route!=null){
+            label.setText(routeMetrics(route));
+            label.setTextColor(TEAL_DARK);
+        }else if(routeProviderMissing||"provider_missing".equals(routeFailures.get(id))){
+            label.setText("Ruta pendiente de activar");
+            label.setTextColor(MUTED);
+        }else if(routeFailures.containsKey(id)){
+            label.setText("Ruta no disponible");
+            label.setTextColor(MUTED);
+        }else {
+            label.setText("Calculando ruta…");
+            label.setTextColor(MUTED);
+        }
+    }
+
+    private void requestRouteAutomatically(JSONObject booking) {
+        String id=booking.optString("id","");
+        if(id.isEmpty()||routeResults.containsKey(id)||routeStarted.contains(id))return;
+        if(routeProviderMissing) {
+            routeFailures.put(id,"provider_missing");
+            showRouteState(id);
+            return;
+        }
+        if(routeFailures.containsKey(id)){showRouteState(id);return;}
+        routeStarted.add(id);
+        showRouteState(id);
+        api("GET","/api/operator/requests/"+Uri.encode(id)+"/route",null,(status,body,error)->{
+            routeStarted.remove(id);
+            if(status==200){
+                try {
+                    JSONObject route=new JSONObject(body);
+                    if(route.optDouble("distanceKm",0)>0 && route.optInt("durationMinutes",0)>0){
+                        routeResults.put(id,route);
+                        routeFailures.remove(id);
+                        showRouteState(id);
                         return;
-                    }catch(Exception ignored){}
-                }
-                metrics.setText("Distancia no disponible");
-                link.setText("Reintentar");
-                String reason=error==null?"":error;
-                if(status==404)reason="El motor de distancias todavía no está publicado.";
-                else if(status==503)reason="Falta configurar Google Routes en Cloudflare.";
-                if(reason.isEmpty())reason="No se pudo calcular la ruta de conducción.";
-                message(reason);
-            });
+                    }
+                }catch(Exception ignored){}
+            }
+            if(status==503){
+                try{
+                    JSONObject payload=new JSONObject(body);
+                    if("route_provider_missing".equals(payload.optString("reason"))){
+                        routeProviderMissing=true;
+                        routeFailures.put(id,"provider_missing");
+                        for(String other:routeLabels.keySet())showRouteState(other);
+                    }else routeFailures.put(id,"unavailable");
+                }catch(Exception ignored){routeFailures.put(id,"unavailable");}
+            }else routeFailures.put(id,"unavailable");
+            showRouteState(id);
+        });
     }
+
     private void bookingCard(LinearLayout parent,JSONObject item){
         LinearLayout tile=column();
-        tile.setPadding(dp(14),dp(14),dp(14),dp(13));
-        tile.setBackground(bg(Color.WHITE,16,BORDER));
+        tile.setPadding(dp(14),dp(13),dp(14),dp(12));
+        tile.setBackground(bg(Color.WHITE,15,BORDER));
         LinearLayout head=row();
         TextView when=text(compactDate(item.optString("date",""))+
             "  ·  "+item.optString("time",""),13,INK,true);
@@ -838,16 +890,16 @@ public final class MainActivity extends Activity {
         String status=item.optString("status");
         TextView flag=text(statusName(status),11,stateColor(status),true);
         flag.setGravity(Gravity.CENTER);
-        flag.setPadding(dp(9),dp(4),dp(9),dp(4));
-        flag.setBackground(bg(SOFT,12,0));
+        flag.setPadding(dp(10),dp(5),dp(10),dp(5));
+        flag.setBackground(bg(SOFT,14,0));
         head.addView(flag);
         tile.addView(head);
         spacer(tile,11);
 
         LinearLayout from=row();
-        TextView fromPin=text("●",13,TEAL,true);
+        TextView fromPin=text("●",12,TEAL,true);
         fromPin.setGravity(Gravity.CENTER);
-        from.addView(fromPin,new LinearLayout.LayoutParams(dp(23),-2));
+        from.addView(fromPin,new LinearLayout.LayoutParams(dp(19),-2));
         LinearLayout fromBody=column();
         addLine(fromBody,"ORIGEN",10,MUTED,true,2);
         TextView origin=text(prettyAddress(item.optString("origin")),14,INK,true);
@@ -855,12 +907,12 @@ public final class MainActivity extends Activity {
         fromBody.addView(origin);
         from.addView(fromBody,new LinearLayout.LayoutParams(0,-2,1));
         tile.addView(from);
-        spacer(tile,8);
+        spacer(tile,9);
 
         LinearLayout to=row();
-        TextView toPin=text("◆",12,TEAL,true);
+        TextView toPin=text("◆",11,TEAL,true);
         toPin.setGravity(Gravity.CENTER);
-        to.addView(toPin,new LinearLayout.LayoutParams(dp(23),-2));
+        to.addView(toPin,new LinearLayout.LayoutParams(dp(19),-2));
         LinearLayout toBody=column();
         addLine(toBody,"DESTINO",10,MUTED,true,2);
         TextView dest=text(prettyAddress(item.optString("destination")),14,INK,true);
@@ -868,37 +920,49 @@ public final class MainActivity extends Activity {
         toBody.addView(dest);
         to.addView(toBody,new LinearLayout.LayoutParams(0,-2,1));
         tile.addView(to);
-        spacer(tile,10);
+        spacer(tile,11);
 
+        LinearLayout facts=row();
         int pax=item.optInt("passengers",1),bags=item.optInt("bags",0);
-        tile.addView(text(pax+(pax==1?" pasajero":" pasajeros")+"  ·  "+
-            bags+(bags==1?" valija":" valijas")+
-            (item.optInt("price",0)>0?"  ·  $ "+item.optInt("price")+" UYU":""),
-            12,MUTED,false));
-        spacer(tile,10);
+        TextView people=text(pax+(pax==1?" pasajero":" pasajeros")+" · "+
+            bags+(bags==1?" valija":" valijas"),12,MUTED,false);
+        facts.addView(people,new LinearLayout.LayoutParams(0,-2,1));
 
-        LinearLayout routeBar=row();
-        routeBar.setPadding(dp(11),dp(2),dp(4),dp(2));
-        routeBar.setBackground(bg(SOFT,11,0));
-        JSONObject found=routeResults.get(item.optString("id"));
-        TextView metric=text("↗  "+routeMetrics(found),12,found==null?MUTED:TEAL_DARK,true);
-        routeBar.addView(metric,new LinearLayout.LayoutParams(0,-2,1));
-        TextView link=actionText(found==null?"Calcular ruta":"Ruta ✓",TEAL_DARK,null);
-        link.setTextSize(12);
-        if(found==null)link.setOnClickListener(v->calculateRoute(item,metric,link));
-        else link.setOnClickListener(v->details(item));
-        routeBar.addView(link,new LinearLayout.LayoutParams(-2,dp(39)));
-        tile.addView(routeBar);
-        spacer(tile,10);
+        String id=item.optString("id","");
+        LinearLayout route=row();
+        android.widget.ProgressBar spinner=new android.widget.ProgressBar(this,null,
+            android.R.attr.progressBarStyleSmall);
+        spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TEAL));
+        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(15),dp(15));
+        sp.rightMargin=dp(5);
+        route.addView(spinner,sp);
+        TextView metric=text("",12,MUTED,true);
+        metric.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        route.addView(metric);
+        facts.addView(route);
+        tile.addView(facts);
+        if(!id.isEmpty()){
+            routeLabels.put(id,metric);
+            routeSpinners.put(id,spinner);
+            showRouteState(id);
+            requestRouteAutomatically(item);
+        }else{
+            spinner.setVisibility(View.GONE);
+            metric.setText("Ruta pendiente");
+        }
+        spacer(tile,12);
 
         LinearLayout actions=row();
-        TextView see=actionText("Detalles",TEAL_DARK,v->details(item));
-        see.setGravity(Gravity.CENTER);
-        actions.addView(see,new LinearLayout.LayoutParams(0,dp(44),1));
+        TextView see=actionText("Ver detalles   ›",TEAL_DARK,v->details(item));
+        see.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        see.setTextSize(13);
+        see.setPadding(dp(2),dp(5),0,dp(5));
+        actions.addView(see,new LinearLayout.LayoutParams(0,dp(43),1));
         if("requested".equals(status)){
             Button quote=button("Cotizar  →",true,v->quote(item));
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(44),1);
-            lp.leftMargin=dp(9);
+            quote.setTextSize(13);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(121),dp(43));
+            lp.leftMargin=dp(10);
             actions.addView(quote,lp);
         }
         tile.addView(actions);
@@ -1028,7 +1092,7 @@ public final class MainActivity extends Activity {
         LinearLayout wrap=column();
         wrap.setPadding(dp(23),dp(10),dp(23),dp(5));
         JSONObject measured=routeResults.get(item.optString("id"));
-        addLine(wrap,measured==null?"Ruta pendiente de calcular · Podés cotizar manualmente":
+        addLine(wrap,measured==null?"El cálculo de ruta aún no está disponible · Podés cotizar manualmente":
             "Ruta estimada: "+routeMetrics(measured)+" · sin tráfico en vivo",
             13,measured==null?MUTED:TEAL_DARK,false,14);
         wrap.addView(price);
