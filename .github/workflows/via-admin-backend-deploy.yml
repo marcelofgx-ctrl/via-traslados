@@ -1,8 +1,10 @@
 name: Via Traslados - habilitar control administrativo API
 on:
   push:
-    branches: [via-admin-drivers-qa]
-    paths: [".github/workflows/via-admin-backend-deploy.yml"]
+    branches: [main]
+    paths:
+      - "backend/staff.js"
+      - ".github/workflows/via-admin-backend-deploy.yml"
   workflow_dispatch:
 permissions:
   contents: write
@@ -95,4 +97,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .ci/via-admin-prod-status.txt
           git commit -m "ci(via): registrar despliegue de permisos administrativos" || true
-          git push origin HEAD:via-admin-drivers-qa || true
+          git push origin HEAD:main || true
