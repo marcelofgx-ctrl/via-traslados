@@ -14,7 +14,7 @@ const limit=async(env,scope,max,seconds)=>{
 };
 const hasLocation=x=>typeof x==='string'&&x.length>=4&&x.length<=200;
 const toOutput=(r,cached)=>({
- distanceKm:Math.round(Number(r.distance_m)*10)/10000,
+ distanceKm:Math.round(Number(r.distance_m)/100)/10,
  durationMinutes:Math.ceil(Number(r.duration_s)/60),
  source:'Google Routes',
  estimate:true,
