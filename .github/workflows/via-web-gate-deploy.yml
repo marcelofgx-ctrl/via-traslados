@@ -1,0 +1,70 @@
+name: Via Traslados - publicar interruptor seguro de web
+on:
+  push:
+    branches: [via-web-gate-qa]
+    paths: [".github/workflows/via-web-gate-deploy.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-web-gate-prod
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar suspensión D1 y recuperación por consola
+        run: |
+          set -euo pipefail
+          node --check pages/_worker.js
+          node --check pages/sw.js
+          node --test tests/web-gate.test.mjs
+      - name: Comprobar que backend permite consulta de estado
+        run: |
+          curl -fsSL --retry 4 --retry-delay 2 https://via-traslados-api.marcelof-gx.workers.dev/api/public/status -o /tmp/via-site-status.json
+          grep -Eq '"enabled":(true|false)' /tmp/via-site-status.json
+      - name: Publicar únicamente web de Vía Traslados
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          grep -F '"name": "via-traslados-web-prod"' wrangler.via-web.jsonc
+          grep -F '"pattern": "viatraslados.com"' wrangler.via-web.jsonc
+          npx --yes wrangler@4 deploy --config wrangler.via-web.jsonc 2>&1 | tee /tmp/via-web-gate-deploy.log
+      - name: Verificar portada, acceso conductor y service worker
+        id: verify
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-delay 2 https://viatraslados.com/ -o /tmp/via-index.html
+          grep -q 'Vía Traslados' /tmp/via-index.html
+          curl -fsSL --retry 5 --retry-delay 2 https://viatraslados.com/conductor.html -o /tmp/via-conductor.html
+          grep -q 'ACCESO PRIVADO' /tmp/via-conductor.html
+          curl -fsSL --retry 5 --retry-delay 2 https://viatraslados.com/sw.js -o /tmp/via-sw.js
+          grep -q 'via-traslados-public-gate-v2' /tmp/via-sw.js
+      - name: Registrar despliegue sin secretos
+        if: always()
+        env:
+          DEPLOY: ${{ steps.deploy.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+        run: |
+          mkdir -p .ci
+          {
+            echo "Vía Traslados: control público de sitio"
+            echo "Despliegue: $DEPLOY"
+            echo "Verificación: $VERIFY"
+            echo "Sitio: https://viatraslados.com"
+            echo "Backend sigue separado y privado"
+            if test -f /tmp/via-web-gate-deploy.log; then tail -20 /tmp/via-web-gate-deploy.log; fi
+          } > .ci/via-web-gate-prod-status.txt
+          git config user.name "via-traslados-ci"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci/via-web-gate-prod-status.txt
+          git commit -m "ci(via): registrar interruptor público" || true
+          git push origin HEAD:via-web-gate-qa || true
