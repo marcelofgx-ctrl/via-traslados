@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/direcciones",
+      "destination": "https://viatraslados.com/api/direcciones"
+    }
+  ]
+}
