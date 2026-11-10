@@ -120,3 +120,13 @@ CREATE TABLE IF NOT EXISTS staff_password_resets (
  attempts INTEGER NOT NULL DEFAULT 0,
  sent_at INTEGER NOT NULL
 );
+
+-- Distancia de conducción estimada por proveedor; cacheo sin datos personales.
+-- Tabla aislada de cotizaciones, no modifica origen/destino ni precios.
+CREATE TABLE IF NOT EXISTS booking_routes (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ distance_m INTEGER NOT NULL CHECK(distance_m BETWEEN 100 AND 2000000),
+ duration_s INTEGER NOT NULL CHECK(duration_s BETWEEN 1 AND 432000),
+ provider TEXT NOT NULL,
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
