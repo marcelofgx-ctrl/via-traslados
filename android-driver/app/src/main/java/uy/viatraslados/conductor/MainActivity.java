@@ -910,15 +910,21 @@ public final class MainActivity extends Activity {
             String status=driver.optString("status");
             LinearLayout c=card();
             addLine(c,driver.optString("name","Sin nombre"),18,INK,true,5);
-            addLine(c,driver.optString("email",""),13,MUTED,false,8);
+            addLine(c,driver.optString("phone","Sin celular")+" · "+driver.optString("email",""),13,MUTED,false,8);
+            addLine(c,driver.optBoolean("emailVerified",false)?"Correo verificado":"Correo sin verificar",
+                12,driver.optBoolean("emailVerified",false)?TEAL:ORANGE,true,8);
             String caption="pending".equals(status)?"PENDIENTE":
                 "approved".equals(status)?"APROBADO":"BLOQUEADO";
             addLine(c,caption,13,"approved".equals(status)?TEAL:ORANGE,true,14);
             String target="approved".equals(status)?"blocked":"approved";
             String action="approved".equals(status)?"Bloquear conductor":"Aprobar / reactivar conductor";
-            c.addView(button(action,!"approved".equals(status),
-                v -> confirmDriverStatus(id,driver.optString("name"),target)),
-                new LinearLayout.LayoutParams(-1,dp(50)));
+            Button actionButton=button(action,!"approved".equals(status),
+                v -> confirmDriverStatus(id,driver.optString("name"),target));
+            if ("approved".equals(target) && !driver.optBoolean("emailVerified",false)) {
+                actionButton.setEnabled(false);
+                actionButton.setAlpha(0.5f);
+            }
+            c.addView(actionButton,new LinearLayout.LayoutParams(-1,dp(50)));
             appendCard(content,c,12);
         }
         addLine(content,"Las cuentas bloqueadas quedan sin acceso de inmediato, incluso si habían iniciado sesión.",
@@ -1020,12 +1026,31 @@ public final class MainActivity extends Activity {
         LinearLayout c=card();
         addLine(c,"Cuenta del conductor",19,INK,true,9);
         addLine(c,"Sesión activa en este dispositivo",14,TEAL,true,14);
-        addLine(c,"Las credenciales permanecen únicamente en memoria mientras la aplicación está abierta.",
+        addLine(c,"Tu contraseña nunca se guarda. Si activás la huella, Android protege una sesión renovable cifrada.",
             14,MUTED,false,14);
+        if (staffToken!=null && BiometricVault.supported(this) && !BiometricVault.hasSaved(this)){
+            c.addView(button("Activar acceso con huella",true,v->saveBiometric()),
+                new LinearLayout.LayoutParams(-1,dp(50)));
+            spacer(c,9);
+        }
+        if (BiometricVault.hasSaved(this)){
+            c.addView(button("Quitar acceso con huella",false,v->{
+                BiometricVault.clear(this);
+                message("Se eliminó el acceso biométrico de este dispositivo.");
+                dashboard();
+            }),new LinearLayout.LayoutParams(-1,dp(50)));
+            spacer(c,9);
+        }
         c.addView(button("Cerrar sesión",false,v->{
-            if (staffToken != null) api("POST", "/api/staff/logout", new JSONObject(), (status,response,error)->{});
+            if (staffToken!=null){
+                JSONObject p=new JSONObject();
+                try{if(staffRefreshToken!=null)p.put("refreshToken",staffRefreshToken);}catch(Exception ignored){}
+                api("POST","/api/staff/logout-device",p,(status,response,error)->{});
+            }
+            BiometricVault.clear(this);
             operatorKey=null;
             staffToken=null;
+            staffRefreshToken=null;
             bookings=new JSONArray();
             lastPayload="";
             loginScreen();
