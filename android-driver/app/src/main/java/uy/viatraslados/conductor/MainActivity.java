@@ -47,6 +47,7 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private String operatorKey;
     private String staffToken;
+    private String staffRefreshToken;
     private String staffRole = "driver";
     private String staffName = "";
     private JSONArray approvedDrivers = new JSONArray();
@@ -96,6 +97,7 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         operatorKey = null;
         staffToken = null;
+        staffRefreshToken = null;
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -180,6 +182,7 @@ public final class MainActivity extends Activity {
         root.removeAllViews();
         operatorKey = null;
         staffToken = null;
+        staffRefreshToken = null;
         staffRole = "driver";
         staffName = "";
         ScrollView scroll = new ScrollView(this);
@@ -215,15 +218,23 @@ public final class MainActivity extends Activity {
             String entered = key.getText().toString();
             if (entered.isEmpty()) { key.setError("Ingresá tu clave"); return; }
             operatorKey = entered;
+            staffRole = "admin";
+            staffName = "Administrador principal";
+            adminLoaded = false;
             key.setText("");
             signInPending();
             fetchBookings(true);
         });
         authCard.addView(signIn, new LinearLayout.LayoutParams(-1, dp(54)));
         appendCard(pane, authCard, 15);
-        pane.addView(button("Ingresar con usuario y contraseña", false, v -> accountLogin()),
+        pane.addView(button("Ingresar con celular y contraseña", false, v -> accountLogin()),
             new LinearLayout.LayoutParams(-1, dp(54)));
         spacer(pane, 11);
+        if (BiometricVault.hasSaved(this) && BiometricVault.supported(this)) {
+            pane.addView(button("Ingresar con huella digital", true, v -> biometricLogin()),
+                new LinearLayout.LayoutParams(-1, dp(54)));
+            spacer(pane, 11);
+        }
         pane.addView(button("Registrarme como conductor", false, v -> driverRegister()),
             new LinearLayout.LayoutParams(-1, dp(54)));
         spacer(pane, 24);
@@ -923,7 +934,7 @@ public final class MainActivity extends Activity {
         }
         LinearLayout info=card();
         addLine(info,"Información",19,INK,true,10);
-        addLine(info,"Versión 0.1.0 · Pruebas QA",14,INK,false,5);
+        addLine(info,"Versión 0.3.0 · Pruebas QA",14,INK,false,5);
         addLine(info,"Servidor: via-traslados-api",13,MUTED,false,6);
         addLine(info,"Moneda: pesos uruguayos (UYU)",13,MUTED,false,6);
         addLine(info,"Actualización: cada 30 segundos con la app abierta",13,MUTED,false,10);
