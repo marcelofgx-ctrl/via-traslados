@@ -41,7 +41,7 @@ export default {async fetch(req,env){
   if(path==='/api/health'&&req.method==='GET')return send({ok:true,name:'via-traslados',otpAvailable:emailOtpAvailable(env)});
   const phoneHandled=await staffPhoneRoutes(req,env,path,send,err);if(phoneHandled)return phoneHandled;
   const handled=await staffRoutes(req,env,path,send,err);if(handled)return handled;
-  const distanceHandled=await routeEstimateRoutes(req,env,path);if(distanceHandled)return distanceHandled;
+  const distanceHandled=await routeEstimateRoutes(req,env,path,send);if(distanceHandled)return distanceHandled;
   if((path.startsWith('/api/auth/')||path==='/api/requests'||path.startsWith('/api/requests/'))&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio. Volvé a intentar más tarde.',503);
   if(path==='/api/auth/start'&&req.method==='POST'){const r=await beginOtp(req,env);return send(r.data,r.status)}
   if(path==='/api/auth/verify'&&req.method==='POST'){const r=await checkOtp(req,env);return send(r.data,r.status)}
