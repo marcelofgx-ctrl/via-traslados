@@ -94,4 +94,6 @@ test('el paso 2 incluye celular, huella opcional, y código al correo asociado',
  assert.match(keys,/credentials\?\.get|credentials\.get/);
  assert.match(keys,/if\(!available\(\)\)/);
  assert.match(path('reserva.html'),/id="enable-passkey"/);
+ assert.match(app,/if\(S\.isDemo\(\)\)\{\s*const thumb=\$\('return-passkey'\)/);
+ assert.match(app,/DEMO: usá el código 123456\. No se envió ningún correo/);
 });
