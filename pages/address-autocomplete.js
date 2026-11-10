@@ -64,6 +64,19 @@ function search(input){const q=input.value.trim();clearTimeout(timer);if(abort)a
   display(input,[...unique.values()].slice(0,12));
  }catch(e){if(mySeq!==seq||e.name==='AbortError')return;panel.replaceChildren();line('No se pudo buscar. Podés escribir la dirección manualmente.','address-empty')}
 },410)}
+// Corregir también direcciones prellenadas por el navegador al volver a Inicio.
+function normalizeExistingAddress(input){
+ const label=String(input.value||'');
+ if(!label.includes(','))return;
+ const [street,city,department]=label.split(',').map(part=>part.trim());
+ const corrected=correctLocality({label,street,city,department},label);
+ if(corrected.label!==label){
+  input.value=corrected.label;
+  if(input.dataset.addressSelected==='true')input.dataset.city=corrected.city;
+ }
+}
+fields.forEach(normalizeExistingAddress);
+window.addEventListener('pageshow',()=>fields.forEach(normalizeExistingAddress));
 fields.forEach(input=>{input.setAttribute('autocomplete','off');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-controls','address-suggestions');input.addEventListener('input',()=>{setMeta(input,null);search(input)});input.addEventListener('focus',()=>{if(input.value.trim().length>=3)search(input)});input.addEventListener('keydown',e=>{if(e.key==='Escape'){clear();return}if(e.key==='ArrowDown'&&!panel.classList.contains('hidden')){e.preventDefault();panel.querySelector('button')?.focus()}})});
 document.addEventListener('pointerdown',e=>{if(!panel.contains(e.target)&&!fields.includes(e.target))clear()});window.addEventListener('resize',()=>active&&position(active));
 })();
