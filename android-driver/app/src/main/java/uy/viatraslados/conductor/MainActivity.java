@@ -37,10 +37,13 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String API = "https://via-traslados-api.marcelof-gx.workers.dev";
-    private static final int TEAL = Color.rgb(9, 126, 121);
-    private static final int INK = Color.rgb(24, 43, 49);
-    private static final int MUTED = Color.rgb(109, 128, 134);
-    private static final int LIGHT = Color.rgb(244, 248, 247);
+    private static final int TEAL = Color.rgb(3, 116, 109);
+    private static final int TEAL_DARK = Color.rgb(0, 96, 91);
+    private static final int BORDER = Color.rgb(223, 234, 230);
+    private static final int SOFT = Color.rgb(234, 246, 242);
+    private static final int INK = Color.rgb(24, 44, 48);
+    private static final int MUTED = Color.rgb(105, 123, 125);
+    private static final int LIGHT = Color.rgb(247, 250, 248);
     private static final int ORANGE = Color.rgb(211, 110, 43);
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -143,26 +146,35 @@ public final class MainActivity extends Activity {
         container.addView(t, p);
     }
 
-    private Button button(String s, boolean primary, View.OnClickListener click) {
+    private android.graphics.drawable.Drawable ripple(int color, int border, int radius) {
+        return new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Color.argb(31, 0, 102, 95)),
+            bg(color, radius, border), null);
+    }
+
+    private Button button(String label, boolean primary, View.OnClickListener click) {
         Button b = new Button(this);
-        b.setText(s);
+        b.setText(label);
         b.setAllCaps(false);
         b.setTextSize(14);
+        b.setLetterSpacing(0);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setTextColor(primary ? Color.WHITE : TEAL);
-        b.setBackground(bg(primary ? TEAL : Color.WHITE, 14,
-            primary ? 0 : Color.rgb(204, 226, 223)));
-        b.setPadding(dp(13), dp(8), dp(13), dp(8));
+        b.setTextColor(primary ? Color.WHITE : TEAL_DARK);
+        b.setBackground(ripple(primary ? TEAL : Color.WHITE, primary ? 0 : BORDER, 13));
+        b.setElevation(0);
+        b.setStateListAnimator(null);
+        b.setPadding(dp(14), dp(6), dp(14), dp(6));
         b.setMinHeight(dp(48));
+        b.setMinWidth(0);
         b.setOnClickListener(click);
         return b;
     }
 
     private LinearLayout card() {
         LinearLayout c = column();
-        c.setPadding(dp(18), dp(17), dp(18), dp(17));
-        c.setBackground(bg(Color.WHITE, 18, Color.rgb(225, 233, 231)));
-        c.setElevation(dp(2));
+        c.setPadding(dp(16), dp(16), dp(16), dp(16));
+        c.setBackground(bg(Color.WHITE, 16, BORDER));
+        c.setElevation(0);
         return c;
     }
 
@@ -178,6 +190,122 @@ public final class MainActivity extends Activity {
         l.addView(v, new LinearLayout.LayoutParams(1, dp(height)));
     }
 
+    private TextView actionText(String label, int color, View.OnClickListener action) {
+        TextView v = text(label, 13, color, true);
+        v.setGravity(Gravity.CENTER);
+        v.setMinHeight(dp(46));
+        v.setPadding(dp(9), dp(9), dp(9), dp(9));
+        v.setBackground(ripple(Color.TRANSPARENT, 0, 10));
+        v.setOnClickListener(action);
+        v.setClickable(true);
+        v.setFocusable(true);
+        return v;
+    }
+
+    private LinearLayout inputShell(String icon, EditText input, boolean isPassword) {
+        LinearLayout shell = row();
+        shell.setPadding(dp(13), 0, dp(12), 0);
+        shell.setBackground(bg(Color.WHITE, 12, BORDER));
+        TextView leading = text(icon, 19, MUTED, false);
+        leading.setGravity(Gravity.CENTER);
+        shell.addView(leading, new LinearLayout.LayoutParams(dp(24), dp(48)));
+        LinearLayout.LayoutParams inputLayout = new LinearLayout.LayoutParams(0, dp(52), 1);
+        inputLayout.leftMargin = dp(10);
+        input.setBackgroundColor(Color.TRANSPARENT);
+        input.setTextSize(16);
+        input.setSingleLine(true);
+        input.setTextColor(INK);
+        input.setHintTextColor(Color.rgb(153, 168, 165));
+        input.setPadding(0, dp(6), 0, dp(6));
+        shell.addView(input, inputLayout);
+        if (isPassword) {
+            TextView eye = actionText("Mostrar", TEAL_DARK, v -> {
+                int cursor = input.getSelectionStart();
+                boolean hidden = (input.getInputType() & InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0;
+                input.setInputType(InputType.TYPE_CLASS_TEXT | (hidden ?
+                    InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD :
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD));
+                input.setTypeface(Typeface.DEFAULT);
+                input.setSelection(Math.min(Math.max(cursor,0), input.length()));
+                ((TextView) v).setText(hidden ? "Ocultar" : "Mostrar");
+            });
+            eye.setTextSize(12);
+            shell.addView(eye, new LinearLayout.LayoutParams(-2, dp(48)));
+        }
+        return shell;
+    }
+
+    private void loginPhone(String phone, String password) {
+        if (phone.trim().isEmpty() || password.isEmpty()) {
+            message("Ingresá tu celular y contraseña.");
+            return;
+        }
+        JSONObject data = new JSONObject();
+        try {
+            data.put("phone", phone.trim());
+            data.put("password", password);
+        } catch (Exception ignored) {}
+        signInPending();
+        api("POST", "/api/staff/login-phone", data, (status, response, error) -> {
+            if (status == 200) {
+                try {
+                    JSONObject parsed = new JSONObject(response);
+                    JSONObject user = parsed.getJSONObject("user");
+                    operatorKey = null;
+                    staffToken = parsed.getString("token");
+                    staffRefreshToken = parsed.getString("refreshToken");
+                    staffRole = user.getString("role");
+                    staffName = user.optString("name", "");
+                    getSharedPreferences("via_preferences", MODE_PRIVATE)
+                        .edit().putString("last_phone", phone.trim()).apply();
+                    tab = "solicitudes";
+                    adminLoaded = false;
+                    fetchBookings(true);
+                    offerBiometric();
+                } catch (Exception e) {
+                    loginScreen();
+                    message("No se pudo completar el ingreso.");
+                }
+            } else {
+                loginScreen();
+                new AlertDialog.Builder(this)
+                    .setTitle("No pudimos ingresar")
+                    .setMessage(error == null || error.isEmpty() ?
+                        "Verificá tu número y contraseña." : error)
+                    .setPositiveButton("Entendido", null).show();
+            }
+        });
+    }
+
+    private void adminMasterDialog() {
+        LinearLayout form = formContainer();
+        addLine(form, "Esta clave es solo para crear o recuperar tu cuenta de administrador. El acceso habitual se hace con celular y contraseña.",
+            14, MUTED, false, 12);
+        EditText key = formInput(form, "Clave maestra de administrador",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+            .setTitle("Acceso de administración")
+            .setView(form)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Continuar", (dialog, which) -> {
+                String entered = key.getText().toString();
+                key.setText("");
+                if (entered.isEmpty()) {
+                    message("Ingresá la clave maestra.");
+                    return;
+                }
+                operatorKey = entered;
+                staffToken = null;
+                staffRefreshToken = null;
+                staffRole = "admin";
+                staffName = "Administrador principal";
+                tab = "administrar";
+                adminLoaded = false;
+                signInPending();
+                fetchBookings(true);
+            }).show();
+    }
+
     private void loginScreen() {
         root.removeAllViews();
         operatorKey = null;
@@ -185,65 +313,109 @@ public final class MainActivity extends Activity {
         staffRefreshToken = null;
         staffRole = "driver";
         staffName = "";
+        root.setBackgroundColor(LIGHT);
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        LinearLayout pane = column();
-        pane.setPadding(dp(25), dp(56), dp(25), dp(28));
-        scroll.addView(pane);
 
-        TextView monogram = text("V", 33, Color.WHITE, true);
-        monogram.setGravity(Gravity.CENTER);
-        monogram.setBackground(bg(TEAL, 22, 0));
-        pane.addView(monogram, new LinearLayout.LayoutParams(dp(70), dp(70)));
-        spacer(pane, 25);
-        addLine(pane, "Vía Traslados", 30, INK, true, 4);
-        addLine(pane, "Panel privado del conductor", 16, MUTED, false, 34);
+        LinearLayout page = column();
+        page.setPadding(dp(24), dp(27), dp(24), dp(16));
+        scroll.addView(page);
 
-        LinearLayout authCard = card();
-        addLine(authCard, "Acceso del conductor", 22, INK, true, 7);
-        addLine(authCard,
-            "Ingresá la clave privada que recibiste. Por seguridad no se guarda en el teléfono.",
-            14, MUTED, false, 20);
-        EditText key = new EditText(this);
-        key.setSingleLine(true);
-        key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        key.setHint("Clave del operador");
-        key.setTextSize(16);
-        key.setPadding(dp(13), dp(9), dp(13), dp(9));
-        key.setBackground(bg(LIGHT, 12, Color.rgb(211, 227, 224)));
-        authCard.addView(key, new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(authCard, 16);
-        Button signIn = button("Ingresar al panel  →", true, v -> {
-            String entered = key.getText().toString();
-            if (entered.isEmpty()) { key.setError("Ingresá tu clave"); return; }
-            operatorKey = entered;
-            staffRole = "admin";
-            staffName = "Administrador principal";
-            adminLoaded = false;
-            key.setText("");
-            signInPending();
-            fetchBookings(true);
+        LinearLayout brand = row();
+        TextView mark = text("V", 25, Color.WHITE, true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(bg(TEAL, 14, 0));
+        brand.addView(mark, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        LinearLayout titles = column();
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, -2, 1);
+        tl.leftMargin = dp(12);
+        brand.addView(titles, tl);
+        addLine(titles, "Vía Traslados", 21, INK, true, 2);
+        addLine(titles, "Centro de operaciones", 12, MUTED, false, 0);
+        page.addView(brand);
+        spacer(page, 43);
+
+        addLine(page, "Bienvenido", 30, INK, true, 7);
+        addLine(page, "Ingresá para gestionar tus traslados.", 14, MUTED, false, 26);
+
+        TextView phoneLabel = text("CELULAR", 11, MUTED, true);
+        phoneLabel.setLetterSpacing(0.12f);
+        page.addView(phoneLabel);
+        spacer(page, 8);
+        EditText phone = new EditText(this);
+        phone.setInputType(InputType.TYPE_CLASS_PHONE);
+        phone.setHint("099 123 456");
+        phone.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        phone.setText(getSharedPreferences("via_preferences", MODE_PRIVATE).getString("last_phone", ""));
+        page.addView(inputShell("☎", phone, false), new LinearLayout.LayoutParams(-1, dp(54)));
+        spacer(page, 17);
+
+        TextView passLabel = text("CONTRASEÑA", 11, MUTED, true);
+        passLabel.setLetterSpacing(0.12f);
+        page.addView(passLabel);
+        spacer(page, 8);
+        EditText password = new EditText(this);
+        password.setHint("Tu contraseña");
+        password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        page.addView(inputShell("◈", password, true), new LinearLayout.LayoutParams(-1, dp(54)));
+        password.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                loginPhone(phone.getText().toString(), password.getText().toString());
+                return true;
+            }
+            return false;
         });
-        authCard.addView(signIn, new LinearLayout.LayoutParams(-1, dp(54)));
-        appendCard(pane, authCard, 15);
-        pane.addView(button("Ingresar con celular y contraseña", false, v -> accountLogin()),
-            new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(pane, 11);
+        spacer(page, 16);
+
+        Button enter = button("Ingresar   →", true, v ->
+            loginPhone(phone.getText().toString(), password.getText().toString()));
+        enter.setTextSize(16);
+        page.addView(enter, new LinearLayout.LayoutParams(-1, dp(54)));
+
         if (BiometricVault.hasSaved(this) && BiometricVault.supported(this)) {
-            pane.addView(button("Ingresar con huella digital", true, v -> biometricLogin()),
-                new LinearLayout.LayoutParams(-1, dp(54)));
-            spacer(pane, 11);
+            spacer(page, 10);
+            Button fingerprint = button("◎  Ingresar con huella", false, v -> biometricLogin());
+            fingerprint.setTextSize(14);
+            fingerprint.setContentDescription("Ingresar usando la huella del teléfono");
+            page.addView(fingerprint, new LinearLayout.LayoutParams(-1, dp(52)));
         }
-        pane.addView(button("Registrarme como conductor", false, v -> driverRegister()),
-            new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(pane, 11);
-        pane.addView(button("Verificar mi correo electrónico", false, v -> askEmailForVerification()),
-            new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(pane, 24);
-        addLine(pane, "Solo para el conductor autorizado · Vía Traslados", 12, MUTED, false, 10);
-        addLine(pane, "No hay comisiones de plataforma ni cargos por cada oferta.",
-            12, MUTED, false, 0);
+
+        spacer(page, 27);
+        View line = new View(this);
+        line.setBackgroundColor(BORDER);
+        page.addView(line, new LinearLayout.LayoutParams(-1, dp(1)));
+        spacer(page, 14);
+
+        LinearLayout signup = row();
+        TextView question = text("¿Sos nuevo?", 13, MUTED, false);
+        signup.addView(question);
+        TextView register = actionText("Solicitar registro  →", TEAL_DARK, v -> driverRegister());
+        signup.addView(register);
+        page.addView(signup);
+        spacer(page, 5);
+
+        LinearLayout extras = row();
+        TextView verify = actionText("Verificar correo", MUTED, v -> askEmailForVerification());
+        extras.addView(verify);
+        View tiny = new View(this);
+        tiny.setBackgroundColor(BORDER);
+        LinearLayout.LayoutParams sep = new LinearLayout.LayoutParams(dp(1), dp(16));
+        sep.leftMargin = dp(5);
+        sep.rightMargin = dp(5);
+        extras.addView(tiny, sep);
+        TextView admin = actionText("Acceso administrador", MUTED, v -> adminMasterDialog());
+        extras.addView(admin);
+        page.addView(extras);
+        spacer(page, 14);
+
+        TextView foot = text("ACCESO SEGURO  ·  VÍA TRASLADOS", 10, MUTED, true);
+        foot.setGravity(Gravity.CENTER);
+        foot.setLetterSpacing(0.10f);
+        page.addView(foot);
     }
 
     private void signInPending() {
@@ -251,7 +423,13 @@ public final class MainActivity extends Activity {
         LinearLayout c = column();
         c.setGravity(Gravity.CENTER);
         root.addView(c, new LinearLayout.LayoutParams(-1, -1));
-        TextView t = text("Conectando con Vía Traslados…", 17, TEAL, true);
+        android.widget.ProgressBar spinner = new android.widget.ProgressBar(this);
+        spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TEAL));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(38),dp(38));
+        lp.gravity=Gravity.CENTER_HORIZONTAL;
+        c.addView(spinner,lp);
+        spacer(c,20);
+        TextView t = text("Preparando tu espacio…", 15, INK, true);
         t.setGravity(Gravity.CENTER);
         c.addView(t);
     }
@@ -337,28 +515,52 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private LinearLayout statTile(String value, String label, boolean featured) {
+        LinearLayout tile = column();
+        tile.setPadding(dp(15),dp(13),dp(15),dp(13));
+        tile.setBackground(bg(featured ? SOFT : Color.WHITE, 14, featured ? 0 : BORDER));
+        addLine(tile, value, 24, featured ? TEAL_DARK : INK, true, 3);
+        addLine(tile, label, 12, MUTED, false, 0);
+        return tile;
+    }
+
     private void dashboard() {
         if (operatorKey == null && staffToken == null) return;
         root.removeAllViews();
+        root.setBackgroundColor(LIGHT);
+
         LinearLayout header = row();
-        header.setPadding(dp(17), dp(13), dp(17), dp(13));
+        header.setPadding(dp(19), dp(13), dp(19), dp(13));
         header.setBackgroundColor(Color.WHITE);
+
+        TextView emblem = text("V", 21, Color.WHITE, true);
+        emblem.setGravity(Gravity.CENTER);
+        emblem.setBackground(bg(TEAL, 11, 0));
+        header.addView(emblem, new LinearLayout.LayoutParams(dp(39), dp(39)));
+
         LinearLayout brand = column();
-        addLine(brand, "Vía Traslados", 21, INK, true, 0);
-        addLine(brand, "admin".equals(staffRole) ? "ADMINISTRADOR · EN LÍNEA" : "CONDUCTOR · EN LÍNEA", 11, TEAL, true, 0);
-        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        Button refresh = button("↻", false, v -> fetchBookings(true));
-        refresh.setMinWidth(dp(48));
-        header.addView(refresh, new LinearLayout.LayoutParams(dp(52), dp(46)));
-        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, -2, 1);
+        bl.leftMargin = dp(11);
+        header.addView(brand, bl);
+        addLine(brand, "Vía Traslados", 18, INK, true, 3);
+        addLine(brand, "admin".equals(staffRole) ? "Administrador general" : "Mi espacio de conductor",
+            12, MUTED, false, 0);
+
+        TextView refresh = actionText("↻", TEAL_DARK, v -> fetchBookings(true));
+        refresh.setTextSize(25);
+        refresh.setBackground(ripple(SOFT,0,12));
+        refresh.setContentDescription("Actualizar solicitudes");
+        header.addView(refresh, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        root.addView(header,new LinearLayout.LayoutParams(-1,-2));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        LinearLayout content = column();
-        content.setPadding(dp(17), dp(19), dp(17), dp(20));
-        scroll.addView(content);
+        scroll.setVerticalScrollBarEnabled(false);
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
+        LinearLayout content = column();
+        content.setPadding(dp(19),dp(20),dp(19),dp(12));
+        scroll.addView(content);
         if ("administrar".equals(tab)) manage(content);
         else if ("ajustes".equals(tab)) settings(content);
         else if ("historial".equals(tab)) lists(content, "historial");
@@ -376,84 +578,122 @@ public final class MainActivity extends Activity {
 
     private void lists(LinearLayout body, String mode) {
         if ("solicitudes".equals(mode)) {
-            addLine(body, "Solicitudes", 27, INK, true, 3);
-            addLine(body, "Cotizá cada traslado y enviá tu propuesta.", 14, MUTED, false, 17);
-            LinearLayout filters = row();
-            Button a = button("Nuevas (" + count("requested") + ")",
-                 "nuevas".equals(subtab), v -> { subtab="nuevas"; dashboard(); });
-            Button b = button("Con ofertas (" + count("quoted") + ")",
-                 "ofertas".equals(subtab), v -> { subtab="ofertas"; dashboard(); });
-            filters.addView(a, new LinearLayout.LayoutParams(0, dp(50), 1));
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, dp(50), 1);
-            bp.leftMargin = dp(8);
-            filters.addView(b, bp);
+            addLine(body, "Solicitudes", 25, INK, true, 4);
+            addLine(body, "Consultá y respondé a nuevos traslados", 13, MUTED, false, 16);
+
+            LinearLayout stats = row();
+            LinearLayout.LayoutParams first=new LinearLayout.LayoutParams(0,-2,1);
+            stats.addView(statTile(String.valueOf(count("requested")), "Sin cotizar", true),first);
+            LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,-2,1);
+            second.leftMargin=dp(9);
+            stats.addView(statTile(String.valueOf(count("quoted")), "Con oferta", false),second);
+            body.addView(stats);
+            spacer(body,18);
+
+            LinearLayout filters=row();
+            Button newer=button("Nuevas ("+count("requested")+")",
+                "nuevas".equals(subtab),v->{subtab="nuevas";dashboard();});
+            Button offers=button("Con ofertas ("+count("quoted")+")",
+                "ofertas".equals(subtab),v->{subtab="ofertas";dashboard();});
+            newer.setTextSize(13);offers.setTextSize(13);
+            filters.addView(newer,new LinearLayout.LayoutParams(0,dp(45),1));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(45),1);
+            lp.leftMargin=dp(8);filters.addView(offers,lp);
             body.addView(filters);
-            spacer(body, 18);
+            spacer(body,17);
         } else if ("viajes".equals(mode)) {
-            addLine(body, "Mis viajes", 27, INK, true, 5);
-            addLine(body, "Servicios aceptados y próximos traslados.", 14, MUTED, false, 17);
+            addLine(body, "Mis viajes", 25, INK, true, 4);
+            addLine(body, "Servicios confirmados y en curso", 13, MUTED, false, 18);
         } else {
-            addLine(body, "Historial", 27, INK, true, 5);
-            addLine(body, "Traslados finalizados o cancelados.", 14, MUTED, false, 17);
+            addLine(body, "Historial", 25, INK, true, 4);
+            addLine(body, "Traslados finalizados y cancelados", 13, MUTED, false, 18);
         }
 
-        int shown = 0;
-        for (int i = 0; i < bookings.length(); i++) {
-            JSONObject item = bookings.optJSONObject(i);
-            if (item == null) continue;
-            String status = item.optString("status");
+        int shown=0;
+        for(int i=0;i<bookings.length();i++){
+            JSONObject item=bookings.optJSONObject(i);
+            if(item==null)continue;
+            String status=item.optString("status");
             boolean include;
-            if ("solicitudes".equals(mode)) {
-                include = "nuevas".equals(subtab) ? "requested".equals(status) : "quoted".equals(status);
-            } else if ("historial".equals(mode)) {
-                include = "completed".equals(status) || "cancelled".equals(status);
-            } else {
-                include = "accepted".equals(status) || "confirmed".equals(status)
-                    || "en_route".equals(status) || "arrived".equals(status)
-                    || "in_progress".equals(status);
-            }
-            if (include) { bookingCard(body, item); shown++; }
+            if("solicitudes".equals(mode))
+                include="nuevas".equals(subtab)?"requested".equals(status):"quoted".equals(status);
+            else if("historial".equals(mode))
+                include="completed".equals(status)||"cancelled".equals(status);
+            else
+                include="accepted".equals(status)||"confirmed".equals(status)
+                    ||"en_route".equals(status)||"arrived".equals(status)||"in_progress".equals(status);
+            if(include){bookingCard(body,item);shown++;}
         }
-        if (shown == 0) {
-            LinearLayout empty = card();
-            addLine(empty, "Sin solicitudes por ahora", 18, INK, true, 6);
-            addLine(empty, "Cuando haya movimientos aparecerán acá. Podés actualizar con ↻.",
-                14, MUTED, false, 0);
-            appendCard(body, empty, 14);
+        if(shown==0){
+            LinearLayout empty=card();
+            TextView circle=text("✓",20,TEAL,true);
+            circle.setGravity(Gravity.CENTER);
+            circle.setBackground(bg(SOFT,28,0));
+            empty.addView(circle,new LinearLayout.LayoutParams(dp(45),dp(45)));
+            spacer(empty,11);
+            addLine(empty,"Todo al día",18,INK,true,6);
+            addLine(empty,"No hay movimientos en esta sección. Las novedades aparecerán automáticamente.",
+                13,MUTED,false,0);
+            appendCard(body,empty,10);
         }
-        addLine(body, "Actualización automática cada 30 segundos mientras la aplicación está abierta.",
-            12, MUTED, false, 0);
+        spacer(body,4);
+        addLine(body,"Se actualiza cada 30 s mientras la app está abierta.",
+            11,MUTED,false,0);
     }
 
     private void bookingCard(LinearLayout parent, JSONObject item) {
-        LinearLayout c = card();
-        LinearLayout top = row();
-        String date = item.optString("date",""), time=item.optString("time","");
-        TextView when = text(date + " · " + time, 14, INK, true);
-        top.addView(when, new LinearLayout.LayoutParams(0,-2,1));
-        TextView st = text(statusName(item.optString("status")), 12, stateColor(item.optString("status")), true);
-        st.setGravity(Gravity.CENTER);
-        st.setPadding(dp(10),dp(7),dp(10),dp(7));
-        st.setBackground(bg(Color.rgb(240, 248, 246), 20, 0));
-        top.addView(st);
-        c.addView(top);
-        spacer(c, 7);
-        addLine(c, "Solicitud " + item.optString("id"), 11, MUTED, false, 15);
-        addLine(c, "●   " + item.optString("origin"), 15, INK, true, 9);
-        addLine(c, "↓", 15, TEAL, true, 6);
-        addLine(c, "●   " + item.optString("destination"), 15, INK, true, 14);
-        int price = item.optInt("price",0);
-        addLine(c, item.optInt("passengers",1) + " pasajero(s) · "
-          + item.optInt("bags",0) + " valija(s)"
-          + (price>0?" · Oferta $" + price + " UYU":""), 13, MUTED, false, 11);
-        Button view = button("Ver solicitud  →", false, v -> details(item));
-        c.addView(view,new LinearLayout.LayoutParams(-1,dp(46)));
-        if ("requested".equals(item.optString("status"))) {
-            spacer(c, 8);
-            Button quote = button("Sugerir precio", true, v -> quote(item));
-            c.addView(quote,new LinearLayout.LayoutParams(-1,dp(46)));
+        LinearLayout card=card();
+        LinearLayout top=row();
+        String date=item.optString("date",""),time=item.optString("time","");
+        TextView when=text(date+"  ·  "+time,13,INK,true);
+        top.addView(when,new LinearLayout.LayoutParams(0,-2,1));
+        String status=item.optString("status");
+        TextView flag=text(statusName(status),11,stateColor(status),true);
+        flag.setGravity(Gravity.CENTER);
+        flag.setPadding(dp(9),dp(6),dp(9),dp(6));
+        flag.setBackground(bg(SOFT,20,0));
+        top.addView(flag);
+        card.addView(top);
+        spacer(card,14);
+
+        LinearLayout from=row();
+        TextView bullet=text("●",13,TEAL,true);
+        from.addView(bullet,new LinearLayout.LayoutParams(dp(22),-2));
+        TextView origin=text(item.optString("origin"),15,INK,true);
+        origin.setMaxLines(2);
+        origin.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        from.addView(origin,new LinearLayout.LayoutParams(0,-2,1));
+        card.addView(from);
+        LinearLayout branch=row();
+        TextView axis=text("│",14,Color.rgb(155,185,178),false);
+        branch.addView(axis,new LinearLayout.LayoutParams(dp(22),-2));
+        card.addView(branch);
+        LinearLayout to=row();
+        TextView target=text("◆",12,TEAL,true);
+        to.addView(target,new LinearLayout.LayoutParams(dp(22),-2));
+        TextView dest=text(item.optString("destination"),15,INK,true);
+        dest.setMaxLines(2);
+        dest.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        to.addView(dest,new LinearLayout.LayoutParams(0,-2,1));
+        card.addView(to);
+        spacer(card,13);
+
+        int price=item.optInt("price",0);
+        addLine(card,item.optInt("passengers",1)+" pasaj.  ·  "+
+            item.optInt("bags",0)+" valijas"+(price>0?"  ·  $ "+price+" UYU":""),
+            12,MUTED,false,13);
+
+        LinearLayout actions=row();
+        Button see=button("Ver detalles",false,v->details(item));
+        actions.addView(see,new LinearLayout.LayoutParams(0,dp(46),1));
+        if("requested".equals(status)){
+            Button quote=button("Cotizar  →",true,v->quote(item));
+            LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(0,dp(46),1);
+            qp.leftMargin=dp(8);
+            actions.addView(quote,qp);
         }
-        appendCard(parent,c,13);
+        card.addView(actions);
+        appendCard(parent,card,12);
     }
 
     private static String statusName(String state) {
@@ -901,65 +1141,111 @@ public final class MainActivity extends Activity {
     }
 
     private void manage(LinearLayout content) {
-        if (!"admin".equals(staffRole)) { addLine(content,"Acceso restringido",18,ORANGE,true,0); return; }
-        addLine(content, "Administración", 27, INK, true, 4);
-        addLine(content, "Control general de Vía Traslados", 14, MUTED, false, 19);
-        if (!adminLoaded) {
-            addLine(content, "Consultando la base de datos…", 15, MUTED, false, 12);
+        if(!"admin".equals(staffRole)){
+            addLine(content,"Acceso restringido",19,ORANGE,true,0);
+            return;
+        }
+        addLine(content,"Administración",25,INK,true,4);
+        addLine(content,"Servicio, conductores y autorizaciones",13,MUTED,false,19);
+        if(!adminLoaded){
+            LinearLayout loading=card();
+            addLine(loading,"Consultando estado del servicio…",14,MUTED,false,0);
+            appendCard(content,loading,15);
             loadAdmin();
             return;
         }
-        LinearLayout service = card();
-        addLine(service, "Servicio público", 19, INK, true, 10);
-        addLine(service, siteEnabled ? "WEB HABILITADA" : "WEB SUSPENDIDA",
-            18, siteEnabled ? TEAL : ORANGE, true, 9);
-        addLine(service, siteEnabled ?
-            "Los pasajeros pueden ingresar y solicitar reservas." :
-            "Los pasajeros no pueden crear reservas. La administración continúa disponible.",
-            13, MUTED, false, 16);
-        service.addView(button(siteEnabled ? "Suspender web de pasajeros" : "Reactivar web de pasajeros",
-            !siteEnabled, v -> confirmServiceSwitch()),
-            new LinearLayout.LayoutParams(-1, dp(53)));
-        appendCard(content, service, 16);
 
-        LinearLayout h = row();
-        TextView t = text("Conductores ("+managedDrivers.length()+")",20,INK,true);
-        h.addView(t,new LinearLayout.LayoutParams(0,-2,1));
-        Button refresh=button("↻",false,v->loadAdmin());
-        h.addView(refresh,new LinearLayout.LayoutParams(dp(52),dp(45)));
-        content.addView(h);
-        spacer(content,12);
-        if (managedDrivers.length()==0) {
+        int pending=0,approved=0,blocked=0;
+        for(int i=0;i<managedDrivers.length();i++){
+            JSONObject d=managedDrivers.optJSONObject(i);
+            if(d==null)continue;
+            String status=d.optString("status");
+            if("pending".equals(status))pending++;
+            else if("approved".equals(status))approved++;
+            else blocked++;
+        }
+        LinearLayout stats=row();
+        stats.addView(statTile(String.valueOf(pending),"Por aprobar",pending>0),
+            new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,-2,1);
+        second.leftMargin=dp(8);
+        stats.addView(statTile(String.valueOf(approved),"Habilitados",false),second);
+        content.addView(stats);
+        spacer(content,18);
+
+        LinearLayout service=card();
+        LinearLayout header=row();
+        TextView label=text("WEB DE PASAJEROS",12,MUTED,true);
+        label.setLetterSpacing(0.08f);
+        header.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+        TextView pill=text(siteEnabled?"ACTIVA":"SUSPENDIDA",11,
+            siteEnabled?TEAL_DARK:ORANGE,true);
+        pill.setPadding(dp(10),dp(6),dp(10),dp(6));
+        pill.setBackground(bg(siteEnabled?SOFT:Color.rgb(255,245,234),15,0));
+        header.addView(pill);
+        service.addView(header);
+        spacer(service,13);
+        addLine(service,siteEnabled?"Servicio habilitado":"Servicio suspendido",
+            19,INK,true,5);
+        addLine(service,siteEnabled?
+            "Los pasajeros pueden consultar y solicitar traslados.":
+            "Las solicitudes nuevas están detenidas. Podés reactivar el servicio desde aquí.",
+            13,MUTED,false,15);
+        Button toggle=button(siteEnabled?"Suspender solicitudes":"Reactivar servicio",
+            !siteEnabled,v->confirmServiceSwitch());
+        service.addView(toggle,new LinearLayout.LayoutParams(-1,dp(46)));
+        appendCard(content,service,24);
+
+        LinearLayout headerDrivers=row();
+        TextView title=text("Conductores",21,INK,true);
+        headerDrivers.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        TextView counts=text(managedDrivers.length()+" registrados",12,MUTED,false);
+        headerDrivers.addView(counts);
+        content.addView(headerDrivers);
+        spacer(content,11);
+        if(managedDrivers.length()==0){
             LinearLayout empty=card();
-            addLine(empty,"Todavía no hay conductores registrados.",14,MUTED,false,0);
-            appendCard(content,empty,14);
+            addLine(empty,"Todavía no hay conductores",16,INK,true,5);
+            addLine(empty,"Las solicitudes de registro aparecerán acá para que las apruebes.",
+                13,MUTED,false,0);
+            appendCard(content,empty,13);
         }
-        for (int i=0;i<managedDrivers.length();i++) {
+        for(int i=0;i<managedDrivers.length();i++){
             JSONObject driver=managedDrivers.optJSONObject(i);
-            if (driver==null) continue;
-            String id=driver.optString("id");
-            String status=driver.optString("status");
+            if(driver==null)continue;
+            String id=driver.optString("id"),status=driver.optString("status");
+            boolean verified=driver.optBoolean("emailVerified",false);
             LinearLayout c=card();
-            addLine(c,driver.optString("name","Sin nombre"),18,INK,true,5);
-            addLine(c,driver.optString("phone","Sin celular")+" · "+driver.optString("email",""),13,MUTED,false,8);
-            addLine(c,driver.optBoolean("emailVerified",false)?"Correo verificado":"Correo sin verificar",
-                12,driver.optBoolean("emailVerified",false)?TEAL:ORANGE,true,8);
-            String caption="pending".equals(status)?"PENDIENTE":
-                "approved".equals(status)?"APROBADO":"BLOQUEADO";
-            addLine(c,caption,13,"approved".equals(status)?TEAL:ORANGE,true,14);
+            LinearLayout upper=row();
+            TextView name=text(driver.optString("name","Sin nombre"),16,INK,true);
+            upper.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+            TextView statusTag=text("pending".equals(status)?"PENDIENTE":
+                "approved".equals(status)?"ACTIVO":"BLOQUEADO",11,
+                "approved".equals(status)?TEAL_DARK:ORANGE,true);
+            statusTag.setPadding(dp(7),dp(5),dp(7),dp(5));
+            statusTag.setBackground(bg("approved".equals(status)?SOFT:
+                Color.rgb(255,245,234),12,0));
+            upper.addView(statusTag);
+            c.addView(upper);
+            spacer(c,8);
+            addLine(c,driver.optString("phone","Sin celular"),13,INK,false,3);
+            addLine(c,driver.optString("email",""),12,MUTED,false,7);
+            addLine(c,verified?"✓ Correo verificado":"• Correo pendiente de verificación",
+                12,verified?TEAL:ORANGE,false,13);
             String target="approved".equals(status)?"blocked":"approved";
-            String action="approved".equals(status)?"Bloquear conductor":"Aprobar / reactivar conductor";
-            Button actionButton=button(action,!"approved".equals(status),
-                v -> confirmDriverStatus(id,driver.optString("name"),target));
-            if ("approved".equals(target) && !driver.optBoolean("emailVerified",false)) {
-                actionButton.setEnabled(false);
-                actionButton.setAlpha(0.5f);
+            String action="approved".equals(status)?"Bloquear acceso":"Aprobar conductor";
+            Button control=button(action,!"approved".equals(status),
+                v->confirmDriverStatus(id,driver.optString("name"),target));
+            if("approved".equals(target)&&!verified){
+                control.setEnabled(false);
+                control.setAlpha(0.45f);
             }
-            c.addView(actionButton,new LinearLayout.LayoutParams(-1,dp(50)));
-            appendCard(content,c,12);
+            c.addView(control,new LinearLayout.LayoutParams(-1,dp(44)));
+            appendCard(content,c,10);
         }
-        addLine(content,"Las cuentas bloqueadas quedan sin acceso de inmediato, incluso si habían iniciado sesión.",
-            12,MUTED,false,12);
+        spacer(content,5);
+        addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
+            12,MUTED,false,13);
     }
 
     private void confirmServiceSwitch() {
@@ -1052,31 +1338,39 @@ public final class MainActivity extends Activity {
     }
 
     private void settings(LinearLayout body) {
-        addLine(body, "Configuración", 27, INK, true, 5);
-        addLine(body, "Vía Traslados · Conductor", 14, MUTED, false, 20);
-        LinearLayout c=card();
-        addLine(c,"Cuenta del conductor",19,INK,true,9);
-        addLine(c,"Sesión activa en este dispositivo",14,TEAL,true,14);
-        addLine(c,"Tu contraseña nunca se guarda. Si activás la huella, Android protege una sesión renovable cifrada.",
-            14,MUTED,false,14);
-        if (staffToken!=null && BiometricVault.supported(this) && !BiometricVault.hasSaved(this)){
-            c.addView(button("Activar acceso con huella",true,v->saveBiometric()),
-                new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(c,9);
+        addLine(body,"Ajustes",25,INK,true,4);
+        addLine(body,"Cuenta, seguridad y aplicación",13,MUTED,false,19);
+
+        LinearLayout account=card();
+        addLine(account,"MI CUENTA",11,MUTED,true,10);
+        addLine(account,staffName.isEmpty()?
+            ("admin".equals(staffRole)?"Administrador general":"Conductor"):
+            staffName,19,INK,true,5);
+        addLine(account,"admin".equals(staffRole)?"Rol: administrador general":"Rol: conductor autorizado",
+            13,TEAL,true,15);
+        if(staffToken!=null && BiometricVault.supported(this)){
+            if(BiometricVault.hasSaved(this)){
+                addLine(account,"✓ Acceso con huella habilitado",13,TEAL_DARK,true,11);
+                account.addView(button("Desactivar acceso con huella",false,v->{
+                    BiometricVault.clear(this);
+                    message("La huella quedó desactivada en este teléfono.");
+                    dashboard();
+                }),new LinearLayout.LayoutParams(-1,dp(47)));
+            }else{
+                addLine(account,"Protegé tu acceso con la huella del teléfono.",13,MUTED,false,12);
+                account.addView(button("Activar huella",false,v->saveBiometric()),
+                    new LinearLayout.LayoutParams(-1,dp(47)));
+            }
+            spacer(account,12);
         }
-        if (BiometricVault.hasSaved(this)){
-            c.addView(button("Quitar acceso con huella",false,v->{
-                BiometricVault.clear(this);
-                message("Se eliminó el acceso biométrico de este dispositivo.");
-                dashboard();
-            }),new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(c,9);
-        }
-        c.addView(button("Cerrar sesión",false,v->{
-            if (staffToken!=null){
-                JSONObject p=new JSONObject();
-                try{if(staffRefreshToken!=null)p.put("refreshToken",staffRefreshToken);}catch(Exception ignored){}
-                api("POST","/api/staff/logout-device",p,(status,response,error)->{});
+        addLine(account,"La contraseña no se guarda en el dispositivo.",12,MUTED,false,12);
+        Button leave=button("Cerrar sesión",false,v->{
+            if(staffToken!=null){
+                JSONObject payload=new JSONObject();
+                try{
+                    if(staffRefreshToken!=null)payload.put("refreshToken",staffRefreshToken);
+                }catch(Exception ignored){}
+                api("POST","/api/staff/logout-device",payload,(status,response,error)->{});
             }
             BiometricVault.clear(this);
             operatorKey=null;
@@ -1085,58 +1379,81 @@ public final class MainActivity extends Activity {
             bookings=new JSONArray();
             lastPayload="";
             loginScreen();
-        }),new LinearLayout.LayoutParams(-1,dp(50)));
-        appendCard(body,c,14);
-        if ("admin".equals(staffRole) && operatorKey!=null) {
+        });
+        account.addView(leave,new LinearLayout.LayoutParams(-1,dp(46)));
+        appendCard(body,account,14);
+
+        if("admin".equals(staffRole) && operatorKey!=null){
             LinearLayout bootstrap=card();
-            addLine(bootstrap,"Administrador con usuario personal",18,INK,true,7);
-            addLine(bootstrap,"Creá tu cuenta administrativa una sola vez, usando la clave maestra actual.",13,MUTED,false,12);
-            bootstrap.addView(button("Crear mi usuario administrador",true,v->bootstrapAdmin()),new LinearLayout.LayoutParams(-1,dp(51)));
+            addLine(bootstrap,"CONFIGURAR ADMINISTRADOR",11,MUTED,true,9);
+            addLine(bootstrap,"Tu acceso personal",19,INK,true,6);
+            addLine(bootstrap,"Creá una cuenta con tu celular, contraseña y correo verificado. La clave maestra quedará solo para recuperación.",
+                13,MUTED,false,15);
+            bootstrap.addView(button("Crear cuenta personal",true,v->bootstrapAdmin()),
+                new LinearLayout.LayoutParams(-1,dp(48)));
             spacer(bootstrap,9);
-            bootstrap.addView(button("Ya tengo usuario: vincular mi celular",false,v->linkExistingAdmin()),
-                new LinearLayout.LayoutParams(-1,dp(51)));
-            appendCard(body,bootstrap,13);
+            bootstrap.addView(button("Ya tengo cuenta · Vincular celular",false,v->linkExistingAdmin()),
+                new LinearLayout.LayoutParams(-1,dp(48)));
+            appendCard(body,bootstrap,14);
         }
+
         LinearLayout info=card();
-        addLine(info,"Información",19,INK,true,10);
-        addLine(info,"Versión 0.3.0 · Pruebas QA",14,INK,false,5);
-        addLine(info,"Servidor: via-traslados-api",13,MUTED,false,6);
-        addLine(info,"Moneda: pesos uruguayos (UYU)",13,MUTED,false,6);
-        addLine(info,"Actualización: cada 30 segundos con la app abierta",13,MUTED,false,10);
-        addLine(info,"Mensajería en la app, notificaciones push y cálculo de precios automáticos: pendientes.",
-            13,MUTED,false,5);
-        appendCard(body,info,14);
-        LinearLayout r=card();
-        addLine(r,"Soporte",19,INK,true,9);
-        addLine(r,"La aplicación utiliza exclusivamente Vía Traslados. No tiene acceso a Quick Trip ni a sus cuentas.",
-            13,MUTED,false,12);
-        r.addView(button("Verificar conexión",false,v->fetchBookings(true)),
-            new LinearLayout.LayoutParams(-1,dp(50)));
-        appendCard(body,r,10);
+        addLine(info,"INFORMACIÓN",11,MUTED,true,9);
+        addLine(info,"Vía Traslados",17,INK,true,7);
+        addLine(info,"Versión 0.4.0 · Diseño renovado",13,MUTED,false,5);
+        addLine(info,"Actualización de viajes: cada 30 segundos",13,MUTED,false,12);
+        info.addView(button("Comprobar conexión",false,v->fetchBookings(true)),
+            new LinearLayout.LayoutParams(-1,dp(46)));
+        appendCard(body,info,13);
+
+        addLine(body,"Vía Traslados funciona de forma independiente de cualquier otra aplicación.",
+            11,MUTED,false,5);
     }
 
     private void navigation() {
+        LinearLayout dock = column();
+        dock.setBackgroundColor(Color.WHITE);
+        View line = new View(this);
+        line.setBackgroundColor(BORDER);
+        dock.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));
+
         LinearLayout bar=row();
-        bar.setPadding(dp(9),dp(5),dp(9),dp(5));
-        bar.setBackgroundColor(Color.WHITE);
+        bar.setPadding(dp(8),dp(7),dp(8),dp(6));
         boolean admin="admin".equals(staffRole);
-        String[] titles=admin?new String[]{"Solicitudes","Viajes","Historial","Administrar","Ajustes"}:new String[]{"Solicitudes","Viajes","Historial","Ajustes"};
-        String[] icons=admin?new String[]{"≡","▣","◷","⚙","☷"}:new String[]{"≡","▣","◷","⚙"};
-        String[] values=admin?new String[]{"solicitudes","viajes","historial","administrar","ajustes"}:new String[]{"solicitudes","viajes","historial","ajustes"};
-        for(int i=0;i<titles.length;i++) {
+        String[] titles=admin?
+            new String[]{"Solicitudes","Viajes","Historial","Administrar","Ajustes"}:
+            new String[]{"Solicitudes","Viajes","Historial","Ajustes"};
+        String[] icons=admin?
+            new String[]{"☷","▤","◷","◈","⚙"}:
+            new String[]{"☷","▤","◷","⚙"};
+        String[] values=admin?
+            new String[]{"solicitudes","viajes","historial","administrar","ajustes"}:
+            new String[]{"solicitudes","viajes","historial","ajustes"};
+        for(int i=0;i<titles.length;i++){
             final String next=values[i];
+            boolean active=next.equals(tab);
             LinearLayout slot=column();
             slot.setGravity(Gravity.CENTER);
-            TextView icon=text(icons[i],24,next.equals(tab)?TEAL:MUTED,false);
+            slot.setBackground(ripple(active?SOFT:Color.WHITE,0,12));
+            LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(57),1);
+            if(i>0)sp.leftMargin=dp(2);
+
+            TextView icon=text(icons[i],20,active?TEAL_DARK:MUTED,false);
             icon.setGravity(Gravity.CENTER);
             slot.addView(icon);
-            TextView name=text(titles[i],11,next.equals(tab)?TEAL:MUTED,next.equals(tab));
+            spacer(slot,2);
+            TextView name=text(titles[i],admin?10:11,active?TEAL_DARK:MUTED,active);
             name.setGravity(Gravity.CENTER);
+            name.setSingleLine(true);
             slot.addView(name);
+            slot.setContentDescription("Ir a "+titles[i]);
+            slot.setClickable(true);
+            slot.setFocusable(true);
             slot.setOnClickListener(v->{tab=next;dashboard();});
-            bar.addView(slot,new LinearLayout.LayoutParams(0,dp(62),1));
+            bar.addView(slot,sp);
         }
-        root.addView(bar,new LinearLayout.LayoutParams(-1,dp(72)));
+        dock.addView(bar,new LinearLayout.LayoutParams(-1,dp(70)));
+        root.addView(dock,new LinearLayout.LayoutParams(-1,-2));
     }
 
     private void message(String s) { Toast.makeText(this,s,Toast.LENGTH_LONG).show(); }

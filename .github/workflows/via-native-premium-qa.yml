@@ -1,0 +1,90 @@
+name: Via Traslados - APK premium Android 0.4 QA
+on:
+  push:
+    branches: [via-native-premium-v04]
+    paths:
+      - "android-driver/**"
+      - ".github/workflows/via-native-premium-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-premium-qa-v04
+  cancel-in-progress: true
+jobs:
+  android_qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verificar regresiones de backend y roles
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          node --check backend/staff-phone.js
+      - name: Auditoría del diseño y privacidad
+        run: |
+          set -euo pipefail
+          FILE=android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -F 'inputShell("☎", phone, false)' "$FILE"
+          grep -F 'Ingresá para gestionar tus traslados.' "$FILE"
+          grep -F 'Acceso administrador' "$FILE"
+          grep -F 'Ingresar con huella' "$FILE"
+          grep -F 'if(!"admin".equals(staffRole))' "$FILE"
+          grep -F 'BiometricVault.clear(this)' "$FILE"
+          grep -F "applicationId 'uy.viatraslados.conductor.premiumqa'" android-driver/app/build.gradle
+          grep -F 'via-traslados-api.marcelof-gx.workers.dev' "$FILE"
+          if grep -R -i 'quicktrip\|quick-trip' android-driver/app/src/main/java android-driver/app/src/main/AndroidManifest.xml; then exit 1; fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Preparar SDK Android 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Compilar APK premium
+        run: gradle -p android-driver :app:assembleDebug --no-daemon
+      - name: Validar APK firmado y hash de integridad
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-premium-qa-v0.4.0.apk
+          cd dist
+          sha256sum via-traslados-premium-qa-v0.4.0.apk > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          unzip -t via-traslados-premium-qa-v0.4.0.apk | tail -2
+          test "$(stat -c '%s' via-traslados-premium-qa-v0.4.0.apk)" -gt 1000000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-traslados-premium-v040
+          path: dist/*
+          retention-days: 30
+      - name: Publicar versión QA independiente
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: via-native-premium-qa-v0.4.0
+          target_commitish: via-native-premium-v04
+          name: "Vía Traslados · Interfaz Premium QA v0.4.0"
+          body: |
+            Rediseño nativo del acceso con celular, contraseña y huella.
+            Acceso maestra en menú discreto, nuevas tarjetas de viajes, filtros,
+            tableros de administración y navegación compacta.
+            Conserva permisos servidor, OTP y backend existente.
+            QA instalable junto con versiones anteriores, sin reemplazar apps.
+          files: |
+            dist/via-traslados-premium-qa-v0.4.0.apk
+            dist/SHA256SUMS.txt
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
