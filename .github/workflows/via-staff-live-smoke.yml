@@ -1,0 +1,48 @@
+name: Via Traslados - prueba real de registro sin conservar datos QA
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/via-staff-live-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify_live_driver_registration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      QA_EMAIL: qa-via-driver-${{ github.run_id }}@example.invalid
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Realizar registro QA, validar pendiente y revocación de privilegios
+        id: test
+        shell: bash
+        run: |
+          set -euo pipefail
+          pass=$(openssl rand -hex 20)
+          payload=$(jq -nc --arg name "Conductor QA temporario" --arg email "$QA_EMAIL" --arg pw "$pass" '{name:$name,email:$email,password:$pw,role:"admin",status:"approved"}')
+          status=$(curl -sS --max-time 30 -o /tmp/via-register.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' -X POST \
+            --data "$payload" https://via-traslados-api.marcelof-gx.workers.dev/api/staff/register)
+          test "$status" = "201" || { echo "Registro QA respondió HTTP $status"; cat /tmp/via-register.json; exit 1; }
+          grep -q '"status":"pending"' /tmp/via-register.json
+          login=$(jq -nc --arg email "$QA_EMAIL" --arg pw "$pass" '{email:$email,password:$pw}')
+          login_status=$(curl -sS --max-time 30 -o /tmp/via-login.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' -X POST --data "$login" \
+            https://via-traslados-api.marcelof-gx.workers.dev/api/staff/login)
+          test "$login_status" = "403"
+          echo "Registro confirmado, rol admin ignorado, cuenta pendiente no puede entrar."
+      - name: Borrar inmediatamente la cuenta QA y sesiones asociadas
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/cloudflare-d1.mjs
+          VIA_PUBLIC_ORIGIN=https://viatraslados.com VIA_RESEND_FROM='Vía Traslados <reservas@viatraslados.com>' node scripts/create-wrangler.mjs
+          npx --yes wrangler@4 d1 execute via-traslados-db --remote --config wrangler.toml --command "DELETE FROM staff_sessions WHERE staff_id IN (SELECT id FROM staff_users WHERE email='$QA_EMAIL'); DELETE FROM staff_users WHERE email='$QA_EMAIL';"
+          npx --yes wrangler@4 d1 execute via-traslados-db --remote --config wrangler.toml --command "SELECT count(*) AS remaining FROM staff_users WHERE email='$QA_EMAIL';"
