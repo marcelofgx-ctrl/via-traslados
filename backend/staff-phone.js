@@ -13,6 +13,28 @@ const OTP_TTL=600;
 const ACCESS_TTL=12*3600;
 const REFRESH_TTL=30*86400;
 const emailMask=email=>{const [u,d]=email.split('@');return u.slice(0,2)+'•••@'+d;};
+// La titularidad nunca se decide desde la APK ni por orden de llegada.
+// Se requieren teléfono y correo del fundador configurados en el Worker;
+// la prueba de posesión del correo se hace mediante OTP antes de elevar el rol.
+function isFounder(env,user){
+ if(!env.VIA_FOUNDER_PHONE||!env.VIA_FOUNDER_EMAIL)return false;
+ try{
+  return user.phone===normalizeStaffPhone(env.VIA_FOUNDER_PHONE)
+    &&user.email===normalizeEmail(env.VIA_FOUNDER_EMAIL);
+ }catch{return false}
+}
+async function activateFounder(env,user){
+ if(!isFounder(env,user)||user.status==='blocked')return false;
+ if(user.role==='admin'&&user.status==='approved')return true;
+ const result=await env.DB.prepare("UPDATE staff_users SET role='admin',status='approved',approved_at=unixepoch(),updated_at=unixepoch() WHERE id=? AND role='driver' AND status IN ('pending','approved')")
+  .bind(user.id).run();
+ if((result?.meta?.changes||0)>0){
+  await env.DB.prepare('INSERT INTO admin_audit(actor_id,action,target,detail) VALUES (?,?,?,?)')
+   .bind(user.id,'founder-activated',user.id,'Cuenta fundadora activada mediante verificación autenticada').run();
+  return true;
+ }
+ return false;
+}
 
 export function normalizeStaffPhone(value){
  if(typeof value!=='string')throw Error('Celular inválido');
@@ -72,7 +94,7 @@ async function emailCode(env,staffId,email){
  try{
   const response=await fetch('https://api.resend.com/emails',{method:'POST',
    headers:{Authorization:'Bearer '+env.RESEND_API_KEY,'Content-Type':'application/json','Idempotency-Key':'via-staff-'+crypto.randomUUID()},
-   body:JSON.stringify({from:env.RESEND_FROM,to:[email],subject:'Verificá tu cuenta de conductor · Vía Traslados',text:'Código de verificación de tu cuenta de Vía Traslados: '+code+'\nVence dentro de 10 minutos. No compartas este código.'})});
+   body:JSON.stringify({from:env.RESEND_FROM,to:[email],subject:'Verificá tu cuenta · Vía Traslados',text:'Código de verificación de tu cuenta de Vía Traslados: '+code+'\nVence dentro de 10 minutos. No compartas este código.'})});
   if(response.ok)return true;
  }catch{}
  await env.DB.prepare('DELETE FROM staff_email_codes WHERE staff_id=? AND code_hash=?').bind(staffId,digest).run();
@@ -97,7 +119,8 @@ async function issueSession(env,staffId,user){
   env.DB.prepare('INSERT INTO staff_refresh_tokens(token_hash,staff_id,expires_at) VALUES (?,?,?)').bind(await hash(refreshToken),staffId,now()+REFRESH_TTL)
  ]);
  return {token,refreshToken,expiresIn:ACCESS_TTL,refreshExpiresIn:REFRESH_TTL,
-  user:{id:user.id,name:user.display_name,email:user.email,phone:user.phone,role:user.role,status:user.status}};
+  user:{id:user.id,name:user.display_name,email:user.email,phone:user.phone,role:user.role,status:user.status,
+   capabilities:{manageTeam:!!user.email_verified_at&&user.role==='admin'&&user.status==='approved'&&isFounder(env,user)}}};
 }
 export async function staffPhoneRoutes(req,env,path,send,err){
  if(!path.startsWith('/api/staff/')&&path!=='/api/admin/bootstrap-phone')return null;
@@ -152,9 +175,13 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   try{p=await parseJson(req);email=normalizeEmail(p.email);code=String(p.code||'');if(!/^\d{6}$/.test(code))return err('Ingresá seis cifras',400)}
   catch{return err('Datos inválidos',400)}
   if(!await limit(env,'verify-email-ip:'+ip(req),30,900)||!await limit(env,'verify-email:'+email,10,900))return err('Demasiados intentos',429);
-  const row=await env.DB.prepare('SELECT u.id,c.email_verified_at FROM staff_users u JOIN staff_contacts c ON c.staff_id=u.id WHERE u.email=?').bind(email).first();
+  const row=await env.DB.prepare('SELECT u.id,u.email,u.role,u.status,c.phone,c.email_verified_at FROM staff_users u JOIN staff_contacts c ON c.staff_id=u.id WHERE u.email=?').bind(email).first();
   if(!row)return err('Código inválido o vencido',401);
-  if(row.email_verified_at)return send({emailVerified:true});
+  if(row.email_verified_at){
+   // No revelar el rol o la existencia de la cuenta fundadora a quien
+   // conoce solo su dirección de correo. La promoción exige login con clave.
+   return send({emailVerified:true,approvalRequired:true});
+  }
   const attempt=await env.DB.prepare('UPDATE staff_email_codes SET attempts=attempts+1 WHERE staff_id=? AND attempts<5 AND expires_at>unixepoch() RETURNING code_hash').bind(row.id).first();
   if(!attempt||!strongEqual(await otpHash(env,row.id,code),attempt.code_hash))return err('Código inválido o vencido',401);
   await env.DB.batch([
@@ -162,7 +189,8 @@ export async function staffPhoneRoutes(req,env,path,send,err){
    env.DB.prepare('DELETE FROM staff_email_codes WHERE staff_id=?').bind(row.id),
    env.DB.prepare('INSERT INTO admin_audit(actor_id,action,target,detail) VALUES (?,?,?,?)').bind(row.id,'email-verified',row.id,'Email confirmado por código OTP')
   ]);
-  return send({emailVerified:true,approvalRequired:true});
+  const founder=await activateFounder(env,row);
+  return send({emailVerified:true,approvalRequired:!founder&&row.role!=='admin',role:founder?'admin':row.role,accountReady:founder||row.role==='admin'});
  }
  if(path==='/api/staff/login-phone'&&req.method==='POST'){
   let p,phone,password;
@@ -174,6 +202,12 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   const derived=await secretHash(password,row.password_salt,Number(row.iterations));
   if(!strongEqual(derived,row.password_hash))return err('Celular o contraseña incorrectos',401);
   if(!row.email_verified_at)return err('Primero verificá tu correo electrónico',403);
+  // Una cuenta previa ya verificada, con contraseña correcta, se reconoce
+  // en el primer ingreso tras habilitar el fundador en el Worker.
+  // Nunca promovemos cuentas bloqueadas.
+  if(row.status!=='blocked' && await activateFounder(env,row)){
+   row.role='admin';row.status='approved';
+  }
   if(row.status!=='approved')return err(row.status==='pending'?'Cuenta pendiente de aprobación':'Cuenta bloqueada',403);
   return send(await issueSession(env,row.id,row));
  }
@@ -185,7 +219,8 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   if(!row)return err('Sesión vencida o revocada',401);
   const token=random(32);
   await env.DB.prepare('INSERT INTO staff_sessions(token_hash,staff_id,expires_at) VALUES (?,?,?)').bind(await hash(token),row.id,now()+ACCESS_TTL).run();
-  return send({token,expiresIn:ACCESS_TTL,user:{id:row.id,name:row.display_name,email:row.email,phone:row.phone,role:row.role,status:row.status}});
+  return send({token,expiresIn:ACCESS_TTL,user:{id:row.id,name:row.display_name,email:row.email,phone:row.phone,role:row.role,status:row.status,
+   capabilities:{manageTeam:!!row.email_verified_at&&row.role==='admin'&&row.status==='approved'&&isFounder(env,row)}}});
  }
  if(path==='/api/staff/logout-device'&&req.method==='POST'){
   let p;try{p=await parseJson(req)}catch{p={}}

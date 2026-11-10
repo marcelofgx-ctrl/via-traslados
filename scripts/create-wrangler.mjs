@@ -12,6 +12,7 @@ fs.writeFileSync('wrangler.toml',`name = "via-traslados-api"
 main = "backend/worker.js"
 compatibility_date = "2026-11-04"
 workers_dev = true
+keep_vars = true
 
 [[d1_databases]]
 binding = "DB"
