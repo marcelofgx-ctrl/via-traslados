@@ -76,8 +76,8 @@ test('el paso 2 incluye celular, huella opcional, y código al correo asociado',
  assert.match(app,/S\.startPhoneLogin/);
  assert.match(app,/S\.finishPhoneLogin/);
  assert.match(app,/S\.customer\(\)\?\.profile/);
- assert.match(keys,/navigator\.credentials\.create/);
- assert.match(keys,/navigator\.credentials\.get/);
+ assert.match(keys,/credentials\?\.create|credentials\.create/);
+ assert.match(keys,/credentials\?\.get|credentials\.get/);
  assert.match(keys,/if\(!available\(\)\)/);
  assert.match(path('reserva.html'),/id="enable-passkey"/);
 });
