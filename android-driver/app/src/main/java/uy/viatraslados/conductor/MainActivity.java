@@ -669,13 +669,13 @@ public final class MainActivity extends Activity {
         root.setBackgroundColor(LIGHT);
 
         LinearLayout header = row();
-        header.setPadding(dp(19), dp(13), dp(19), dp(13));
+        header.setPadding(dp(17), dp(9), dp(17), dp(9));
         header.setBackgroundColor(Color.WHITE);
 
         TextView emblem = text("V", 21, Color.WHITE, true);
         emblem.setGravity(Gravity.CENTER);
         emblem.setBackground(bg(TEAL, 11, 0));
-        header.addView(emblem, new LinearLayout.LayoutParams(dp(39), dp(39)));
+        header.addView(emblem, new LinearLayout.LayoutParams(dp(36), dp(36)));
 
         LinearLayout brand = column();
         LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, -2, 1);
@@ -685,11 +685,15 @@ public final class MainActivity extends Activity {
         addLine(brand, "admin".equals(staffRole) ? "Centro de operaciones" : "Mi espacio de conductor",
             12, MUTED, false, 0);
 
-        TextView refresh = actionText("↻", TEAL_DARK, v -> fetchBookings(true));
-        refresh.setTextSize(25);
+        TextView refresh = actionText("↻", TEAL_DARK, v -> {
+            routeProviderMissing=false;
+            routeFailures.clear();
+            fetchBookings(true);
+        });
+        refresh.setTextSize(21);
         refresh.setBackground(ripple(SOFT,0,12));
         refresh.setContentDescription("Actualizar solicitudes");
-        header.addView(refresh, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        header.addView(refresh, new LinearLayout.LayoutParams(dp(38), dp(38)));
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
 
         ScrollView scroll = new ScrollView(this);
@@ -698,7 +702,7 @@ public final class MainActivity extends Activity {
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout content = column();
-        content.setPadding(dp(19),dp(20),dp(19),dp(12));
+        content.setPadding(dp(17),dp(12),dp(17),dp(12));
         scroll.addView(content);
         if ("administrar".equals(tab)) manage(content);
         else if ("ajustes".equals(tab)) settings(content);
@@ -717,20 +721,30 @@ public final class MainActivity extends Activity {
 
     private void lists(LinearLayout body, String mode) {
         if ("solicitudes".equals(mode)) {
-            addLine(body, "Solicitudes", 25, INK, true, 4);
-            addLine(body, "Revisá solicitudes y cotizaciones", 13, MUTED, false, 12);
+            addLine(body, "Solicitudes", 23, INK, true, 3);
+            addLine(body, "Revisá solicitudes y cotizaciones", 12, MUTED, false, 11);
 
-            // Evitamos repetir los contadores: ya aparecen en los filtros.
+            // Control segmentado, compacto y con una sola selección destacada.
             LinearLayout filters=row();
-            Button newer=button("Nuevas ("+count("requested")+")",
-                "nuevas".equals(subtab),v->{subtab="nuevas";dashboard();});
-            Button offers=button("Con ofertas ("+count("quoted")+")",
-                "ofertas".equals(subtab),v->{subtab="ofertas";dashboard();});
-            newer.setTextSize(13);offers.setTextSize(13);
-            filters.addView(newer,new LinearLayout.LayoutParams(0,dp(43),1));
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(43),1);
-            lp.leftMargin=dp(8);filters.addView(offers,lp);
-            body.addView(filters);
+            filters.setPadding(dp(3),dp(3),dp(3),dp(3));
+            filters.setBackground(bg(Color.rgb(233,241,239),13,0));
+            String[] choices={"Nuevas ("+count("requested")+")","Con ofertas ("+count("quoted")+")"};
+            String[] keys={"nuevas","ofertas"};
+            for(int n=0;n<choices.length;n++){
+                final String next=keys[n];
+                boolean active=next.equals(subtab);
+                TextView option=text(choices[n],13,active?Color.WHITE:TEAL_DARK,active);
+                option.setGravity(Gravity.CENTER);
+                option.setBackground(ripple(active?TEAL:Color.TRANSPARENT,0,10));
+                option.setClickable(true);
+                option.setFocusable(true);
+                option.setContentDescription("Mostrar "+choices[n]);
+                option.setOnClickListener(v->{if(!next.equals(subtab)){subtab=next;dashboard();}});
+                LinearLayout.LayoutParams part=new LinearLayout.LayoutParams(0,dp(39),1);
+                if(n>0)part.leftMargin=dp(2);
+                filters.addView(option,part);
+            }
+            body.addView(filters,new LinearLayout.LayoutParams(-1,dp(45)));
             spacer(body,12);
         } else if ("viajes".equals(mode)) {
             addLine(body, "Mis viajes", 25, INK, true, 4);
