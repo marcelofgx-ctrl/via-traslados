@@ -60,7 +60,7 @@ async function audit(env,actor,action,target,detail=''){
 }
 async function createStaff(env,name,email,password,role,status){
  let pass;
- try {pass=await hashPassword(password)}catch(e){console.error('via-staff', 'PASSWORD_DERIVE',e?.name);throw Object.assign(new Error('Alta no disponible'),{phase:'KDF'})}
+ try {pass=await hashPassword(password)}catch(e){console.error('via-staff', 'PASSWORD_DERIVE',e?.name);throw Object.assign(new Error('Alta no disponible'),{phase:'KDF_'+String(e?.name||'ERROR').slice(0,32)})}
  const id=crypto.randomUUID();
  try {
   await env.DB.prepare('INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status,approved_at) VALUES (?,?,?,?,?,?,?,?,?)')
