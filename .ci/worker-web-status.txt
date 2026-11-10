@@ -2,10 +2,10 @@ Proyecto: via-traslados-web-prod
 Publicacion: success
 Verificacion web: success
 Verificacion dominio: success
-Verificacion backend/CORS: failure
+Verificacion backend/CORS: success
 URL: https://via-traslados-web-prod.marcelof-gx.workers.dev/
 Dominio viatraslados.com: vinculación solicitada con Workers Custom Domain
-Commit: fba37837cf48c728105084dcdaae66ac2e92975a
+Commit: 5baa7d36edb58feb91d1166702b02c9b8eb19c5b
 Ultimas 45 lineas del despliegue:
 
  ⛅️ wrangler 4.159.0
@@ -14,17 +14,17 @@ Ultimas 45 lineas del despliegue:
 ✨ Read 24 files from the assets directory /home/runner/work/via-traslados/via-traslados/pages
 🌀 Starting asset upload...
 No updated asset files to upload. Proceeding with deployment...
-Total Upload: 8.45 KiB / gzip: 3.14 KiB
-Worker Startup Time: 2 ms
+Total Upload: 10.05 KiB / gzip: 3.74 KiB
+Worker Startup Time: 1 ms
 Your Worker has access to the following bindings:
 Binding            Resource      
 env.ASSETS         Assets        
 
-Uploaded via-traslados-web-prod (3.79 sec)
-Deployed via-traslados-web-prod triggers (2.23 sec)
+Uploaded via-traslados-web-prod (2.75 sec)
+Deployed via-traslados-web-prod triggers (1.29 sec)
   https://via-traslados-web-prod.marcelof-gx.workers.dev
   viatraslados.com (custom domain)
-Current Version ID: 8f8e8f02-d5a0-42da-ac53-1872a372756b
+Current Version ID: 1c9a07c5-d43c-4dd8-a6b1-da12b22a2868
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
 Diagnóstico HTTP/DNS del Worker y dominio:
@@ -74,16 +74,16 @@ Diagnóstico HTTP/DNS del Worker y dominio:
 * old SSL session ID is stale, removing
 { [5 bytes data]
 < HTTP/2 200 
-< date: Mon, 09 Nov 2026 23:06:03 GMT
+< date: Tue, 10 Nov 2026 00:07:21 GMT
 < content-type: text/javascript
 < content-length: 236
 < cf-cache-status: HIT
 < cache-control: public, max-age=0, must-revalidate
 < etag: "3e9c7f295b5bab2ae39796a80fafaf5b"
-< report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=uXNc1cQfArDT2v3lh5ISP9tveGouuCHtSf0CmmLr53ojBljrm1LZNZGLo%2BHMF2fzKsQXarOrRJEfy1Lx94PhikVPrANI4kk7Ok1O07L6CkdgXEs7BynGKWJnZX%2B6lwZeGR5QLaViG4lRHfJVRmi1PAYA3PDKsNHIwue4x98isLq7"}]}
+< report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=lxq2ElOqyqxgz21SlDs0uuGS8gCBH4DIckkpSWLl4cWqUwIi9quuCQuH0XXEZOhWNnlrn3spg%2FcfAL27KEaAYjTBI%2B6nkeV8Q0a5D9jXKCO%2FGhrBElhfA0rCPv0H260k7XygivKALCN92zvFwAj6EsIw%2B8p8KLTnZqkZysT3XQGB"}]}
 < nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 < server: cloudflare
-< cf-ray: a580773e0f498f43-STL
+< cf-ray: a580d1049d1e6d31-LAX
 < alt-svc: h3=":443"; ma=86400
 < 
 { [236 bytes data]
@@ -112,34 +112,34 @@ Diagnóstico HTTP/DNS del Worker y dominio:
 * old SSL session ID is stale, removing
 { [5 bytes data]
 < HTTP/2 200 
-< date: Mon, 09 Nov 2026 23:06:04 GMT
+< date: Tue, 10 Nov 2026 00:07:21 GMT
 < content-type: text/html
 < cf-cache-status: HIT
 < cache-control: public, max-age=0, must-revalidate
 < nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
-< report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=Lb5NDnAdgMV%2FqOYugusBToIQMbqGNsqzccORKAP0uXwYv8MW6GF8ct13%2Bj4pqePepDzsOypQvc6pVwBlJ%2FpD5Vrud1JS7LVUL9jMiCwIu5NOdDklsBGX%2BTOrSloIsEjR3nm9"}]}
+< report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=6H3ObP0ZjXPlT5mom7N6ShmH6VmQ4jiCVQdA9NTxTDmXTzPCUjEFoRpf2Aw8lTxCXFfu%2F8uRvNfaDbNQmj%2BnaQLddHBgsjPjxjtHMryXIIN9MZIolJ%2B1T5HSfr4iDiiVdwOm"}]}
 < server: cloudflare
-< cf-ray: a580773f2fe5fab5-STL
+< cf-ray: a580d105e9012efc-LAX
 < alt-svc: h3=":443"; ma=86400
 < 
 { [9565 bytes data]
 * Connection #0 to host viatraslados.com left intact
 Respuesta del backend con Origin del dominio:
-HTTP/2 403 
-date: Mon, 09 Nov 2026 23:06:04 GMT
+HTTP/2 200 
+date: Tue, 10 Nov 2026 00:07:21 GMT
 content-type: application/json; charset=utf-8
-content-length: 32
-access-control-allow-origin: null
+content-length: 54
+access-control-allow-origin: https://viatraslados.com
 cache-control: no-store
 vary: Origin
-access-control-allow-headers: Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token
+access-control-allow-headers: Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization
 access-control-allow-methods: GET,POST,PATCH,OPTIONS
 referrer-policy: no-referrer
 x-content-type-options: nosniff
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=SbXzXr8TegOpcaLVWutNE%2FxAH0irqSsb6aCS9lED8A6ZmotnKChLFEFRelzoaHoxf08KJEnJVqxgQ%2BuSK3XZg%2B7ThzxKHk0zzCMN%2F6360lddxOG6Hl58g73g%2FXsaT0bRB6T%2BtsI5cTxHlbZENEQk%2BBIQBIqb1fcW%2FZGPlA%3D%3D"}]}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=euOJKoToFudjw%2B7K2cAl5YOADThbST1yiyNI3jo2l2L4hnhO9YdorwEc7PyRnDgkWHcoBpXGNzigRNBFMsHkpSEBvZSppuyast1DEXp05ALIxgSJi%2BpxCsM2knj2u4udbgXFb2Gwdd4ov78U1%2FZzs3cKXe9J2vWS%2FlIwWw%3D%3D"}]}
 nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
 server: cloudflare
-cf-ray: a58077405b498f43-STL
+cf-ray: a580d1072eda312c-LAX
 alt-svc: h3=":443"; ma=86400
 
-{"error":"Origen no autorizado"}
+{"ok":true,"name":"via-traslados","otpAvailable":true}
