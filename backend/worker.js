@@ -2,6 +2,8 @@ import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,emailOtpAvailabl
 import {staffRoutes,identity,webEnabled} from './staff.js';
 import {staffPhoneRoutes} from './staff-phone.js';
 import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js';
+import {customerSession,customerRoutes} from './customer-auth.js';
+import {customerPasskeyRoutes} from './customer-passkeys.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
 const OP_FIELDS=FIELDS+',customer_name,phone,email';
@@ -60,7 +62,16 @@ function scheduleMissingRoutes(env,ctx,rows,max=2){
  })());
 }
 const authorized=async(req,env)=>identity(req,env);
-const getBooking=async(req,env,id)=>{const token=req.headers.get('X-Booking-Token')||'';if(!token||token.length>200)return null;const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();return row&&equal(await hash(token),row.access_token_hash)?row:null};
+const getBooking=async(req,env,id)=>{
+ const token=req.headers.get('X-Booking-Token')||'';
+ if(token&&token.length<=200){
+  const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
+  if(row&&equal(await hash(token),row.access_token_hash))return row;
+ }
+ const account=await customerSession(req,env);
+ if(!account)return null;
+ return env.DB.prepare(`SELECT ${FIELDS} FROM bookings WHERE id=? AND email=?`).bind(id,account.email).first();
+};
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
 export default {async fetch(req,env,ctx){
  const url=new URL(req.url),origin=req.headers.get('Origin');
@@ -76,15 +87,20 @@ export default {async fetch(req,env,ctx){
   const phoneHandled=await staffPhoneRoutes(req,env,path,send,err);if(phoneHandled)return phoneHandled;
   const handled=await staffRoutes(req,env,path,send,err);if(handled)return handled;
   const distanceHandled=await routeEstimateRoutes(req,env,path,send);if(distanceHandled)return distanceHandled;
-  if((path.startsWith('/api/auth/')||path==='/api/requests'||path.startsWith('/api/requests/'))&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio. Volvé a intentar más tarde.',503);
+  if((path.startsWith('/api/auth/')||path.startsWith('/api/customer/')||path==='/api/requests'||path.startsWith('/api/requests/'))&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio. Volvé a intentar más tarde.',503);
   if(path==='/api/auth/start'&&req.method==='POST'){const r=await beginOtp(req,env);return send(r.data,r.status)}
   if(path==='/api/auth/verify'&&req.method==='POST'){const r=await checkOtp(req,env);return send(r.data,r.status)}
+  const customerHandled=await customerRoutes(req,env,path,send);if(customerHandled)return customerHandled;
+  const passkeyHandled=await customerPasskeyRoutes(req,env,path,send);if(passkeyHandled)return passkeyHandled;
   if(path==='/api/requests'&&req.method==='POST'){
    if(Number(req.headers.get('Content-Length')||0)>6000)return err('Solicitud demasiado grande',413);
    const raw=await req.text();if(raw.length>6000)return err('Solicitud demasiado grande',413);
    const p=JSON.parse(raw);if(p?.website)return err('Solicitud rechazada');
    let booking;try{booking=validateBooking(p)}catch(e){return err(e.message)}
-   if(!await consumeVerifiedSession(req,env,booking.email))return err('Necesitás verificar tu correo antes de solicitar un traslado.',401);
+   const account=await customerSession(req,env);
+    if(account&&account.email!==booking.email)return err('El correo del pasajero no coincide con la cuenta verificada.',403);
+    if(!account&&!await consumeVerifiedSession(req,env,booking.email))
+      return err('Necesitás verificar tu correo antes de solicitar un traslado.',401);
    await env.DB.prepare("INSERT INTO customers (email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,phone=excluded.phone,updated_at=datetime('now')").bind(booking.email,booking.name,booking.phone).run();
    const id='VIA-'+crypto.randomUUID().slice(0,12).toUpperCase(),token=random(),tokenHash=await hash(token);
    await env.DB.prepare('INSERT INTO bookings (id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,booking.name,booking.phone,booking.email,booking.origin,booking.destination,booking.date,booking.time,booking.passengers,booking.bags,booking.notes,tokenHash,'requested').run();
