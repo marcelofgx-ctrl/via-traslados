@@ -16,6 +16,8 @@ function correctLocality(place,query=''){
  const plain=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es-UY').replace(/[^a-z0-9]+/g,' ').trim();
  const street=plain(place.street||String(place.label||'').split(',')[0]);
  const requested=plain(query);
+ const typedNumbers=requested.match(/\b\d{3,5}\b/g)||[];
+ if(typedNumbers.length&&!typedNumbers.includes('1711'))return place;
  if(!/^(?:avenida |av )?roque saenz pena(?: 1711)?$/.test(street))return place;
  if(!/\b1711\b/.test(street+' '+requested))return place;
  if(place.department&&plain(place.department)!=='canelones')return place;
