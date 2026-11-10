@@ -235,6 +235,118 @@ public final class MainActivity extends Activity {
         return shell;
     }
 
+    private boolean authFlow = false;
+    private JSONArray managedAdmins = new JSONArray();
+    private boolean canManageRoles = false; // Privilegio decidido por el servidor, nunca por el teléfono en la APK.
+    private String staffUserId = "";
+
+    @Override public void onBackPressed() {
+        if (authFlow) { loginScreen(); return; }
+        super.onBackPressed();
+    }
+
+    private LinearLayout authPage(String eyebrow, String heading, String subtitle) {
+        authFlow = true;
+        root.removeAllViews();
+        root.setBackgroundColor(LIGHT);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+
+        LinearLayout page = column();
+        page.setPadding(dp(25), dp(16), dp(25), dp(28));
+        scroll.addView(page);
+        LinearLayout top = row();
+        TextView back = actionText("‹  Volver", TEAL_DARK, v -> loginScreen());
+        back.setTextSize(14);
+        top.addView(back, new LinearLayout.LayoutParams(0, dp(44), 1));
+        TextView signature = text("VÍA  /  TRASLADOS", 11, MUTED, true);
+        signature.setLetterSpacing(0.10f);
+        top.addView(signature);
+        page.addView(top);
+        spacer(page, 27);
+
+        TextView label = text(eyebrow, 11, TEAL_DARK, true);
+        label.setLetterSpacing(0.15f);
+        page.addView(label);
+        spacer(page, 10);
+        addLine(page, heading, 29, INK, true, 9);
+        addLine(page, subtitle, 14, MUTED, false, 23);
+        return page;
+    }
+
+    private EditText authField(LinearLayout page, String label, String hint, int inputType, boolean secret) {
+        TextView caption = text(label, 11, MUTED, true);
+        caption.setLetterSpacing(0.10f);
+        page.addView(caption);
+        spacer(page, 7);
+        EditText input = new EditText(this);
+        input.setHint(hint);
+        input.setInputType(inputType);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        page.addView(inputShell(secret ? "◈" : "·", input, secret),
+            new LinearLayout.LayoutParams(-1, dp(52)));
+        spacer(page, 15);
+        return input;
+    }
+
+    private LinearLayout authWaiting(LinearLayout page) {
+        LinearLayout wait = column();
+        wait.setVisibility(View.GONE);
+        TextView status = text("", 13, MUTED, false);
+        wait.addView(status);
+        spacer(wait, 8);
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null,
+            android.R.attr.progressBarStyleHorizontal);
+        bar.setIndeterminate(true);
+        bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TEAL));
+        wait.addView(bar, new LinearLayout.LayoutParams(-1, dp(3)));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
+        p.topMargin = dp(15);
+        page.addView(wait, p);
+        return wait;
+    }
+
+    private void authBusy(LinearLayout wait, Button button, boolean busy, String description) {
+        ((TextView) wait.getChildAt(0)).setText(description);
+        wait.setVisibility(busy ? View.VISIBLE : View.GONE);
+        button.setEnabled(!busy);
+        button.setAlpha(busy ? 0.68f : 1f);
+    }
+
+    private TextView authError(LinearLayout page) {
+        TextView error = text("", 13, ORANGE, false);
+        error.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(12);
+        page.addView(error, lp);
+        return error;
+    }
+
+    private void authErrorText(TextView view, String message) {
+        view.setText(message);
+        view.setVisibility(message == null || message.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void accountResult(boolean ready, String role) {
+        LinearLayout page = authPage("CUENTA VERIFICADA",
+            ready ? "Todo pronto." : "Correo confirmado.",
+            ready ? "Tu cuenta está lista para comenzar." :
+                    "Tu cuenta quedó registrada. Te avisaremos cuando el administrador la habilite.");
+        spacer(page, 9);
+        LinearLayout status = card();
+        addLine(status, ready ? "✓ Acceso habilitado" : "◷ Esperando aprobación",
+            17, ready ? TEAL_DARK : INK, true, 8);
+        addLine(status, ready ?
+            "Ya podés ingresar con tu celular y contraseña." :
+            "La verificación del correo está completa. Falta autorizar tu cuenta.",
+            13, MUTED, false, 0);
+        appendCard(page, status, 21);
+        Button enter = button("Ir a ingresar  →", true, v -> loginScreen());
+        page.addView(enter, new LinearLayout.LayoutParams(-1, dp(52)));
+    }
+
     private void loginPhone(String phone, String password) {
         if (phone.trim().isEmpty() || password.isEmpty()) {
             message("Ingresá tu celular y contraseña.");
@@ -255,10 +367,14 @@ public final class MainActivity extends Activity {
                     staffToken = parsed.getString("token");
                     staffRefreshToken = parsed.getString("refreshToken");
                     staffRole = user.getString("role");
+                    staffUserId = user.optString("id", "");
+                    JSONObject capabilities = user.optJSONObject("capabilities");
+                    canManageRoles = "admin".equals(staffRole) && capabilities != null &&
+                        capabilities.optBoolean("manageTeam", false);
                     staffName = user.optString("name", "");
                     getSharedPreferences("via_preferences", MODE_PRIVATE)
                         .edit().putString("last_phone", phone.trim()).apply();
-                    tab = "solicitudes";
+                    tab = "admin".equals(staffRole) ? "administrar" : "viajes";
                     adminLoaded = false;
                     fetchBookings(true);
                     offerBiometric();
@@ -307,12 +423,16 @@ public final class MainActivity extends Activity {
     }
 
     private void loginScreen() {
+        authFlow = false;
         root.removeAllViews();
         operatorKey = null;
         staffToken = null;
         staffRefreshToken = null;
         staffRole = "driver";
         staffName = "";
+        staffUserId = "";
+        canManageRoles = false;
+        managedAdmins = new JSONArray();
         root.setBackgroundColor(LIGHT);
 
         ScrollView scroll = new ScrollView(this);
@@ -371,6 +491,12 @@ public final class MainActivity extends Activity {
         });
         spacer(page, 16);
 
+        TextView forgot = actionText("¿Olvidaste tu contraseña?", TEAL_DARK,
+            v -> passwordResetStart(phone.getText().toString()));
+        forgot.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        page.addView(forgot);
+        spacer(page, 7);
+
         Button enter = button("Ingresar   →", true, v ->
             loginPhone(phone.getText().toString(), password.getText().toString()));
         enter.setTextSize(16);
@@ -407,7 +533,13 @@ public final class MainActivity extends Activity {
         sep.leftMargin = dp(5);
         sep.rightMargin = dp(5);
         extras.addView(tiny, sep);
-        TextView admin = actionText("Acceso administrador", MUTED, v -> adminMasterDialog());
+        TextView admin = actionText("Ayuda para ingresar", MUTED, v ->
+            new AlertDialog.Builder(this)
+                .setTitle("Acceso a Vía Traslados")
+                .setMessage("Si sos el titular fundador, ingresá con tu celular y contraseña. Tu rol de administrador se reconocerá automáticamente cuando esté habilitado en el servidor. La clave maestra anterior solo se usa para recuperación excepcional.")
+                .setNegativeButton("Cerrar", null)
+                .setPositiveButton("Recuperación avanzada", (d,w) -> adminMasterDialog())
+                .show());
         extras.addView(admin);
         page.addView(extras);
         spacer(page, 14);
@@ -526,6 +658,7 @@ public final class MainActivity extends Activity {
 
     private void dashboard() {
         if (operatorKey == null && staffToken == null) return;
+        authFlow = false;
         root.removeAllViews();
         root.setBackgroundColor(LIGHT);
 
@@ -543,7 +676,7 @@ public final class MainActivity extends Activity {
         bl.leftMargin = dp(11);
         header.addView(brand, bl);
         addLine(brand, "Vía Traslados", 18, INK, true, 3);
-        addLine(brand, "admin".equals(staffRole) ? "Administrador general" : "Mi espacio de conductor",
+        addLine(brand, "admin".equals(staffRole) ? "Centro de operaciones" : "Mi espacio de conductor",
             12, MUTED, false, 0);
 
         TextView refresh = actionText("↻", TEAL_DARK, v -> fetchBookings(true));
@@ -953,8 +1086,12 @@ public final class MainActivity extends Activity {
                         staffRefreshToken=refresh;
                         operatorKey=null;
                         staffRole=user.getString("role");
+                        staffUserId=user.optString("id","");
+                        JSONObject capabilities=user.optJSONObject("capabilities");
+                        canManageRoles="admin".equals(staffRole)&&capabilities!=null&&
+                            capabilities.optBoolean("manageTeam",false);
                         staffName=user.optString("name","");
-                        tab="solicitudes";
+                        tab="admin".equals(staffRole)?"administrar":"viajes";
                         adminLoaded=false;
                         fetchBookings(true);
                     }catch(Exception e){loginScreen();message("No se pudo abrir la sesión.");}
@@ -970,91 +1107,276 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void verifyEmailDialog(String address){
-        LinearLayout content=formContainer();
-        addLine(content,"Te enviamos un código de seis dígitos a "+address+
-            ". Es válido durante 10 minutos.",14,MUTED,false,12);
-        EditText code=formInput(content,"Código de seis cifras",InputType.TYPE_CLASS_NUMBER);
-        new AlertDialog.Builder(this).setTitle("Confirmá tu correo")
-            .setView(content)
-            .setNeutralButton("Reenviar código",(dialog,which)->{
-                JSONObject p=new JSONObject();
-                try{p.put("email",address);}catch(Exception ignored){}
-                api("POST","/api/staff/resend-email",p,(status,result,error)->{
-                    message(status==200?"Si el correo está pendiente, llegará un código nuevo.":error);
-                    verifyEmailDialog(address);
-                });
-            })
-            .setNegativeButton("Más tarde",null)
-            .setPositiveButton("Verificar",(dialog,which)->{
-                JSONObject p=new JSONObject();
-                try{
-                    p.put("email",address);
-                    p.put("code",code.getText().toString().trim());
-                }catch(Exception ignored){}
-                code.setText("");
-                api("POST","/api/staff/verify-email",p,(status,result,error)->{
-                    if(status==200)
-                        new AlertDialog.Builder(this).setTitle("Correo verificado")
-                          .setMessage("Tu correo quedó confirmado. Si sos conductor, ahora falta la aprobación del administrador.")
-                          .setPositiveButton("Entendido",null).show();
-                    else{
-                        message(error.isEmpty()?"Código incorrecto o vencido":error);
-                        verifyEmailDialog(address);
-                    }
-                });
-            }).show();
+    private void verifyEmailDialog(String address) {
+        LinearLayout page = authPage("PASO 02  /  02", "Confirmá tu correo",
+            "Ingresá el código de seis cifras que enviamos a " + address +
+            ". Podés seguir trabajando mientras llega.");
+        LinearLayout notice = row();
+        notice.setPadding(dp(12), dp(12), dp(12), dp(12));
+        notice.setBackground(bg(SOFT, 12, 0));
+        TextView note = text("✉   Código válido durante 10 minutos", 12, TEAL_DARK, false);
+        notice.addView(note);
+        page.addView(notice, new LinearLayout.LayoutParams(-1, -2));
+        spacer(page, 27);
+        EditText code = authField(page, "CÓDIGO DE VERIFICACIÓN", "·  ·  ·  ·  ·  ·",
+            InputType.TYPE_CLASS_NUMBER, false);
+        code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
+        code.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        Button check = button("Confirmar correo  →", true, null);
+        check.setTextSize(15);
+        page.addView(check, new LinearLayout.LayoutParams(-1, dp(52)));
+        LinearLayout wait = authWaiting(page);
+        TextView error = authError(page);
+
+        check.setOnClickListener(v -> {
+            String digits = code.getText().toString().trim();
+            if (!digits.matches("[0-9]{6}")) {
+                authErrorText(error, "Ingresá las seis cifras del correo.");
+                return;
+            }
+            authErrorText(error, "");
+            authBusy(wait, check, true, "Verificando tu código de forma segura…");
+            JSONObject p = new JSONObject();
+            try { p.put("email", address); p.put("code", digits); } catch(Exception ignored) {}
+            api("POST", "/api/staff/verify-email", p, (status, body, reason) -> {
+                authBusy(wait, check, false, "");
+                if (status == 200) {
+                    try {
+                        JSONObject response = new JSONObject(body);
+                        accountResult(response.optBoolean("accountReady", false),
+                            response.optString("role", "driver"));
+                    } catch(Exception ignored) { accountResult(false, "driver"); }
+                } else {
+                    code.setText("");
+                    authErrorText(error, reason.isEmpty() ?
+                        "El código no es válido o venció. Probá otra vez." : reason);
+                }
+            });
+        });
+        code.setOnEditorActionListener((v, actionId, event) -> {
+            if(actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                check.performClick(); return true;
+            }
+            return false;
+        });
+        spacer(page, 19);
+        LinearLayout links = row();
+        TextView resend = actionText("Reenviar código", TEAL_DARK, v -> {
+            authErrorText(error, "");
+            resendCode(address, wait, check, error);
+        });
+        links.addView(resend, new LinearLayout.LayoutParams(0, dp(46), 1));
+        TextView later = actionText("Más tarde", MUTED, v -> loginScreen());
+        links.addView(later, new LinearLayout.LayoutParams(0, dp(46), 1));
+        page.addView(links);
+        spacer(page, 12);
+        addLine(page, "Revisá también la carpeta de spam. No compartas el código con nadie.",
+            12, MUTED, false, 0);
     }
 
-    private void askEmailForVerification(){
-        LinearLayout form=formContainer();
-        EditText email=formInput(form,"Correo usado en el registro",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        new AlertDialog.Builder(this).setTitle("Verificar correo")
-            .setView(form).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Continuar",(d,w)->{
-                String value=email.getText().toString().trim();
-                if(!value.isEmpty())verifyEmailDialog(value);
-            }).show();
+    private void resendCode(String address, LinearLayout wait, Button button, TextView error) {
+        authBusy(wait, button, true, "Solicitando otro código…");
+        JSONObject p = new JSONObject();
+        try { p.put("email", address); } catch(Exception ignored) {}
+        api("POST", "/api/staff/resend-email", p, (status, body, reason) -> {
+            authBusy(wait, button, false, "");
+            if(status == 200) {
+                try {
+                    int seconds = new JSONObject(body).optInt("waitSeconds", 0);
+                    authErrorText(error, seconds > 0 ?
+                        "Ya se solicitó un código. Podés volver a intentarlo en " + seconds + " segundos." :
+                        "Solicitud recibida. Si tu correo sigue pendiente, llegará un código.");
+                } catch(Exception ignored) {
+                    authErrorText(error, "Solicitud recibida. Revisá el correo.");
+                }
+            } else authErrorText(error, reason.isEmpty() ?
+                "No pudimos solicitar otro código. Intentá nuevamente." : reason);
+        });
+    }
+
+    private void askEmailForVerification() {
+        LinearLayout page = authPage("VERIFICACIÓN", "Retomá tu registro",
+            "Si ya creaste tu cuenta, ingresá el correo que utilizaste para continuar.");
+        EditText email = authField(page, "CORREO ELECTRÓNICO", "nombre@correo.com",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, false);
+        Button go = button("Continuar  →", true, v -> {
+            String address = email.getText().toString().trim();
+            if(address.contains("@") && address.contains("."))verifyEmailDialog(address);
+            else message("Ingresá un correo electrónico válido.");
+        });
+        page.addView(go, new LinearLayout.LayoutParams(-1, dp(52)));
+    }
+
+
+    private void passwordResetStart(String previousPhone) {
+        LinearLayout page = authPage("RECUPERAR ACCESO", "Tu contraseña",
+            "Ingresá el celular con el que te registraste. Si tu cuenta tiene el correo confirmado, enviaremos allí un código de recuperación.");
+        EditText phone = authField(page,"CELULAR","099 123 456",
+            InputType.TYPE_CLASS_PHONE,false);
+        phone.setText(previousPhone == null || previousPhone.trim().isEmpty() ?
+            getSharedPreferences("via_preferences", MODE_PRIVATE).getString("last_phone", "") :
+            previousPhone.trim());
+        Button send = button("Enviar código  →",true,null);
+        page.addView(send,new LinearLayout.LayoutParams(-1,dp(52)));
+        LinearLayout wait = authWaiting(page);
+        TextView error = authError(page);
+        spacer(page,16);
+        addLine(page, "Por seguridad, no indicamos si un celular está registrado. El código solamente llega al correo ya verificado.",
+            12,MUTED,false,0);
+        send.setOnClickListener(v->{
+            String number=phone.getText().toString().trim();
+            if(number.replaceAll("[^0-9]","").length()<9){
+                authErrorText(error,"Ingresá un celular válido.");
+                return;
+            }
+            authErrorText(error,"");
+            authBusy(wait,send,true,"Preparando tu recuperación de forma segura…");
+            JSONObject p=new JSONObject();
+            try{p.put("phone",number);}catch(Exception ignored){}
+            api("POST","/api/staff/password-reset/request",p,(status,body,reason)->{
+                authBusy(wait,send,false,"");
+                if(status==200){
+                    getSharedPreferences("via_preferences", MODE_PRIVATE)
+                        .edit().putString("last_phone",number).apply();
+                    passwordResetConfirm(number);
+                }else authErrorText(error,reason.isEmpty()?
+                    "No pudimos solicitar el código. Intentá nuevamente." : reason);
+            });
+        });
+    }
+
+    private void passwordResetConfirm(String phone) {
+        LinearLayout page=authPage("RECUPERAR ACCESO  /  02", "Creá una contraseña",
+            "Si tu correo estaba verificado, recibirás un código de seis cifras. Ingresalo junto con tu nueva contraseña.");
+        EditText code=authField(page,"CÓDIGO DE SEIS CIFRAS","·  ·  ·  ·  ·  ·",
+            InputType.TYPE_CLASS_NUMBER,false);
+        code.setFilters(new android.text.InputFilter[]{
+            new android.text.InputFilter.LengthFilter(6)});
+        EditText pass=authField(page,"NUEVA CONTRASEÑA","Mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD,true);
+        EditText repeat=authField(page,"REPETIR CONTRASEÑA","Repetí la contraseña",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD,true);
+        Button update=button("Guardar contraseña  →",true,null);
+        page.addView(update,new LinearLayout.LayoutParams(-1,dp(52)));
+        LinearLayout wait=authWaiting(page);
+        TextView error=authError(page);
+        spacer(page,13);
+        addLine(page,"El código vence en 10 minutos y solo puede usarse una vez. Revisá spam si no encontrás el correo.",
+            12,MUTED,false,11);
+        TextView resend=actionText("Solicitar otro código",TEAL_DARK,v->
+            passwordResetStart(phone));
+        page.addView(resend);
+        update.setOnClickListener(v->{
+            String digits=code.getText().toString().trim();
+            String password=pass.getText().toString();
+            if(!digits.matches("[0-9]{6}")){
+                authErrorText(error,"Ingresá las seis cifras que recibiste.");
+                return;
+            }
+            if(password.length()<12||password.length()>128){
+                authErrorText(error,"Usá una contraseña de 12 a 128 caracteres.");
+                return;
+            }
+            if(!password.equals(repeat.getText().toString())){
+                authErrorText(error,"Las contraseñas no coinciden.");
+                return;
+            }
+            authErrorText(error,"");
+            authBusy(wait,update,true,"Guardando tu contraseña de forma segura…");
+            JSONObject p=new JSONObject();
+            try{
+                p.put("phone",phone);
+                p.put("code",digits);
+                p.put("newPassword",password);
+            }catch(Exception ignored){}
+            api("POST","/api/staff/password-reset/confirm",p,(status,body,reason)->{
+                authBusy(wait,update,false,"");
+                pass.setText("");repeat.setText("");code.setText("");
+                if(status==200){
+                    BiometricVault.clear(this);
+                    LinearLayout done=authPage("ACCESO RESTABLECIDO","Todo pronto.",
+                        "Tu contraseña fue actualizada. Ya podés ingresar con tu celular y la nueva clave.");
+                    LinearLayout success=card();
+                    addLine(success,"✓  Contraseña cambiada",17,TEAL_DARK,true,8);
+                    addLine(success,"Las sesiones anteriores se cerraron para proteger tu cuenta.",
+                        13,MUTED,false,0);
+                    appendCard(done,success,18);
+                    done.addView(button("Ir a ingresar  →",true,x->loginScreen()),
+                        new LinearLayout.LayoutParams(-1,dp(52)));
+                } else authErrorText(error,reason.isEmpty()?
+                    "El código es inválido o venció. Solicitá uno nuevo." : reason);
+            });
+        });
     }
 
     private void driverRegister() {
-        LinearLayout form=formContainer();
-        EditText name=formInput(form,"Nombre y apellido",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        EditText phone=formInput(form,"Celular, por ejemplo 099 123 456",InputType.TYPE_CLASS_PHONE);
-        EditText email=formInput(form,"Correo para recibir el código",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText password=formInput(form,"Contraseña propia, mínimo 12 caracteres",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this).setTitle("Registro de conductor")
-            .setMessage("Primero verificás tu correo. Después el administrador debe aprobar tu cuenta.")
-            .setView(form)
-            .setNegativeButton("Cancelar",null)
-            .setPositiveButton("Solicitar registro",(dialog,which)->{
-                String registeredEmail=email.getText().toString().trim();
-                JSONObject p=new JSONObject();
-                try{
-                    p.put("name",name.getText().toString().trim());
-                    p.put("phone",phone.getText().toString().trim());
-                    p.put("email",registeredEmail);
-                    p.put("password",password.getText().toString());
-                }catch(Exception ignored){}
-                password.setText("");
-                api("POST","/api/staff/register-phone",p,(status,body,error)->{
-                    if(status==201){
-                        try{
-                            boolean sent=new JSONObject(body).optBoolean("emailSent",false);
-                            if(sent)verifyEmailDialog(registeredEmail);
-                            else new AlertDialog.Builder(this).setTitle("Cuenta creada")
-                                .setMessage("El envío del correo falló. Usá «Verificar correo» para solicitar otro código.")
-                                .setPositiveButton("Entendido",null).show();
-                        }catch(Exception e){verifyEmailDialog(registeredEmail);}
-                    }else new AlertDialog.Builder(this).setTitle("No se pudo registrar")
-                        .setMessage(error.isEmpty()?"Revisá los datos":error)
-                        .setPositiveButton("Entendido",null).show();
-                });
-            }).show();
+        LinearLayout page = authPage("PASO 01  /  02", "Creá tu cuenta",
+            "Un registro simple, con tus datos personales. Después verificás tu correo para activar el acceso.");
+        EditText name = authField(page, "NOMBRE Y APELLIDO", "Tu nombre completo",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, false);
+        EditText phone = authField(page, "CELULAR", "099 123 456", InputType.TYPE_CLASS_PHONE, false);
+        phone.setText(getSharedPreferences("via_preferences", MODE_PRIVATE).getString("last_phone", ""));
+        EditText email = authField(page, "CORREO ELECTRÓNICO", "nombre@correo.com",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, false);
+        EditText password = authField(page, "CONTRASEÑA", "Mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, true);
+        password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        spacer(page, 2);
+        Button submit = button("Crear cuenta  →", true, null);
+        submit.setTextSize(15);
+        page.addView(submit, new LinearLayout.LayoutParams(-1, dp(52)));
+        LinearLayout wait = authWaiting(page);
+        TextView error = authError(page);
+        spacer(page, 14);
+        addLine(page, "Tus datos se transmiten de forma segura. La cuenta solo se activa después de verificar el correo.",
+            12, MUTED, false, 0);
+        submit.setOnClickListener(v -> {
+            String fullName=name.getText().toString().trim();
+            String number=phone.getText().toString().trim();
+            String address=email.getText().toString().trim();
+            String secret=password.getText().toString();
+            if(fullName.length()<3) { authErrorText(error,"Ingresá tu nombre completo."); return; }
+            if(number.replaceAll("[^0-9]","").length()<9) {
+                authErrorText(error,"Revisá el número de celular."); return;
+            }
+            if(!address.contains("@")||!address.contains(".")) {
+                authErrorText(error,"Ingresá un correo válido."); return;
+            }
+            if(secret.length()<12) {
+                authErrorText(error,"La contraseña debe tener al menos 12 caracteres."); return;
+            }
+            authErrorText(error, "");
+            authBusy(wait, submit, true, "Creando tu cuenta y preparando el correo…");
+            JSONObject p = new JSONObject();
+            try {
+                p.put("name", fullName);
+                p.put("phone", number);
+                p.put("email", address);
+                p.put("password", secret);
+            } catch(Exception ignored) {}
+            api("POST", "/api/staff/register-phone", p, (status, body, reason) -> {
+                authBusy(wait, submit, false, "");
+                if(status == 201) {
+                    getSharedPreferences("via_preferences", MODE_PRIVATE)
+                        .edit().putString("last_phone",number).apply();
+                    password.setText("");
+                    verifyEmailDialog(address);
+                    try {
+                        if(!new JSONObject(body).optBoolean("emailSent", false))
+                            message("La cuenta se creó, pero el correo no salió. Usá «Reenviar código».");
+                    } catch(Exception ignored) {}
+                } else {
+                    authErrorText(error, reason.isEmpty() ?
+                        "No pudimos completar el registro. Revisá los datos." : reason);
+                }
+            });
+        });
+        password.setOnEditorActionListener((v, actionId, event) -> {
+            if(actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                submit.performClick();return true;
+            }
+            return false;
+        });
     }
 
     private void bootstrapAdmin() {
@@ -1133,8 +1455,23 @@ public final class MainActivity extends Activity {
                 if (code != 200) { message(err.isEmpty()?"No se pudo consultar configuración":err); return; }
                 try {
                     siteEnabled = new JSONObject(data).getBoolean("publicEnabled");
-                    adminLoaded = true;
-                    if ("administrar".equals(tab)) dashboard();
+                    // La lista de administradores solamente se solicita si el
+                    // servidor autorizó expresamente esa capacidad en la sesión.
+                    managedAdmins = new JSONArray();
+                    if(staffToken == null || !canManageRoles) {
+                        adminLoaded = true;
+                        if ("administrar".equals(tab)) dashboard();
+                    } else api("GET", "/api/admin/team", null, (teamStatus, teamResult, teamError) -> {
+                        if(teamStatus == 200) {
+                            try {
+                                JSONObject dataTeam = new JSONObject(teamResult);
+                                managedAdmins = dataTeam.getJSONArray("admins");
+                                canManageRoles = dataTeam.optBoolean("canManageRoles", false);
+                            } catch(Exception ignored) { canManageRoles = false; }
+                        }
+                        adminLoaded = true;
+                        if("administrar".equals(tab)) dashboard();
+                    });
                 } catch (Exception e) { message("Configuración inválida"); }
             });
         });
@@ -1145,7 +1482,7 @@ public final class MainActivity extends Activity {
             addLine(content,"Acceso restringido",19,ORANGE,true,0);
             return;
         }
-        addLine(content,"Administración",25,INK,true,4);
+        addLine(content,"Gestión de traslados",25,INK,true,4);
         addLine(content,"Servicio, conductores y autorizaciones",13,MUTED,false,19);
         if(!adminLoaded){
             LinearLayout loading=card();
@@ -1241,11 +1578,62 @@ public final class MainActivity extends Activity {
                 control.setAlpha(0.45f);
             }
             c.addView(control,new LinearLayout.LayoutParams(-1,dp(44)));
+            if(canManageRoles && "approved".equals(status) && verified) {
+                spacer(c,8);
+                Button delegate=button("Nombrar administrador",false,
+                    v->confirmTeamRole(id,driver.optString("name"),"admin"));
+                c.addView(delegate,new LinearLayout.LayoutParams(-1,dp(44)));
+            }
             appendCard(content,c,10);
+        }
+        if(canManageRoles) {
+            spacer(content,18);
+            addLine(content,"Administradores",21,INK,true,5);
+            addLine(content,"Vos decidís quién puede administrar el servicio.",
+                13,MUTED,false,15);
+            for(int i=0;i<managedAdmins.length();i++) {
+                JSONObject admin=managedAdmins.optJSONObject(i);
+                if(admin==null)continue;
+                LinearLayout a=card();
+                String id=admin.optString("id");
+                boolean founder=id.equals(staffUserId);
+                addLine(a,admin.optString("name","Administrador"),16,INK,true,5);
+                addLine(a,admin.optString("phone",""),13,MUTED,false,4);
+                addLine(a,founder?"Cuenta fundadora":"Administrador autorizado",
+                    12,TEAL_DARK,false,9);
+                if(!founder){
+                    a.addView(button("Retirar permiso de administración",false,
+                        v->confirmTeamRole(id,admin.optString("name"),"driver")),
+                        new LinearLayout.LayoutParams(-1,dp(44)));
+                }
+                appendCard(content,a,9);
+            }
         }
         spacer(content,5);
         addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
             12,MUTED,false,13);
+    }
+
+    private void confirmTeamRole(String id,String name,String role) {
+        if(!canManageRoles||staffToken==null)return;
+        boolean promote="admin".equals(role);
+        new AlertDialog.Builder(this)
+            .setTitle(promote?"Nombrar administrador":"Retirar permiso administrativo")
+            .setMessage(promote?
+                name+" podrá aprobar conductores y administrar el servicio. ¿Querés habilitarlo?" :
+                name+" volverá a ser conductor. Deberá iniciar sesión nuevamente.")
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Confirmar",(d,w)->{
+                JSONObject payload=new JSONObject();
+                try{payload.put("role",role);}catch(Exception ignored){}
+                api("PATCH","/api/admin/team/"+id+"/role",payload,(status,result,error)->{
+                    if(status==200) {
+                        message(promote?"Administrador habilitado.":"Permiso retirado.");
+                        adminLoaded=false;
+                        loadAdmin();
+                    }else message(error.isEmpty()?"No fue posible cambiar el permiso":error);
+                });
+            }).show();
     }
 
     private void confirmServiceSwitch() {
@@ -1346,7 +1734,7 @@ public final class MainActivity extends Activity {
         addLine(account,staffName.isEmpty()?
             ("admin".equals(staffRole)?"Administrador general":"Conductor"):
             staffName,19,INK,true,5);
-        addLine(account,"admin".equals(staffRole)?"Rol: administrador general":"Rol: conductor autorizado",
+        addLine(account,"admin".equals(staffRole)?"Acceso: administración":"Acceso: conductor autorizado",
             13,TEAL,true,15);
         if(staffToken!=null && BiometricVault.supported(this)){
             if(BiometricVault.hasSaved(this)){
@@ -1420,15 +1808,19 @@ public final class MainActivity extends Activity {
         LinearLayout bar=row();
         bar.setPadding(dp(8),dp(7),dp(8),dp(6));
         boolean admin="admin".equals(staffRole);
-        String[] titles=admin?
-            new String[]{"Solicitudes","Viajes","Historial","Administrar","Ajustes"}:
-            new String[]{"Solicitudes","Viajes","Historial","Ajustes"};
-        String[] icons=admin?
-            new String[]{"☷","▤","◷","◈","⚙"}:
-            new String[]{"☷","▤","◷","⚙"};
-        String[] values=admin?
-            new String[]{"solicitudes","viajes","historial","administrar","ajustes"}:
-            new String[]{"solicitudes","viajes","historial","ajustes"};
+        // Navegación por capacidades, sin mostrar detalles del titular de la cuenta.
+        String[] titles=admin&&canManageRoles?
+            new String[]{"Gestión","Solicitudes","Viajes","Historial","Ajustes"}:
+            admin?new String[]{"Solicitudes","Viajes","Gestión","Ajustes"}:
+            new String[]{"Mis viajes","Solicitudes","Historial","Ajustes"};
+        String[] icons=admin&&canManageRoles?
+            new String[]{"◈","☷","▤","◷","⚙"}:
+            admin?new String[]{"☷","▤","◈","⚙"}:
+            new String[]{"▤","☷","◷","⚙"};
+        String[] values=admin&&canManageRoles?
+            new String[]{"administrar","solicitudes","viajes","historial","ajustes"}:
+            admin?new String[]{"solicitudes","viajes","administrar","ajustes"}:
+            new String[]{"viajes","solicitudes","historial","ajustes"};
         for(int i=0;i<titles.length;i++){
             final String next=values[i];
             boolean active=next.equals(tab);
