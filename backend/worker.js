@@ -39,13 +39,25 @@ const routeSelect=alias=>
  "(SELECT provider FROM booking_routes WHERE booking_id="+alias+".id AND provider='geoapify') AS route_provider";
 function scheduleMissingRoutes(env,ctx,rows,max=2){
  if(!ctx?.waitUntil)return;
- const needs=rows.filter(x=>!x.route_distance_m&&
-  ['requested','quoted','accepted','confirmed'].includes(x.status)).slice(0,max);
- if(!needs.length)return;
- ctx.waitUntil(Promise.all(needs.map(async booking=>{
-  try{await precalculateBookingRoute(env,booking,'auto:'+booking.id)}
-  catch{ /* Las reservas siguen operativas si el mapa falla. */ }
- })));
+ const missing=rows.filter(x=>!x.route_distance_m&&
+  ['requested','quoted','accepted','confirmed'].includes(x.status)).slice(0,20);
+ if(!missing.length)return;
+ ctx.waitUntil((async()=>{
+  const tasks=[];
+  for(const booking of missing){
+   if(tasks.length>=max)break;
+   try{
+    // Reserva por 10 min para que dos teléfonos no pidan la misma ruta.
+    // Reintento automático posterior si el geocodificador no responde.
+    const claimed=await env.DB.prepare(
+     'INSERT INTO otp_rate_limits (rate_key,window_started,attempts) VALUES (?,unixepoch(),1) ON CONFLICT(rate_key) DO UPDATE SET window_started=CASE WHEN unixepoch()-window_started>=600 THEN unixepoch() ELSE window_started END,attempts=CASE WHEN unixepoch()-window_started>=600 THEN 1 ELSE attempts+1 END RETURNING attempts'
+    ).bind('via-autocalc:'+booking.id).first();
+    if(claimed?.attempts!==1)continue;
+    tasks.push(precalculateBookingRoute(env,booking,'auto:'+booking.id).catch(()=>null));
+   }catch{ /* Sin mapa, la reserva sigue intacta. */ }
+  }
+  await Promise.all(tasks);
+ })());
 }
 const authorized=async(req,env)=>identity(req,env);
 const getBooking=async(req,env,id)=>{const token=req.headers.get('X-Booking-Token')||'';if(!token||token.length>200)return null;const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();return row&&equal(await hash(token),row.access_token_hash)?row:null};
