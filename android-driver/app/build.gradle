@@ -4,11 +4,11 @@ android {
     namespace 'uy.viatraslados.conductor'
     compileSdk 35
     defaultConfig {
-        applicationId 'uy.viatraslados.conductor.premiumqa'
+        applicationId 'uy.viatraslados.conductor.geoapifyqa'
         minSdk 26
         targetSdk 35
-        versionCode 4
-        versionName '0.4.0-premium-qa'
+        versionCode 9
+        versionName '0.9.0-geoapify-free-qa'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
