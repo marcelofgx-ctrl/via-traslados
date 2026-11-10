@@ -67,13 +67,14 @@
           <label class="control"><span class="field-label">NOMBRE Y APELLIDO</span><input id="name" name="name" autocomplete="name" placeholder="Tu nombre completo" minlength="2" maxlength="100" required></label>
           <label class="control contact-control"><span class="field-label">CELULAR DE CONTACTO</span><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="099 123 456" required minlength="7" maxlength="30"></label>
           <label class="control contact-control"><span class="field-label">CORREO ELECTRÓNICO <span class="optional">(OBLIGATORIO)</span></span><input id="email" name="email" type="email" autocomplete="email" maxlength="200" required placeholder="nombre@ejemplo.com"></label>
+          <p id="demo-identity-note" class="otp-guidance hidden" role="note">VERSIÓN DE PRUEBA: no recibirás un email. El código para continuar es <strong>123456</strong>, sin reservas reales.</p>
           <label class="privacy-check"><input type="checkbox" id="privacy-consent" required><span>Acepto que se utilicen estos datos para gestionar mi solicitud de traslado.</span></label>
           <div class="turnstile-container hidden" id="turnstile-box"></div>
           <div class="trust-caption"><span aria-hidden="true">◇</span> Tus datos no se publican ni se muestran a otros pasajeros.</div>
           <button type="button" class="primary-btn wizard-next" id="send-code">Recibir código de verificación <span>→</span></button>
         </section>
         <section data-step="3" class="wizard-step hidden">
-          <div class="section-eyebrow">ÚLTIMO PASO</div><h2>Verificá tu correo</h2><p class="wizard-description" id="verification-description">Ingresá el código enviado por email.</p>
+          <div class="section-eyebrow">ÚLTIMO PASO</div><h2 id="verification-heading">Verificá tu correo</h2><p class="wizard-description" id="verification-description">Ingresá el código enviado por email.</p>
           <label class="control otp-control"><span class="field-label">CÓDIGO DE VERIFICACIÓN</span><input id="otp-code" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,10}" minlength="4" maxlength="10" placeholder="••••••" aria-describedby="otp-guidance"></label>
           <p id="otp-guidance" class="otp-guidance"></p><button class="primary-btn wizard-next" id="verify-and-book" type="submit">Verificar y enviar solicitud <span>→</span></button>
           <button class="text-button" type="button" id="resend-code">Reenviar código</button>
