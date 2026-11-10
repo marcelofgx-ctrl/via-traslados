@@ -1,6 +1,6 @@
 Vía Traslados — resultado de publicación en Cloudflare Pages
 pages_deploy=skipped
-commit=c449c2d39374964875c7784ddaf59dcd1cbdb136
+commit=f30f58c564f3c3b23dd03b5143fb67e94c858678
 project=via-traslados-pasajeros
 origin=https://via-traslados-pasajeros.pages.dev
 Últimas líneas del despliegue:
