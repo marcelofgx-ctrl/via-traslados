@@ -14,9 +14,10 @@ function client(){
   body:{appendChild(){}},
   addEventListener(){}
  };
- const window={addEventListener(){}};
+ const listeners={};
+ const window={addEventListener(type,callback){listeners[type]=callback}};
  runInNewContext(read('address-autocomplete.js'),{document,window});
- return{inputs,via:window.ViaAddress};
+ return{inputs,via:window.ViaAddress,listeners};
 }
 test('Roque Sáenz Peña 1711: cambiar Lagomar por Shangrilá sin desplazar coordenadas',()=>{
  const {inputs,via}=client();
@@ -34,6 +35,13 @@ test('Roque Sáenz Peña 1711: cambiar Lagomar por Shangrilá sin desplazar coor
  assert.equal(inputs.origin.value,inputs['home-origin'].value);
  assert.equal(inputs.origin.dataset.city,'Shangrilá');
 });
+test('la dirección guardada por el navegador también se corrige al volver a Inicio',()=>{
+ const {inputs,listeners}=client();
+ inputs['home-origin'].value='ROQUE SAENZ PEÑA 1711, LAGOMAR, CANELONES';
+ listeners.pageshow();
+ assert.equal(inputs['home-origin'].value,'ROQUE SAENZ PEÑA 1711, Shangrilá, CANELONES');
+});
+
 test('no cambiar ninguna otra altura ni calles del mismo departamento',()=>{
  const {inputs,via}=client();
  const cases=[
