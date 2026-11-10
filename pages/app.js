@@ -30,6 +30,12 @@ function initPassenger(){
    $('return-toggle').classList.remove('hidden');
   }
  }
+ if(S.isDemo()){
+  const thumb=$('return-passkey');
+  if(thumb)thumb.hidden=true;
+  const row=document.querySelector('.return-actions');
+  if(row)row.style.gridTemplateColumns='1fr';
+ }
  showAccount();S.resume().then(showAccount).catch(()=>{});
  $('forget-customer')?.addEventListener('click',async()=>{
   await S.logout();$('name').value='';$('phone').value='';$('email').value='';
@@ -177,6 +183,12 @@ async function renderDriver(){try{const rows=await S.list(operatorKey);$('driver
 function initDriver(){$('today-chip').textContent=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});if(!S.isDemo()){operatorKey=sessionStorage.getItem('via-operator-key')||'';if(!operatorKey){$('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden')}}$('auth-form').addEventListener('submit',async(e)=>{e.preventDefault();operatorKey=$('driver-key').value.trim();sessionStorage.setItem('via-operator-key',operatorKey);$('driver-auth').classList.add('hidden');$('driver-content').classList.remove('hidden');await renderDriver()});$('refresh-btn').addEventListener('click',renderDriver);document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(c=>c.classList.toggle('active',b===c));renderDriver()}));$('requests-list').addEventListener('submit',async(e)=>{const form=e.target.closest('form[data-action="quote"]');if(!form)return;e.preventDefault();const price=Number(new FormData(form).get('price'));if(!Number.isInteger(price)||price<1)return;try{await S.operatorUpdate(form.dataset.id,{status:'quoted',price},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});$('requests-list').addEventListener('click',async(e)=>{const b=e.target.closest('button[data-action]');if(!b)return;const status=b.dataset.action;if(!['confirm','en_route','arrived','in_progress','completed'].includes(status))return;try{await S.operatorUpdate(b.dataset.id,{status:status==='confirm'?'confirmed':status},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});renderDriver();window.addEventListener('storage',renderDriver);window.addEventListener('via-updated',renderDriver)}
 async function initMine(){
  const container=$('mine-list'),login=$('mine-login-card'),welcome=$('mine-welcome');
+ if(S.isDemo()){
+  const thumb=$('mine-login-passkey');
+  if(thumb)thumb.hidden=true;
+  const row=document.querySelector('.mine-login-actions');
+  if(row)row.style.gridTemplateColumns='1fr';
+ }
  if(!container)return;
  let captchaToken='',turnstileLoaded=false;
  const note=message=>{const el=$('mine-login-feedback');if(el)el.textContent=message||''};
@@ -227,7 +239,7 @@ async function initMine(){
    if(!result.sent){note(result.message||'Si es tu primera visita, solicitá un traslado y verificá tu correo.');return}
    $('mine-login-verify').classList.remove('hidden');
    if(S.isDemo())$('mine-login-code').value='123456';
-   note('Código enviado a '+(result.maskedEmail||'tu correo asociado')+'.');
+   note(S.isDemo()?'DEMO: usá el código 123456. No se envió ningún correo.':'Código enviado a '+(result.maskedEmail||'tu correo asociado')+'.');
    captchaToken='';
   }catch(e){note(e.message||'No pudimos enviar el código.')}
   finally{button.disabled=false}
