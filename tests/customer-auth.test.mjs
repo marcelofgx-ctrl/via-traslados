@@ -81,6 +81,7 @@ function post(path,body,headers={}){
   body:JSON.stringify(body)});
 }
 const send=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
+const get=(path,headers={})=>new Request('https://api.example'+path,{method:'GET',headers:{Origin:'https://viatraslados.com',...headers}});
 test('normalización del celular (local e internacional), no es autenticación',()=>{
  assert.equal(normalizePhone('094 123 456'),'094123456');
  assert.equal(normalizePhone('+598 94 123 456'),'094123456');
@@ -89,7 +90,7 @@ test('normalización del celular (local e internacional), no es autenticación',
 });
 test('sin correo o passkey verificados, teléfono no concede ninguna sesión',async()=>{
  const DB=db(),e=env(DB);
- const me=await customerRoutes(post('/api/customer/me',{}),e,'/api/customer/me',send);
+ const me=await customerRoutes(get('/api/customer/me'),e,'/api/customer/me',send);
  assert.equal(me.status,401);
  const bare=await customerSession(post('/api/customer/bookings',{phone:fake.phone}),e);
  assert.equal(bare,null);
@@ -136,7 +137,7 @@ test('celular → correo asociado → OTP válido → sesión 30 días → logou
   const token=DB.sessions.keys().next().value;
   assert.notEqual(token,session.sessionToken,'Token solo se almacena hasheado');
   const headers={'Authorization':'Bearer '+session.sessionToken};
-  const account=await customerRoutes(post('/api/customer/me',{},headers),e,'/api/customer/me',send);
+  const account=await customerRoutes(get('/api/customer/me',headers),e,'/api/customer/me',send);
   assert.equal(account.status,200);
   assert.equal((await account.json()).profile.name,fake.name);
   const replay=await customerRoutes(post('/api/customer/login/verify',{phone:fake.phone,code:otp}),e,
