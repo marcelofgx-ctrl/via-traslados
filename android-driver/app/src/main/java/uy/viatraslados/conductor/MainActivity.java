@@ -1135,65 +1135,111 @@ public final class MainActivity extends Activity {
     }
 
     private void manage(LinearLayout content) {
-        if (!"admin".equals(staffRole)) { addLine(content,"Acceso restringido",18,ORANGE,true,0); return; }
-        addLine(content, "Administración", 27, INK, true, 4);
-        addLine(content, "Control general de Vía Traslados", 14, MUTED, false, 19);
-        if (!adminLoaded) {
-            addLine(content, "Consultando la base de datos…", 15, MUTED, false, 12);
+        if(!"admin".equals(staffRole)){
+            addLine(content,"Acceso restringido",19,ORANGE,true,0);
+            return;
+        }
+        addLine(content,"Administración",25,INK,true,4);
+        addLine(content,"Servicio, conductores y autorizaciones",13,MUTED,false,19);
+        if(!adminLoaded){
+            LinearLayout loading=card();
+            addLine(loading,"Consultando estado del servicio…",14,MUTED,false,0);
+            appendCard(content,loading,15);
             loadAdmin();
             return;
         }
-        LinearLayout service = card();
-        addLine(service, "Servicio público", 19, INK, true, 10);
-        addLine(service, siteEnabled ? "WEB HABILITADA" : "WEB SUSPENDIDA",
-            18, siteEnabled ? TEAL : ORANGE, true, 9);
-        addLine(service, siteEnabled ?
-            "Los pasajeros pueden ingresar y solicitar reservas." :
-            "Los pasajeros no pueden crear reservas. La administración continúa disponible.",
-            13, MUTED, false, 16);
-        service.addView(button(siteEnabled ? "Suspender web de pasajeros" : "Reactivar web de pasajeros",
-            !siteEnabled, v -> confirmServiceSwitch()),
-            new LinearLayout.LayoutParams(-1, dp(53)));
-        appendCard(content, service, 16);
 
-        LinearLayout h = row();
-        TextView t = text("Conductores ("+managedDrivers.length()+")",20,INK,true);
-        h.addView(t,new LinearLayout.LayoutParams(0,-2,1));
-        Button refresh=button("↻",false,v->loadAdmin());
-        h.addView(refresh,new LinearLayout.LayoutParams(dp(52),dp(45)));
-        content.addView(h);
-        spacer(content,12);
-        if (managedDrivers.length()==0) {
+        int pending=0,approved=0,blocked=0;
+        for(int i=0;i<managedDrivers.length();i++){
+            JSONObject d=managedDrivers.optJSONObject(i);
+            if(d==null)continue;
+            String status=d.optString("status");
+            if("pending".equals(status))pending++;
+            else if("approved".equals(status))approved++;
+            else blocked++;
+        }
+        LinearLayout stats=row();
+        stats.addView(statTile(String.valueOf(pending),"Por aprobar",pending>0),
+            new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,-2,1);
+        second.leftMargin=dp(8);
+        stats.addView(statTile(String.valueOf(approved),"Habilitados",false),second);
+        content.addView(stats);
+        spacer(content,18);
+
+        LinearLayout service=card();
+        LinearLayout header=row();
+        TextView label=text("WEB DE PASAJEROS",12,MUTED,true);
+        label.setLetterSpacing(0.08f);
+        header.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+        TextView pill=text(siteEnabled?"ACTIVA":"SUSPENDIDA",11,
+            siteEnabled?TEAL_DARK:ORANGE,true);
+        pill.setPadding(dp(10),dp(6),dp(10),dp(6));
+        pill.setBackground(bg(siteEnabled?SOFT:Color.rgb(255,245,234),15,0));
+        header.addView(pill);
+        service.addView(header);
+        spacer(service,13);
+        addLine(service,siteEnabled?"Servicio habilitado":"Servicio suspendido",
+            19,INK,true,5);
+        addLine(service,siteEnabled?
+            "Los pasajeros pueden consultar y solicitar traslados.":
+            "Las solicitudes nuevas están detenidas. Podés reactivar el servicio desde aquí.",
+            13,MUTED,false,15);
+        Button toggle=button(siteEnabled?"Suspender solicitudes":"Reactivar servicio",
+            !siteEnabled,v->confirmServiceSwitch());
+        service.addView(toggle,new LinearLayout.LayoutParams(-1,dp(46)));
+        appendCard(content,service,24);
+
+        LinearLayout headerDrivers=row();
+        TextView title=text("Conductores",21,INK,true);
+        headerDrivers.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        TextView counts=text(managedDrivers.length()+" registrados",12,MUTED,false);
+        headerDrivers.addView(counts);
+        content.addView(headerDrivers);
+        spacer(content,11);
+        if(managedDrivers.length()==0){
             LinearLayout empty=card();
-            addLine(empty,"Todavía no hay conductores registrados.",14,MUTED,false,0);
-            appendCard(content,empty,14);
+            addLine(empty,"Todavía no hay conductores",16,INK,true,5);
+            addLine(empty,"Las solicitudes de registro aparecerán acá para que las apruebes.",
+                13,MUTED,false,0);
+            appendCard(content,empty,13);
         }
-        for (int i=0;i<managedDrivers.length();i++) {
+        for(int i=0;i<managedDrivers.length();i++){
             JSONObject driver=managedDrivers.optJSONObject(i);
-            if (driver==null) continue;
-            String id=driver.optString("id");
-            String status=driver.optString("status");
+            if(driver==null)continue;
+            String id=driver.optString("id"),status=driver.optString("status");
+            boolean verified=driver.optBoolean("emailVerified",false);
             LinearLayout c=card();
-            addLine(c,driver.optString("name","Sin nombre"),18,INK,true,5);
-            addLine(c,driver.optString("phone","Sin celular")+" · "+driver.optString("email",""),13,MUTED,false,8);
-            addLine(c,driver.optBoolean("emailVerified",false)?"Correo verificado":"Correo sin verificar",
-                12,driver.optBoolean("emailVerified",false)?TEAL:ORANGE,true,8);
-            String caption="pending".equals(status)?"PENDIENTE":
-                "approved".equals(status)?"APROBADO":"BLOQUEADO";
-            addLine(c,caption,13,"approved".equals(status)?TEAL:ORANGE,true,14);
+            LinearLayout upper=row();
+            TextView name=text(driver.optString("name","Sin nombre"),16,INK,true);
+            upper.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+            TextView statusTag=text("pending".equals(status)?"PENDIENTE":
+                "approved".equals(status)?"ACTIVO":"BLOQUEADO",11,
+                "approved".equals(status)?TEAL_DARK:ORANGE,true);
+            statusTag.setPadding(dp(7),dp(5),dp(7),dp(5));
+            statusTag.setBackground(bg("approved".equals(status)?SOFT:
+                Color.rgb(255,245,234),12,0));
+            upper.addView(statusTag);
+            c.addView(upper);
+            spacer(c,8);
+            addLine(c,driver.optString("phone","Sin celular"),13,INK,false,3);
+            addLine(c,driver.optString("email",""),12,MUTED,false,7);
+            addLine(c,verified?"✓ Correo verificado":"• Correo pendiente de verificación",
+                12,verified?TEAL:ORANGE,false,13);
             String target="approved".equals(status)?"blocked":"approved";
-            String action="approved".equals(status)?"Bloquear conductor":"Aprobar / reactivar conductor";
-            Button actionButton=button(action,!"approved".equals(status),
-                v -> confirmDriverStatus(id,driver.optString("name"),target));
-            if ("approved".equals(target) && !driver.optBoolean("emailVerified",false)) {
-                actionButton.setEnabled(false);
-                actionButton.setAlpha(0.5f);
+            String action="approved".equals(status)?"Bloquear acceso":"Aprobar conductor";
+            Button control=button(action,!"approved".equals(status),
+                v->confirmDriverStatus(id,driver.optString("name"),target));
+            if("approved".equals(target)&&!verified){
+                control.setEnabled(false);
+                control.setAlpha(0.45f);
             }
-            c.addView(actionButton,new LinearLayout.LayoutParams(-1,dp(50)));
-            appendCard(content,c,12);
+            c.addView(control,new LinearLayout.LayoutParams(-1,dp(44)));
+            appendCard(content,c,10);
         }
-        addLine(content,"Las cuentas bloqueadas quedan sin acceso de inmediato, incluso si habían iniciado sesión.",
-            12,MUTED,false,12);
+        spacer(content,5);
+        addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
+            12,MUTED,false,13);
     }
 
     private void confirmServiceSwitch() {
