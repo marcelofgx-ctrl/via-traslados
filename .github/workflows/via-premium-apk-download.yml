@@ -20,7 +20,7 @@ jobs:
       - name: Conservar descargas anteriores e incorporar APK Premium validada
         run: |
           set -euo pipefail
-          mkdir -p pages/descargas
+          mkdir -p pages/descargas /tmp/via-old /tmp/via-phone /tmp/via-premium
           gh release download via-admin-qa-v0.2.1 --repo marcelofgx-ctrl/via-traslados \
             --pattern 'via-traslados-admin-qa-v0.2.1.apk' --pattern 'SHA256SUMS.txt' --dir /tmp/via-old
           gh release download via-phone-bio-qa-v0.3.0 --repo marcelofgx-ctrl/via-traslados \
