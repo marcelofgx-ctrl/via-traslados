@@ -434,6 +434,8 @@ public final class MainActivity extends Activity {
         routeResults.clear();
         routeStarted.clear();
         routeFailures.clear();
+        routeCards.clear();
+        routeCardBookings.clear();
         routeProviderMissing=false;
         canManageRoles = false;
         managedAdmins = new JSONArray();
@@ -665,6 +667,8 @@ public final class MainActivity extends Activity {
         authFlow = false;
         routeLabels.clear();
         routeSpinners.clear();
+        routeCards.clear();
+        routeCardBookings.clear();
         root.removeAllViews();
         root.setBackgroundColor(LIGHT);
 
@@ -699,6 +703,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
+        scroll.setOnScrollChangeListener((v,x,y,oldX,oldY)->requestVisibleRoutes());
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout content = column();
@@ -710,6 +715,9 @@ public final class MainActivity extends Activity {
         else if ("viajes".equals(tab)) lists(content, "viajes");
         else lists(content, "solicitudes");
         navigation();
+        // Consultar solo tarjetas visibles: no realizar decenas de llamadas
+        // si la lista contiene muchos viajes o se actualiza cada 30 segundos.
+        handler.post(()->{if(!isFinishing())requestVisibleRoutes();});
     }
 
     private int count(String status) {
@@ -793,6 +801,8 @@ public final class MainActivity extends Activity {
     private final java.util.Set<String> routeStarted=new java.util.HashSet<>();
     private final java.util.Map<String,String> routeFailures=new java.util.HashMap<>();
     private final java.util.Map<String,TextView> routeLabels=new java.util.HashMap<>();
+    private final java.util.Map<String,View> routeCards=new java.util.HashMap<>();
+    private final java.util.Map<String,JSONObject> routeCardBookings=new java.util.HashMap<>();
     private final java.util.Map<String,android.widget.ProgressBar> routeSpinners=new java.util.HashMap<>();
     private boolean routeProviderMissing=false;
 
@@ -852,6 +862,19 @@ public final class MainActivity extends Activity {
         }else {
             label.setText("Calculando ruta…");
             label.setTextColor(MUTED);
+        }
+    }
+
+    private void requestVisibleRoutes() {
+        if(!"solicitudes".equals(tab)&&!"viajes".equals(tab)&&!"historial".equals(tab))
+            return;
+        for(java.util.Map.Entry<String,View> entry:routeCards.entrySet()){
+            android.graphics.Rect visibleRect=new android.graphics.Rect();
+            View card=entry.getValue();
+            if(card.getGlobalVisibleRect(visibleRect)&&visibleRect.height()>dp(20)){
+                JSONObject booking=routeCardBookings.get(entry.getKey());
+                if(booking!=null)requestRouteAutomatically(booking);
+            }
         }
     }
 
@@ -958,8 +981,9 @@ public final class MainActivity extends Activity {
         if(!id.isEmpty()){
             routeLabels.put(id,metric);
             routeSpinners.put(id,spinner);
+            routeCards.put(id,tile);
+            routeCardBookings.put(id,item);
             showRouteState(id);
-            requestRouteAutomatically(item);
         }else{
             spinner.setVisibility(View.GONE);
             metric.setText("Ruta pendiente");
