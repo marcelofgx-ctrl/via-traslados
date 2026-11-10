@@ -40,7 +40,7 @@ async function parse(req){
  if(!json||typeof json!=='object'||Array.isArray(json))throw Error('Datos inválidos');
  return json;
 }
-async function accountByPhone(env,phone){
+export async function accountByPhone(env,phone){
  const needle=normalizePhone(phone);
  // Retener compatibilidad con usuarios existentes creados antes de normalizar teléfonos.
  const rows=await env.DB.prepare("SELECT email,name,phone FROM customers WHERE length(phone) BETWEEN 7 AND 30 AND (replace(replace(replace(replace(replace(phone,' ',''),'-',''),'+',''),'(',''),')','') LIKE ? OR replace(replace(replace(replace(replace(phone,' ',''),'-',''),'+',''),'(',''),')','') LIKE ?) LIMIT 8").bind('%'+needle+'%', '%'+needle.replace(/^0/,'598')+'%').all();
@@ -48,7 +48,7 @@ async function accountByPhone(env,phone){
  // Teléfono duplicado no se vincula arbitrariamente a una cuenta.
  return matches.length===1?matches[0]:null;
 }
-async function createSession(env,email){
+export async function createCustomerSession(env,email){
  const token=random(),hash=await sha(token),expiresAt=now()+DAYS_30;
  await env.DB.prepare('INSERT INTO customer_sessions(token_hash,email,expires_at,created_at) VALUES (?,?,?,unixepoch())').bind(hash,email,expiresAt).run();
  return{token,expiresAt};
@@ -86,7 +86,7 @@ async function phoneFinish(req,env,p){
  if(verified.status!==200)return verified;
  const consumeReq=new Request(req.url,{method:'POST',headers:{'X-Verification-Token':verified.data.verificationToken}});
  if(!await consumeVerifiedSession(consumeReq,env,user.email))return error('El código ya se utilizó',401);
- const session=await createSession(env,user.email);
+ const session=await createCustomerSession(env,user.email);
  return ok(identityResult({name:user.name,phone:user.phone,email:user.email},session));
 }
 async function enroll(req,env,p){
@@ -96,7 +96,7 @@ async function enroll(req,env,p){
  const proof=new Request(req.url,{headers:{'X-Verification-Token':verifier}});
  if(!await consumeVerifiedSession(proof,env,profile.email))return error('Verificación vencida o utilizada',401);
  await env.DB.prepare("INSERT INTO customers(email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,phone=excluded.phone,updated_at=datetime('now')").bind(profile.email,profile.name,profile.phone).run();
- const session=await createSession(env,profile.email);
+ const session=await createCustomerSession(env,profile.email);
  return ok(identityResult(profile,session),201);
 }
 export async function customerRoutes(req,env,path,send){
