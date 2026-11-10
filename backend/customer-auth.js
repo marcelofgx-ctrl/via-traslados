@@ -1,6 +1,6 @@
 // Vía Traslados: identidad de pasajeros, sin contraseña ni SMS de pago.
 // Nunca autenticar por conocer solamente el teléfono: correo OTP o passkey válida.
-import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,maskEmail} from './auth.js';
+import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,maskEmail,challenge} from './auth.js';
 
 const encoder=new TextEncoder();
 const sha=async str=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(str)))).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -68,10 +68,11 @@ async function phoneStart(req,env,p){
  let phone;try{phone=normalizePhone(p.phone)}catch{return error('Ingresá un celular válido');}
  const ip=req.headers.get('CF-Connecting-IP')||'unknown';
  if(!await limited(env,'login-phone:'+phone,4,900)||!await limited(env,'login-ip:'+ip,12,900))return error('Demasiados intentos. Probá más tarde.',429);
+ if(!await challenge(req,env,p.turnstileToken))return error('Completá la comprobación de seguridad',403);
  const user=await accountByPhone(env,phone);
- if(!user)return ok({sent:false,recognized:false,message:'No encontramos una cuenta para ese teléfono. Registrate con tu correo.'});
+ if(!user)return ok({sent:false,recognized:false,message:'Si es tu primera visita, registrate con tu correo.'});
  const synthetic=new Request(req.url,{method:'POST',headers:req.headers,body:JSON.stringify({email:user.email,turnstileToken:p.turnstileToken})});
- const started=await beginOtp(synthetic,env);
+ const started=await beginOtp(synthetic,env,{captchaVerified:true});
  if(started.status!==200)return started;
  return ok({sent:true,recognized:true,maskedEmail:maskEmail(user.email),message:'Te enviamos un código al correo asociado a tu celular.'});
 }
