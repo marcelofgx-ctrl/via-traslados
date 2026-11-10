@@ -64,6 +64,34 @@ test('recuperar sesión por celular tras cerrar sesión en QA, usando solo OTP s
  await S.finishPhoneLogin('094 222 333','123456');
  assert.equal(S.customer().profile.name,'Cliente Demo');
 });
+test('cerrar sesión borra también accesos antiguos a reservas en un teléfono compartido',async()=>{
+ const local=storage(),token='a'.repeat(64);
+ local.setItem('via-customer-session-v1',JSON.stringify({
+  sessionToken:token,expiresAt:Math.floor(Date.now()/1000)+3600,
+  profile:{email:'cliente@example.com',name:'Cliente Uno',phone:'094 111 111'}
+ }));
+ local.setItem('via-traslados-solo-demo-access-v3',JSON.stringify({'VIA-PRIVATE':'old-private-token'}));
+ const {S}=createClient({demo:false,apiUrl:'https://api.example'},local);
+ assert.ok(S.customer());
+ await S.logout();
+ assert.equal(S.customer(),null);
+ assert.equal(local.getItem('via-traslados-solo-demo-access-v3'),null);
+});
+test('iniciar sesión con otro correo elimina tokens de reservas de la cuenta anterior',()=>{
+ const local=storage(),token='a'.repeat(64);
+ local.setItem('via-customer-session-v1',JSON.stringify({
+  sessionToken:token,expiresAt:Math.floor(Date.now()/1000)+3600,
+  profile:{email:'anterior@example.com',name:'Cuenta Uno',phone:'094 111 111'}
+ }));
+ local.setItem('via-traslados-solo-demo-access-v3',JSON.stringify({'VIA-PRIVATE':'legacy-token'}));
+ const {S}=createClient({demo:false,apiUrl:'https://api.example'},local);
+ S.saveCustomer({
+  sessionToken:'b'.repeat(64),expiresAt:Math.floor(Date.now()/1000)+3600,
+  profile:{email:'nueva@example.com',name:'Cuenta Dos',phone:'094 222 222'}
+ });
+ assert.equal(local.getItem('via-traslados-solo-demo-access-v3'),null);
+ assert.equal(S.customer().profile.email,'nueva@example.com');
+});
 test('un token de sesión falso o vencido no se reconoce como usuario real',()=>{
  const local=storage();
  local.setItem('via-customer-session-v1',JSON.stringify({
