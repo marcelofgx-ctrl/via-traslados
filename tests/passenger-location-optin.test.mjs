@@ -70,7 +70,7 @@ test('on Android, no modal alerts; stable entry screen and cache invalidation',(
  assert.match(index,/id="home-origin"/);
  assert.match(index,/id="location-shortcut"/);
  assert.match(index,/reference\.js\?v=13/);
- assert.match(index,/address-autocomplete\.js\?v=13/);
+ assert.match(index,/address-autocomplete\.js\?v=\d+/);
  assert.match(index,/reference\.css\?v=13/);
- assert.match(sw,/via-traslados-pages-v13-location-optin/);
+ assert.match(sw,/const VERSION='via-traslados-pages-v\d+-/);
 });

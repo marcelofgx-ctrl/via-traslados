@@ -12,11 +12,24 @@ const PLACES=[
  {name:'Montevideo Shopping',aliases:['shopping montevideo','montevideo shopping'],city:'Montevideo',department:'Montevideo',lat:-34.9086802,lng:-56.1380179,detail:'Av. Luis Alberto de Herrera 1290'},
  {name:'Punta Carretas Shopping',aliases:['shopping punta carretas','punta carretas shopping'],city:'Montevideo',department:'Montevideo',lat:-34.9237858,lng:-56.1620131,detail:'José Ellauri 350'}
 ];
-function normalized(row,mode){
+// El padrón 1711 de Roque Sáenz Peña se identifica como Shangrilá.
+// Rectificar solo esa dirección si IDE informa erróneamente Lagomar;
+// jamás alterar el punto geográfico ni extender la corrección a otros portales.
+function correctKnownPortal(street,city,department,query){
+ if(fold(city)!=='lagomar'||(department&&fold(department)!=='canelones'))return city;
+ const streetBase=fold(street);
+ const typedNumbers=fold(query).match(/\b\d{3,5}\b/g)||[];
+ if(typedNumbers.length&&!typedNumbers.includes('1711'))return city;
+ if(!/^(?:avenida |av )?roque saenz pena(?: 1711)?$/.test(streetBase))return city;
+ if(!/\b1711\b/.test(streetBase+' '+fold(query)))return city;
+ return 'Shangrilá';
+}
+function normalized(row,mode,query=''){
  if(typeof row==='string')return {label:clean(row),street:clean(row),city:'',department:'',lat:null,lng:null,accuracy:'street'};
  if(!row||typeof row!=='object')return null;
  const street=clean(row.nomVia?[row.nomVia,row.portalNumber].filter(Boolean).join(' '):row.calle||row.address||row.direccion||row.nombre||'');
- const city=clean(row.localidad||''),department=clean(row.departamento||'');
+ const rawCity=clean(row.localidad||''),department=clean(row.departamento||'');
+ const city=correctKnownPortal(street,rawCity,department,query);
  const lat=number(row.lat),lng=number(row.lng);
  if(!street||(mode!=='suggest'&&!valid(lat,lng)))return null;
  const approximate=/aproxim|cercano|centroide|no encontrad/i.test(String(row.stateMsg||''));
@@ -49,7 +62,7 @@ async function directions(request){
   else{u.searchParams.set('q',q);u.searchParams.set('limit',mode==='suggest'?'30':'5')}
   const response=await fetch(u,{signal:ctl.signal,headers:{Accept:'application/json'}});if(!response.ok)throw Error('IDE no disponible');
   const rows=await response.json();if(!Array.isArray(rows))throw Error('Respuesta inválida');
-  const results=rows.map(r=>normalized(r,mode)).filter(Boolean);
+  const results=rows.map(r=>normalized(r,mode,q)).filter(Boolean);
   if(mode==='suggest'){const nq=fold(q),tokens=nq.split(' ').filter(v=>v.length>2);const score=r=>{const name=fold(r.street);return (name===nq?7:0)+(name.startsWith(nq)?5:0)+(name.includes(nq)?3:0)+tokens.filter(t=>name.includes(t)).length*2+(fold(r.department)==='montevideo'?2:fold(r.department)==='canelones'?1.5:0)};results.sort((a,b)=>score(b)-score(a))}
   return json({results:results.slice(0,8),mode,provider:'IDE Uruguay'});
  }catch{return json({error:'El buscador de direcciones no está disponible ahora. Podés ingresar la dirección manualmente.',results:[]},503)}
