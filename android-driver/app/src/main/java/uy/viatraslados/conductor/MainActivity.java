@@ -237,6 +237,9 @@ public final class MainActivity extends Activity {
         }
         pane.addView(button("Registrarme como conductor", false, v -> driverRegister()),
             new LinearLayout.LayoutParams(-1, dp(54)));
+        spacer(pane, 11);
+        pane.addView(button("Verificar mi correo electrónico", false, v -> askEmailForVerification()),
+            new LinearLayout.LayoutParams(-1, dp(54)));
         spacer(pane, 24);
         addLine(pane, "Solo para el conductor autorizado · Vía Traslados", 12, MUTED, false, 10);
         addLine(pane, "No hay comisiones de plataforma ni cargos por cada oferta.",
@@ -636,112 +639,215 @@ public final class MainActivity extends Activity {
     }
 
     private void accountLogin() {
-        LinearLayout form = formContainer();
-        EditText email = formInput(form, "Correo electrónico", InputType.TYPE_CLASS_TEXT
-            | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText password = formInput(form, "Contraseña", InputType.TYPE_CLASS_TEXT
-            | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout form=formContainer();
+        EditText phone=formInput(form,"Celular, por ejemplo 099 123 456",
+            InputType.TYPE_CLASS_PHONE);
+        EditText password=formInput(form,"Contraseña",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
-            .setTitle("Ingreso de conductores y administradores")
+            .setTitle("Acceso con celular")
+            .setMessage("La dirección de correo se usa solamente para verificar la cuenta y recuperar el acceso.")
             .setView(form)
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Ingresar", (dialog, which) -> {
-                JSONObject p = new JSONObject();
-                try {
-                    p.put("email", email.getText().toString().trim());
-                    p.put("password", password.getText().toString());
-                } catch (Exception ignored) {}
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Ingresar",(dialog,which)->{
+                JSONObject p=new JSONObject();
+                try{
+                    p.put("phone",phone.getText().toString().trim());
+                    p.put("password",password.getText().toString());
+                }catch(Exception ignored){}
                 password.setText("");
                 signInPending();
-                api("POST", "/api/staff/login", p, (status, result, error) -> {
-                    if (status == 200) {
-                        try {
-                            JSONObject data = new JSONObject(result);
-                            JSONObject user = data.getJSONObject("user");
-                            staffToken = data.getString("token");
-                            operatorKey = null;
-                            staffRole = user.getString("role");
-                            staffName = user.optString("name", "");
-                            tab = "solicitudes";
-                            adminLoaded = false;
+                api("POST","/api/staff/login-phone",p,(status,result,error)->{
+                    if(status==200){
+                        try{
+                            JSONObject response=new JSONObject(result);
+                            JSONObject user=response.getJSONObject("user");
+                            staffToken=response.getString("token");
+                            staffRefreshToken=response.getString("refreshToken");
+                            operatorKey=null;
+                            staffRole=user.getString("role");
+                            staffName=user.optString("name","");
+                            tab="solicitudes";
+                            adminLoaded=false;
                             fetchBookings(true);
-                        } catch (Exception e) {
+                            offerBiometric();
+                        }catch(Exception e){
                             loginScreen();
-                            message("Respuesta de acceso incorrecta.");
+                            message("No se pudo completar el ingreso.");
                         }
-                    } else {
+                    }else{
                         loginScreen();
-                        new AlertDialog.Builder(this)
-                            .setTitle("No se pudo ingresar")
-                            .setMessage(error.isEmpty() ? "Revisá tus datos de acceso." : error)
-                            .setPositiveButton("Entendido", null).show();
+                        new AlertDialog.Builder(this).setTitle("No se pudo ingresar")
+                            .setMessage(error.isEmpty()?"Comprobá tu celular y contraseña.":error)
+                            .setPositiveButton("Entendido",null).show();
                     }
                 });
             }).show();
     }
 
+    private void offerBiometric(){
+        if(staffRefreshToken==null||BiometricVault.hasSaved(this)||!BiometricVault.supported(this))return;
+        new AlertDialog.Builder(this).setTitle("Ingresar con huella")
+            .setMessage("¿Querés activar la huella para futuros ingresos? Solo se guarda una sesión cifrada con Android Keystore; nunca tu contraseña.")
+            .setNegativeButton("Ahora no",null)
+            .setPositiveButton("Activar huella",(dialog,which)->saveBiometric()).show();
+    }
+
+    private void saveBiometric(){
+        if(staffRefreshToken==null){message("Ingresá primero con tu celular y contraseña.");return;}
+        BiometricVault.save(this,staffRefreshToken,(saved,detail)->message(detail));
+    }
+
+    private void biometricLogin(){
+        BiometricVault.unlock(this,(refresh,error)->{
+            if(refresh==null){if(error!=null)message(error);return;}
+            JSONObject payload=new JSONObject();
+            try{payload.put("refreshToken",refresh);}catch(Exception ignored){}
+            signInPending();
+            api("POST","/api/staff/refresh",payload,(status,body,err)->{
+                if(status==200){
+                    try{
+                        JSONObject data=new JSONObject(body);
+                        JSONObject user=data.getJSONObject("user");
+                        staffToken=data.getString("token");
+                        staffRefreshToken=refresh;
+                        operatorKey=null;
+                        staffRole=user.getString("role");
+                        staffName=user.optString("name","");
+                        tab="solicitudes";
+                        adminLoaded=false;
+                        fetchBookings(true);
+                    }catch(Exception e){loginScreen();message("No se pudo abrir la sesión.");}
+                }else{
+                    BiometricVault.clear(this);
+                    loginScreen();
+                    new AlertDialog.Builder(this)
+                        .setTitle("Reingreso necesario")
+                        .setMessage("La sesión biométrica venció o fue revocada. Ingresá con tu celular y contraseña.")
+                        .setPositiveButton("Entendido",null).show();
+                }
+            });
+        });
+    }
+
+    private void verifyEmailDialog(String address){
+        LinearLayout content=formContainer();
+        addLine(content,"Te enviamos un código de seis dígitos a "+address+
+            ". Es válido durante 10 minutos.",14,MUTED,false,12);
+        EditText code=formInput(content,"Código de seis cifras",InputType.TYPE_CLASS_NUMBER);
+        new AlertDialog.Builder(this).setTitle("Confirmá tu correo")
+            .setView(content)
+            .setNeutralButton("Reenviar código",(dialog,which)->{
+                JSONObject p=new JSONObject();
+                try{p.put("email",address);}catch(Exception ignored){}
+                api("POST","/api/staff/resend-email",p,(status,result,error)->{
+                    message(status==200?"Si el correo está pendiente, llegará un código nuevo.":error);
+                    verifyEmailDialog(address);
+                });
+            })
+            .setNegativeButton("Más tarde",null)
+            .setPositiveButton("Verificar",(dialog,which)->{
+                JSONObject p=new JSONObject();
+                try{
+                    p.put("email",address);
+                    p.put("code",code.getText().toString().trim());
+                }catch(Exception ignored){}
+                code.setText("");
+                api("POST","/api/staff/verify-email",p,(status,result,error)->{
+                    if(status==200)
+                        new AlertDialog.Builder(this).setTitle("Correo verificado")
+                          .setMessage("Tu correo quedó confirmado. Si sos conductor, ahora falta la aprobación del administrador.")
+                          .setPositiveButton("Entendido",null).show();
+                    else{
+                        message(error.isEmpty()?"Código incorrecto o vencido":error);
+                        verifyEmailDialog(address);
+                    }
+                });
+            }).show();
+    }
+
+    private void askEmailForVerification(){
+        LinearLayout form=formContainer();
+        EditText email=formInput(form,"Correo usado en el registro",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        new AlertDialog.Builder(this).setTitle("Verificar correo")
+            .setView(form).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Continuar",(d,w)->{
+                String value=email.getText().toString().trim();
+                if(!value.isEmpty())verifyEmailDialog(value);
+            }).show();
+    }
+
     private void driverRegister() {
-        LinearLayout form = formContainer();
-        EditText name = formInput(form, "Nombre y apellido", InputType.TYPE_CLASS_TEXT
-            | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        EditText email = formInput(form, "Correo electrónico", InputType.TYPE_CLASS_TEXT
-            | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText password = formInput(form, "Contraseña propia, mínimo 12 caracteres",
-            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this).setTitle("Solicitar cuenta de conductor")
-            .setMessage("El administrador deberá aprobar la solicitud antes de que puedas operar.")
+        LinearLayout form=formContainer();
+        EditText name=formInput(form,"Nombre y apellido",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        EditText phone=formInput(form,"Celular, por ejemplo 099 123 456",InputType.TYPE_CLASS_PHONE);
+        EditText email=formInput(form,"Correo para recibir el código",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password=formInput(form,"Contraseña propia, mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this).setTitle("Registro de conductor")
+            .setMessage("Primero verificás tu correo. Después el administrador debe aprobar tu cuenta.")
             .setView(form)
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Registrarme", (dialog, which) -> {
-                JSONObject p = new JSONObject();
-                try {
-                    p.put("name", name.getText().toString().trim());
-                    p.put("email", email.getText().toString().trim());
-                    p.put("password", password.getText().toString());
-                } catch (Exception ignored) {}
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Solicitar registro",(dialog,which)->{
+                String registeredEmail=email.getText().toString().trim();
+                JSONObject p=new JSONObject();
+                try{
+                    p.put("name",name.getText().toString().trim());
+                    p.put("phone",phone.getText().toString().trim());
+                    p.put("email",registeredEmail);
+                    p.put("password",password.getText().toString());
+                }catch(Exception ignored){}
                 password.setText("");
-                api("POST", "/api/staff/register", p, (status, result, error) -> {
-                    if (status == 201) new AlertDialog.Builder(this)
-                        .setTitle("Registro enviado")
-                        .setMessage("Tu cuenta está pendiente de aprobación. No podrás iniciar sesión hasta que el administrador te habilite.")
-                        .setPositiveButton("Entendido", null).show();
-                    else new AlertDialog.Builder(this)
-                        .setTitle("No se pudo registrar")
-                        .setMessage(error.isEmpty() ? "Revisá los datos e intentá nuevamente." : error)
-                        .setPositiveButton("Entendido", null).show();
+                api("POST","/api/staff/register-phone",p,(status,body,error)->{
+                    if(status==201){
+                        try{
+                            boolean sent=new JSONObject(body).optBoolean("emailSent",false);
+                            if(sent)verifyEmailDialog(registeredEmail);
+                            else new AlertDialog.Builder(this).setTitle("Cuenta creada")
+                                .setMessage("El envío del correo falló. Usá «Verificar correo» para solicitar otro código.")
+                                .setPositiveButton("Entendido",null).show();
+                        }catch(Exception e){verifyEmailDialog(registeredEmail);}
+                    }else new AlertDialog.Builder(this).setTitle("No se pudo registrar")
+                        .setMessage(error.isEmpty()?"Revisá los datos":error)
+                        .setPositiveButton("Entendido",null).show();
                 });
             }).show();
     }
 
     private void bootstrapAdmin() {
-        if (operatorKey == null) {
-            message("Para el primer administrador se requiere la clave maestra.");
-            return;
-        }
-        LinearLayout form = formContainer();
-        EditText name = formInput(form, "Nombre y apellido del administrador",
-            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        EditText email = formInput(form, "Correo del administrador",
-            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText password = formInput(form, "Contraseña nueva, mínimo 12 caracteres",
-            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        if(operatorKey==null){message("Se requiere la clave maestra.");return;}
+        LinearLayout form=formContainer();
+        EditText name=formInput(form,"Nombre y apellido del administrador",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        EditText phone=formInput(form,"Celular del administrador",InputType.TYPE_CLASS_PHONE);
+        EditText email=formInput(form,"Correo del administrador",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password=formInput(form,"Contraseña propia, mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this).setTitle("Crear administrador principal")
-            .setMessage("Solo puede crearse una vez mediante la clave maestra. El rol administrativo no puede asignarse desde un registro público.")
+            .setMessage("La cuenta requerirá validar el correo, pero después ingresarás usando tu celular y contraseña.")
             .setView(form)
             .setNegativeButton("Cancelar",null)
             .setPositiveButton("Crear administrador",(d,w)->{
-                JSONObject p = new JSONObject();
-                try {
+                String address=email.getText().toString().trim();
+                JSONObject p=new JSONObject();
+                try{
                     p.put("name",name.getText().toString().trim());
-                    p.put("email",email.getText().toString().trim());
+                    p.put("phone",phone.getText().toString().trim());
+                    p.put("email",address);
                     p.put("password",password.getText().toString());
                 }catch(Exception ignored){}
                 password.setText("");
-                api("POST","/api/admin/bootstrap",p,(status,result,error)->{
-                    new AlertDialog.Builder(this)
-                        .setTitle(status==201?"Administrador creado":"No se pudo crear")
-                        .setMessage(status==201?
-                            "Cuenta creada. Podés entrar con tu correo y contraseña desde la pantalla inicial.":error)
+                api("POST","/api/admin/bootstrap-phone",p,(status,body,error)->{
+                    if(status==201){
+                        message("Administrador creado. Ahora verificá tu correo.");
+                        verifyEmailDialog(address);
+                    }else new AlertDialog.Builder(this)
+                        .setTitle("No se pudo crear")
+                        .setMessage(error.isEmpty()?"Revisá los datos":error)
                         .setPositiveButton("Entendido",null).show();
                 });
             }).show();
