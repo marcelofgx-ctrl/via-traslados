@@ -509,28 +509,52 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private LinearLayout statTile(String value, String label, boolean featured) {
+        LinearLayout tile = column();
+        tile.setPadding(dp(15),dp(13),dp(15),dp(13));
+        tile.setBackground(bg(featured ? SOFT : Color.WHITE, 14, featured ? 0 : BORDER));
+        addLine(tile, value, 24, featured ? TEAL_DARK : INK, true, 3);
+        addLine(tile, label, 12, MUTED, false, 0);
+        return tile;
+    }
+
     private void dashboard() {
         if (operatorKey == null && staffToken == null) return;
         root.removeAllViews();
+        root.setBackgroundColor(LIGHT);
+
         LinearLayout header = row();
-        header.setPadding(dp(17), dp(13), dp(17), dp(13));
+        header.setPadding(dp(19), dp(13), dp(19), dp(13));
         header.setBackgroundColor(Color.WHITE);
+
+        TextView emblem = text("V", 21, Color.WHITE, true);
+        emblem.setGravity(Gravity.CENTER);
+        emblem.setBackground(bg(TEAL, 11, 0));
+        header.addView(emblem, new LinearLayout.LayoutParams(dp(39), dp(39)));
+
         LinearLayout brand = column();
-        addLine(brand, "Vía Traslados", 21, INK, true, 0);
-        addLine(brand, "admin".equals(staffRole) ? "ADMINISTRADOR · EN LÍNEA" : "CONDUCTOR · EN LÍNEA", 11, TEAL, true, 0);
-        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        Button refresh = button("↻", false, v -> fetchBookings(true));
-        refresh.setMinWidth(dp(48));
-        header.addView(refresh, new LinearLayout.LayoutParams(dp(52), dp(46)));
-        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, -2, 1);
+        bl.leftMargin = dp(11);
+        header.addView(brand, bl);
+        addLine(brand, "Vía Traslados", 18, INK, true, 3);
+        addLine(brand, "admin".equals(staffRole) ? "Administrador general" : "Mi espacio de conductor",
+            12, MUTED, false, 0);
+
+        TextView refresh = actionText("↻", TEAL_DARK, v -> fetchBookings(true));
+        refresh.setTextSize(25);
+        refresh.setBackground(ripple(SOFT,0,12));
+        refresh.setContentDescription("Actualizar solicitudes");
+        header.addView(refresh, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        root.addView(header,new LinearLayout.LayoutParams(-1,-2));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        LinearLayout content = column();
-        content.setPadding(dp(17), dp(19), dp(17), dp(20));
-        scroll.addView(content);
+        scroll.setVerticalScrollBarEnabled(false);
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
+        LinearLayout content = column();
+        content.setPadding(dp(19),dp(20),dp(19),dp(12));
+        scroll.addView(content);
         if ("administrar".equals(tab)) manage(content);
         else if ("ajustes".equals(tab)) settings(content);
         else if ("historial".equals(tab)) lists(content, "historial");
@@ -548,84 +572,122 @@ public final class MainActivity extends Activity {
 
     private void lists(LinearLayout body, String mode) {
         if ("solicitudes".equals(mode)) {
-            addLine(body, "Solicitudes", 27, INK, true, 3);
-            addLine(body, "Cotizá cada traslado y enviá tu propuesta.", 14, MUTED, false, 17);
-            LinearLayout filters = row();
-            Button a = button("Nuevas (" + count("requested") + ")",
-                 "nuevas".equals(subtab), v -> { subtab="nuevas"; dashboard(); });
-            Button b = button("Con ofertas (" + count("quoted") + ")",
-                 "ofertas".equals(subtab), v -> { subtab="ofertas"; dashboard(); });
-            filters.addView(a, new LinearLayout.LayoutParams(0, dp(50), 1));
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, dp(50), 1);
-            bp.leftMargin = dp(8);
-            filters.addView(b, bp);
+            addLine(body, "Solicitudes", 25, INK, true, 4);
+            addLine(body, "Consultá y respondé a nuevos traslados", 13, MUTED, false, 16);
+
+            LinearLayout stats = row();
+            LinearLayout.LayoutParams first=new LinearLayout.LayoutParams(0,-2,1);
+            stats.addView(statTile(String.valueOf(count("requested")), "Sin cotizar", true),first);
+            LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,-2,1);
+            second.leftMargin=dp(9);
+            stats.addView(statTile(String.valueOf(count("quoted")), "Con oferta", false),second);
+            body.addView(stats);
+            spacer(body,18);
+
+            LinearLayout filters=row();
+            Button newer=button("Nuevas ("+count("requested")+")",
+                "nuevas".equals(subtab),v->{subtab="nuevas";dashboard();});
+            Button offers=button("Con ofertas ("+count("quoted")+")",
+                "ofertas".equals(subtab),v->{subtab="ofertas";dashboard();});
+            newer.setTextSize(13);offers.setTextSize(13);
+            filters.addView(newer,new LinearLayout.LayoutParams(0,dp(45),1));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(45),1);
+            lp.leftMargin=dp(8);filters.addView(offers,lp);
             body.addView(filters);
-            spacer(body, 18);
+            spacer(body,17);
         } else if ("viajes".equals(mode)) {
-            addLine(body, "Mis viajes", 27, INK, true, 5);
-            addLine(body, "Servicios aceptados y próximos traslados.", 14, MUTED, false, 17);
+            addLine(body, "Mis viajes", 25, INK, true, 4);
+            addLine(body, "Servicios confirmados y en curso", 13, MUTED, false, 18);
         } else {
-            addLine(body, "Historial", 27, INK, true, 5);
-            addLine(body, "Traslados finalizados o cancelados.", 14, MUTED, false, 17);
+            addLine(body, "Historial", 25, INK, true, 4);
+            addLine(body, "Traslados finalizados y cancelados", 13, MUTED, false, 18);
         }
 
-        int shown = 0;
-        for (int i = 0; i < bookings.length(); i++) {
-            JSONObject item = bookings.optJSONObject(i);
-            if (item == null) continue;
-            String status = item.optString("status");
+        int shown=0;
+        for(int i=0;i<bookings.length();i++){
+            JSONObject item=bookings.optJSONObject(i);
+            if(item==null)continue;
+            String status=item.optString("status");
             boolean include;
-            if ("solicitudes".equals(mode)) {
-                include = "nuevas".equals(subtab) ? "requested".equals(status) : "quoted".equals(status);
-            } else if ("historial".equals(mode)) {
-                include = "completed".equals(status) || "cancelled".equals(status);
-            } else {
-                include = "accepted".equals(status) || "confirmed".equals(status)
-                    || "en_route".equals(status) || "arrived".equals(status)
-                    || "in_progress".equals(status);
-            }
-            if (include) { bookingCard(body, item); shown++; }
+            if("solicitudes".equals(mode))
+                include="nuevas".equals(subtab)?"requested".equals(status):"quoted".equals(status);
+            else if("historial".equals(mode))
+                include="completed".equals(status)||"cancelled".equals(status);
+            else
+                include="accepted".equals(status)||"confirmed".equals(status)
+                    ||"en_route".equals(status)||"arrived".equals(status)||"in_progress".equals(status);
+            if(include){bookingCard(body,item);shown++;}
         }
-        if (shown == 0) {
-            LinearLayout empty = card();
-            addLine(empty, "Sin solicitudes por ahora", 18, INK, true, 6);
-            addLine(empty, "Cuando haya movimientos aparecerán acá. Podés actualizar con ↻.",
-                14, MUTED, false, 0);
-            appendCard(body, empty, 14);
+        if(shown==0){
+            LinearLayout empty=card();
+            TextView circle=text("✓",20,TEAL,true);
+            circle.setGravity(Gravity.CENTER);
+            circle.setBackground(bg(SOFT,28,0));
+            empty.addView(circle,new LinearLayout.LayoutParams(dp(45),dp(45)));
+            spacer(empty,11);
+            addLine(empty,"Todo al día",18,INK,true,6);
+            addLine(empty,"No hay movimientos en esta sección. Las novedades aparecerán automáticamente.",
+                13,MUTED,false,0);
+            appendCard(body,empty,10);
         }
-        addLine(body, "Actualización automática cada 30 segundos mientras la aplicación está abierta.",
-            12, MUTED, false, 0);
+        spacer(body,4);
+        addLine(body,"Se actualiza cada 30 s mientras la app está abierta.",
+            11,MUTED,false,0);
     }
 
     private void bookingCard(LinearLayout parent, JSONObject item) {
-        LinearLayout c = card();
-        LinearLayout top = row();
-        String date = item.optString("date",""), time=item.optString("time","");
-        TextView when = text(date + " · " + time, 14, INK, true);
-        top.addView(when, new LinearLayout.LayoutParams(0,-2,1));
-        TextView st = text(statusName(item.optString("status")), 12, stateColor(item.optString("status")), true);
-        st.setGravity(Gravity.CENTER);
-        st.setPadding(dp(10),dp(7),dp(10),dp(7));
-        st.setBackground(bg(Color.rgb(240, 248, 246), 20, 0));
-        top.addView(st);
-        c.addView(top);
-        spacer(c, 7);
-        addLine(c, "Solicitud " + item.optString("id"), 11, MUTED, false, 15);
-        addLine(c, "●   " + item.optString("origin"), 15, INK, true, 9);
-        addLine(c, "↓", 15, TEAL, true, 6);
-        addLine(c, "●   " + item.optString("destination"), 15, INK, true, 14);
-        int price = item.optInt("price",0);
-        addLine(c, item.optInt("passengers",1) + " pasajero(s) · "
-          + item.optInt("bags",0) + " valija(s)"
-          + (price>0?" · Oferta $" + price + " UYU":""), 13, MUTED, false, 11);
-        Button view = button("Ver solicitud  →", false, v -> details(item));
-        c.addView(view,new LinearLayout.LayoutParams(-1,dp(46)));
-        if ("requested".equals(item.optString("status"))) {
-            spacer(c, 8);
-            Button quote = button("Sugerir precio", true, v -> quote(item));
-            c.addView(quote,new LinearLayout.LayoutParams(-1,dp(46)));
+        LinearLayout card=card();
+        LinearLayout top=row();
+        String date=item.optString("date",""),time=item.optString("time","");
+        TextView when=text(date+"  ·  "+time,13,INK,true);
+        top.addView(when,new LinearLayout.LayoutParams(0,-2,1));
+        String status=item.optString("status");
+        TextView flag=text(statusName(status),11,stateColor(status),true);
+        flag.setGravity(Gravity.CENTER);
+        flag.setPadding(dp(9),dp(6),dp(9),dp(6));
+        flag.setBackground(bg(SOFT,20,0));
+        top.addView(flag);
+        card.addView(top);
+        spacer(card,14);
+
+        LinearLayout from=row();
+        TextView bullet=text("●",13,TEAL,true);
+        from.addView(bullet,new LinearLayout.LayoutParams(dp(22),-2));
+        TextView origin=text(item.optString("origin"),15,INK,true);
+        origin.setMaxLines(2);
+        origin.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        from.addView(origin,new LinearLayout.LayoutParams(0,-2,1));
+        card.addView(from);
+        LinearLayout branch=row();
+        TextView axis=text("│",14,Color.rgb(155,185,178),false);
+        branch.addView(axis,new LinearLayout.LayoutParams(dp(22),-2));
+        card.addView(branch);
+        LinearLayout to=row();
+        TextView target=text("◆",12,TEAL,true);
+        to.addView(target,new LinearLayout.LayoutParams(dp(22),-2));
+        TextView dest=text(item.optString("destination"),15,INK,true);
+        dest.setMaxLines(2);
+        dest.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        to.addView(dest,new LinearLayout.LayoutParams(0,-2,1));
+        card.addView(to);
+        spacer(card,13);
+
+        int price=item.optInt("price",0);
+        addLine(card,item.optInt("passengers",1)+" pasaj.  ·  "+
+            item.optInt("bags",0)+" valijas"+(price>0?"  ·  $ "+price+" UYU":""),
+            12,MUTED,false,13);
+
+        LinearLayout actions=row();
+        Button see=button("Ver detalles",false,v->details(item));
+        actions.addView(see,new LinearLayout.LayoutParams(0,dp(46),1));
+        if("requested".equals(status)){
+            Button quote=button("Cotizar  →",true,v->quote(item));
+            LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(0,dp(46),1);
+            qp.leftMargin=dp(8);
+            actions.addView(quote,qp);
         }
-        appendCard(parent,c,13);
+        card.addView(actions);
+        appendCard(parent,card,12);
     }
 
     private static String statusName(String state) {
