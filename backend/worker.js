@@ -1,4 +1,5 @@
 import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,emailOtpAvailable} from './auth.js';
+import {staffRoutes,identity,webEnabled} from './staff.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
 const OP_FIELDS=FIELDS+',customer_name,phone,email';
@@ -21,14 +22,14 @@ export function validateBooking(p){
  return q
 }
 const publicRow=r=>({id:r.id,origin:r.origin,destination:r.destination,date:r.trip_date,time:r.trip_time,passengers:r.passengers,bags:r.bags,notes:r.notes,status:r.status,price:r.price_uyu,created_at:r.created_at,updated_at:r.updated_at});
-const operatorRow=r=>({...publicRow(r),name:r.customer_name,phone:r.phone,email:r.email});
-const authorized=async(req,env)=>{const key=req.headers.get('X-Operator-Key')||'';return Boolean(key&&key.length<=512&&env.OPERATOR_KEY_HASH&&equal(await hash(key),env.OPERATOR_KEY_HASH.toLowerCase()))};
+const operatorRow=r=>({...publicRow(r),name:r.customer_name,phone:r.phone,email:r.email,assignedDriverId:r.assigned_driver_id||null,assignedDriverName:r.assigned_driver_name||null});
+const authorized=async(req,env)=>identity(req,env);
 const getBooking=async(req,env,id)=>{const token=req.headers.get('X-Booking-Token')||'';if(!token||token.length>200)return null;const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();return row&&equal(await hash(token),row.access_token_hash)?row:null};
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
 export default {async fetch(req,env){
  const url=new URL(req.url),origin=req.headers.get('Origin');
  const allowed=[env.PUBLIC_ORIGIN,env.OPERATOR_ORIGIN].filter(Boolean).map(value=>{try{return new URL(value).origin}catch{return String(value).replace(/\/+$/,'')}});
- const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token','Vary':'Origin'};
+ const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization','Vary':'Origin'};
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
  if(origin&&!allowed.includes(origin))return reply({error:'Origen no autorizado'},403,cors);
  const send=(data,status=200)=>reply(data,status,cors),err=(error,status=400)=>send({error},status);
@@ -36,6 +37,8 @@ export default {async fetch(req,env){
  try{
   const path=url.pathname;
   if(path==='/api/health'&&req.method==='GET')return send({ok:true,name:'via-traslados',otpAvailable:emailOtpAvailable(env)});
+  const handled=await staffRoutes(req,env,path,send,err);if(handled)return handled;
+  if((path.startsWith('/api/auth/')||path==='/api/requests'||path.startsWith('/api/requests/'))&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio. Volvé a intentar más tarde.',503);
   if(path==='/api/auth/start'&&req.method==='POST'){const r=await beginOtp(req,env);return send(r.data,r.status)}
   if(path==='/api/auth/verify'&&req.method==='POST'){const r=await checkOtp(req,env);return send(r.data,r.status)}
   if(path==='/api/requests'&&req.method==='POST'){
@@ -62,14 +65,22 @@ export default {async fetch(req,env){
    }
   }
   if(path==='/api/operator/requests'&&req.method==='GET'){
-   if(!await authorized(req,env))return err('Acceso no autorizado',401);
-   const rows=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
+   const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
+   if(actor.role==='admin'){
+     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
+     return send(rows.results.map(operatorRow));
+   }
+   const rows=await env.DB.prepare('SELECT b.*,a.driver_id AS assigned_driver_id,u.display_name AS assigned_driver_name FROM bookings b JOIN driver_assignments a ON a.booking_id=b.id JOIN staff_users u ON u.id=a.driver_id WHERE a.driver_id=? ORDER BY b.trip_date DESC,b.trip_time DESC LIMIT 200').bind(actor.id).all();
    return send(rows.results.map(operatorRow))
   }
   const op=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)$/);
   if(op&&req.method==='PATCH'){
-   if(!await authorized(req,env))return err('Acceso no autorizado',401);
+   const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
    const id=op[1],body=await req.json();
+   if(actor.role!=='admin'){
+     const assignment=await env.DB.prepare('SELECT driver_id FROM driver_assignments WHERE booking_id=?').bind(id).first();
+     if(assignment?.driver_id!==actor.id)return err('Este viaje no te fue asignado',403);
+   }
    const row=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings WHERE id=?`).bind(id).first();
    if(!row)return err('Solicitud no encontrada',404);
    const to=body?.status;if(!validTransition(row.status,to)||to==='accepted')return err('Cambio no permitido',409);

@@ -1,0 +1,98 @@
+name: Via Traslados - habilitar control administrativo API
+on:
+  push:
+    branches: [via-admin-drivers-qa]
+    paths: [".github/workflows/via-admin-backend-deploy.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-admin-prod-api-release
+  cancel-in-progress: false
+jobs:
+  migrate_and_deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Comprobar código antes de producción
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          node --check backend/staff.js
+      - name: Consultar únicamente D1 exclusiva via-traslados-db
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/cloudflare-d1.mjs
+      - name: Generar configuración limitada a via-traslados-api
+        env:
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: |
+          node scripts/create-wrangler.mjs
+          grep -F 'PUBLIC_ORIGIN = "https://viatraslados.com"' wrangler.toml
+          grep -F 'database_name = "via-traslados-db"' wrangler.toml
+          grep -F 'name = "via-traslados-api"' wrangler.toml
+      - name: Crear tablas administrativas sin alterar reservas existentes
+        id: migration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute via-traslados-db --remote --config wrangler.toml --file backend/schema.sql
+      - name: Verificar web habilitada después de migración
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute via-traslados-db --remote --config wrangler.toml --command "SELECT setting_key,setting_value FROM service_settings WHERE setting_key='public_web_enabled'"
+      - name: Desplegar solamente via-traslados-api con RBAC
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4 deploy --config wrangler.toml 2>&1 | tee /tmp/via-admin-deploy.log
+      - name: Comprobar producción, sin crear usuarios ni tocar reservas
+        id: verify
+        run: |
+          set -euo pipefail
+          BASE=https://via-traslados-api.marcelof-gx.workers.dev
+          curl -fsSL --retry 5 --retry-delay 2 "$BASE/api/health" -o /tmp/health.json
+          grep -q '"otpAvailable":true' /tmp/health.json
+          curl -fsSL --retry 5 --retry-delay 2 "$BASE/api/public/status" -o /tmp/site.json
+          grep -Eq '"enabled":(true|false)' /tmp/site.json
+          [ "$(curl -sS -o /tmp/unauthorized.json -w '%{http_code}' "$BASE/api/admin/drivers")" = "403" ]
+          echo "Servicio público: $(cat /tmp/site.json)"
+          curl -fsSL --retry 3 --retry-delay 1 -H 'Origin: https://viatraslados.com' "$BASE/api/public/status" -o /tmp/site-origin.json
+          test -s /tmp/site-origin.json
+      - name: Guardar resultado sin credenciales
+        if: always()
+        env:
+          MIGRATION: ${{ steps.migration.outcome }}
+          DEPLOY: ${{ steps.deploy.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+        run: |
+          mkdir -p .ci
+          {
+            echo "Vía Traslados: D1 y API administrativa"
+            echo "Migración: $MIGRATION"
+            echo "Despliegue: $DEPLOY"
+            echo "Verificación: $VERIFY"
+            echo "Dominio: viatraslados.com"
+            if test -f /tmp/site.json; then echo "Estado público: $(cat /tmp/site.json)"; fi
+            if test -f /tmp/via-admin-deploy.log; then tail -20 /tmp/via-admin-deploy.log; fi
+          } > .ci/via-admin-prod-status.txt
+          git config user.name "via-traslados-ci"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci/via-admin-prod-status.txt
+          git commit -m "ci(via): registrar despliegue de permisos administrativos" || true
+          git push origin HEAD:via-admin-drivers-qa || true

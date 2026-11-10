@@ -38,3 +38,51 @@ CREATE TABLE IF NOT EXISTS customers (
  created_at TEXT NOT NULL DEFAULT(datetime('now')),
  updated_at TEXT NOT NULL DEFAULT(datetime('now'))
 );
+
+-- Gestión de cuentas y cierre controlado del servicio, separada del OTP de pasajeros.
+-- Valores por defecto: web habilitada y operadores nuevos pendientes de aprobación.
+CREATE TABLE IF NOT EXISTS staff_users (
+ id TEXT PRIMARY KEY,
+ email TEXT NOT NULL UNIQUE,
+ display_name TEXT NOT NULL,
+ password_salt TEXT NOT NULL,
+ password_hash TEXT NOT NULL,
+ iterations INTEGER NOT NULL,
+ role TEXT NOT NULL CHECK(role IN ('admin','driver')),
+ status TEXT NOT NULL CHECK(status IN ('pending','approved','blocked')),
+ created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ approved_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS staff_users_role_status ON staff_users(role,status);
+CREATE TABLE IF NOT EXISTS staff_sessions (
+ token_hash TEXT PRIMARY KEY,
+ staff_id TEXT NOT NULL REFERENCES staff_users(id) ON DELETE CASCADE,
+ expires_at INTEGER NOT NULL,
+ revoked_at INTEGER,
+ created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS staff_sessions_by_user ON staff_sessions(staff_id,expires_at);
+CREATE TABLE IF NOT EXISTS service_settings (
+ setting_key TEXT PRIMARY KEY,
+ setting_value TEXT NOT NULL,
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ updated_by TEXT NOT NULL DEFAULT 'system'
+);
+INSERT OR IGNORE INTO service_settings(setting_key,setting_value) VALUES ('public_web_enabled','1');
+CREATE TABLE IF NOT EXISTS driver_assignments (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ driver_id TEXT NOT NULL REFERENCES staff_users(id),
+ assigned_by TEXT NOT NULL,
+ assigned_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS driver_assignments_driver ON driver_assignments(driver_id);
+CREATE TABLE IF NOT EXISTS admin_audit (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ actor_id TEXT NOT NULL,
+ action TEXT NOT NULL,
+ target TEXT NOT NULL,
+ detail TEXT NOT NULL DEFAULT '',
+ created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS admin_audit_recent ON admin_audit(created_at DESC);
