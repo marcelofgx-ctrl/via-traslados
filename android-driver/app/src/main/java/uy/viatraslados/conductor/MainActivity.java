@@ -350,7 +350,7 @@ public final class MainActivity extends Activity {
         phone.setHint("099 123 456");
         phone.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
         phone.setText(getSharedPreferences("via_preferences", MODE_PRIVATE).getString("last_phone", ""));
-        page.addView(inputShell("♧", phone, false), new LinearLayout.LayoutParams(-1, dp(54)));
+        page.addView(inputShell("☎", phone, false), new LinearLayout.LayoutParams(-1, dp(54)));
         spacer(page, 17);
 
         TextView passLabel = text("CONTRASEÑA", 11, MUTED, true);
@@ -361,7 +361,7 @@ public final class MainActivity extends Activity {
         password.setHint("Tu contraseña");
         password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
-        page.addView(inputShell("◇", password, true), new LinearLayout.LayoutParams(-1, dp(54)));
+        page.addView(inputShell("◈", password, true), new LinearLayout.LayoutParams(-1, dp(54)));
         password.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
                 loginPhone(phone.getText().toString(), password.getText().toString());
