@@ -288,7 +288,7 @@ test('cuenta fundadora ya verificada pasa de pendiente a admin al iniciar sesió
    return new Response(JSON.stringify({id:'test-email'}),{status:200});
  };
  try {
-  const fields={name:'Titular Fundador',phone:'099203302',email:'fundador@example.com',password:'ContraseñaFundadora2026'};
+  const fields={name:'Titular Fundador',phone:'099123456',email:'fundador@example.com',password:'ContraseñaFundadora2026'};
   const reg=await request(post('/api/staff/register-phone',fields),env);
   assert.equal(reg.status,201);
   const verified=await request(post('/api/staff/verify-email',{email:fields.email,code:otp}),env);
@@ -305,4 +305,34 @@ test('cuenta fundadora ya verificada pasa de pendiente a admin al iniciar sesió
   assert.equal(u.status,'approved');
   assert.equal(u.role,'admin');
  }finally{globalThis.fetch=previous}
+});
+
+test('una llamada anónima al correo ya verificado no revela ni promueve al fundador',async()=>{
+ const DB=db(),env=makeEnv(DB),original=globalThis.fetch;
+ let otp='';
+ globalThis.fetch=async(_url,opt)=>{
+   otp=JSON.parse(opt.body).text.match(/(\d{6})/)[1];
+   return new Response(JSON.stringify({id:'test-email'}),{status:200});
+ };
+ try{
+  const data={name:'Titular QA',phone:'099123456',email:'titular-test@example.com',password:'ClaveFicticiaSegura2026'};
+  const created=await request(post('/api/staff/register-phone',data),env);
+  assert.equal(created.status,201);
+  const confirmed=await request(post('/api/staff/verify-email',{email:data.email,code:otp}),env);
+  assert.equal(confirmed.status,200);
+  const row=[...DB.users.values()][0];
+  assert.equal(row.status,'pending');
+  env.VIA_FOUNDER_PHONE=data.phone;
+  env.VIA_FOUNDER_EMAIL=data.email;
+  const noProof=await request(post('/api/staff/verify-email',{email:data.email,code:'000000'}),env);
+  assert.equal(noProof.status,200);
+  const anon=await noProof.json();
+  assert.equal(anon.accountReady,undefined);
+  assert.equal(anon.role,undefined);
+  assert.equal(row.role,'driver');
+  assert.equal(row.status,'pending');
+  const signed=await request(post('/api/staff/login-phone',{phone:data.phone,password:data.password}),env);
+  assert.equal(signed.status,200);
+  assert.equal((await signed.json()).user.role,'admin');
+ }finally{globalThis.fetch=original}
 });
