@@ -237,7 +237,7 @@ public final class MainActivity extends Activity {
 
     private boolean authFlow = false;
     private JSONArray managedAdmins = new JSONArray();
-    private boolean canManageRoles = false;
+    private boolean canManageRoles = false; // Privilegio decidido por el servidor, nunca por el teléfono en la APK.
     private String staffUserId = "";
 
     @Override public void onBackPressed() {
@@ -338,9 +338,8 @@ public final class MainActivity extends Activity {
         LinearLayout status = card();
         addLine(status, ready ? "✓ Acceso habilitado" : "◷ Esperando aprobación",
             17, ready ? TEAL_DARK : INK, true, 8);
-        addLine(status, ready && "admin".equals(role) ?
-            "Tu acceso de administrador fundador está activo." :
-            ready ? "Ya podés ingresar con tu celular y contraseña." :
+        addLine(status, ready ?
+            "Ya podés ingresar con tu celular y contraseña." :
             "La verificación del correo está completa. Falta autorizar tu cuenta.",
             13, MUTED, false, 0);
         appendCard(page, status, 21);
@@ -369,10 +368,13 @@ public final class MainActivity extends Activity {
                     staffRefreshToken = parsed.getString("refreshToken");
                     staffRole = user.getString("role");
                     staffUserId = user.optString("id", "");
+                    JSONObject capabilities = user.optJSONObject("capabilities");
+                    canManageRoles = "admin".equals(staffRole) && capabilities != null &&
+                        capabilities.optBoolean("manageTeam", false);
                     staffName = user.optString("name", "");
                     getSharedPreferences("via_preferences", MODE_PRIVATE)
                         .edit().putString("last_phone", phone.trim()).apply();
-                    tab = "solicitudes";
+                    tab = "admin".equals(staffRole) ? "administrar" : "viajes";
                     adminLoaded = false;
                     fetchBookings(true);
                     offerBiometric();
@@ -428,6 +430,9 @@ public final class MainActivity extends Activity {
         staffRefreshToken = null;
         staffRole = "driver";
         staffName = "";
+        staffUserId = "";
+        canManageRoles = false;
+        managedAdmins = new JSONArray();
         root.setBackgroundColor(LIGHT);
 
         ScrollView scroll = new ScrollView(this);
@@ -665,7 +670,7 @@ public final class MainActivity extends Activity {
         bl.leftMargin = dp(11);
         header.addView(brand, bl);
         addLine(brand, "Vía Traslados", 18, INK, true, 3);
-        addLine(brand, "admin".equals(staffRole) ? "Administrador general" : "Mi espacio de conductor",
+        addLine(brand, "admin".equals(staffRole) ? "Centro de operaciones" : "Mi espacio de conductor",
             12, MUTED, false, 0);
 
         TextView refresh = actionText("↻", TEAL_DARK, v -> fetchBookings(true));
@@ -1076,8 +1081,11 @@ public final class MainActivity extends Activity {
                         operatorKey=null;
                         staffRole=user.getString("role");
                         staffUserId=user.optString("id","");
+                        JSONObject capabilities=user.optJSONObject("capabilities");
+                        canManageRoles="admin".equals(staffRole)&&capabilities!=null&&
+                            capabilities.optBoolean("manageTeam",false);
                         staffName=user.optString("name","");
-                        tab="solicitudes";
+                        tab="admin".equals(staffRole)?"administrar":"viajes";
                         adminLoaded=false;
                         fetchBookings(true);
                     }catch(Exception e){loginScreen();message("No se pudo abrir la sesión.");}
@@ -1339,9 +1347,10 @@ public final class MainActivity extends Activity {
                 if (code != 200) { message(err.isEmpty()?"No se pudo consultar configuración":err); return; }
                 try {
                     siteEnabled = new JSONObject(data).getBoolean("publicEnabled");
-                    canManageRoles = false;
+                    // La lista de administradores solamente se solicita si el
+                    // servidor autorizó expresamente esa capacidad en la sesión.
                     managedAdmins = new JSONArray();
-                    if(staffToken == null) {
+                    if(staffToken == null || !canManageRoles) {
                         adminLoaded = true;
                         if ("administrar".equals(tab)) dashboard();
                     } else api("GET", "/api/admin/team", null, (teamStatus, teamResult, teamError) -> {
@@ -1365,7 +1374,7 @@ public final class MainActivity extends Activity {
             addLine(content,"Acceso restringido",19,ORANGE,true,0);
             return;
         }
-        addLine(content,"Administración",25,INK,true,4);
+        addLine(content,"Gestión de traslados",25,INK,true,4);
         addLine(content,"Servicio, conductores y autorizaciones",13,MUTED,false,19);
         if(!adminLoaded){
             LinearLayout loading=card();
@@ -1617,7 +1626,7 @@ public final class MainActivity extends Activity {
         addLine(account,staffName.isEmpty()?
             ("admin".equals(staffRole)?"Administrador general":"Conductor"):
             staffName,19,INK,true,5);
-        addLine(account,"admin".equals(staffRole)?"Rol: administrador general":"Rol: conductor autorizado",
+        addLine(account,"admin".equals(staffRole)?"Acceso: administración":"Acceso: conductor autorizado",
             13,TEAL,true,15);
         if(staffToken!=null && BiometricVault.supported(this)){
             if(BiometricVault.hasSaved(this)){
@@ -1691,15 +1700,19 @@ public final class MainActivity extends Activity {
         LinearLayout bar=row();
         bar.setPadding(dp(8),dp(7),dp(8),dp(6));
         boolean admin="admin".equals(staffRole);
-        String[] titles=admin?
-            new String[]{"Solicitudes","Viajes","Historial","Administrar","Ajustes"}:
-            new String[]{"Solicitudes","Viajes","Historial","Ajustes"};
-        String[] icons=admin?
-            new String[]{"☷","▤","◷","◈","⚙"}:
-            new String[]{"☷","▤","◷","⚙"};
-        String[] values=admin?
-            new String[]{"solicitudes","viajes","historial","administrar","ajustes"}:
-            new String[]{"solicitudes","viajes","historial","ajustes"};
+        // Navegación por capacidades, sin mostrar detalles del titular de la cuenta.
+        String[] titles=admin&&canManageRoles?
+            new String[]{"Gestión","Solicitudes","Viajes","Historial","Ajustes"}:
+            admin?new String[]{"Solicitudes","Viajes","Gestión","Ajustes"}:
+            new String[]{"Mis viajes","Solicitudes","Historial","Ajustes"};
+        String[] icons=admin&&canManageRoles?
+            new String[]{"◈","☷","▤","◷","⚙"}:
+            admin?new String[]{"☷","▤","◈","⚙"}:
+            new String[]{"▤","☷","◷","⚙"};
+        String[] values=admin&&canManageRoles?
+            new String[]{"administrar","solicitudes","viajes","historial","ajustes"}:
+            admin?new String[]{"solicitudes","viajes","administrar","ajustes"}:
+            new String[]{"viajes","solicitudes","historial","ajustes"};
         for(int i=0;i<titles.length;i++){
             final String next=values[i];
             boolean active=next.equals(tab);
