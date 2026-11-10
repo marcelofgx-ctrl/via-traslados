@@ -712,7 +712,7 @@ public final class MainActivity extends Activity {
     private void lists(LinearLayout body, String mode) {
         if ("solicitudes".equals(mode)) {
             addLine(body, "Solicitudes", 25, INK, true, 4);
-            addLine(body, "Consultá y respondé a nuevos traslados", 13, MUTED, false, 16);
+            addLine(body, "Revisá solicitudes y cotizaciones", 13, MUTED, false, 12);
 
             LinearLayout stats = row();
             LinearLayout.LayoutParams first=new LinearLayout.LayoutParams(0,-2,1);
@@ -721,7 +721,7 @@ public final class MainActivity extends Activity {
             second.leftMargin=dp(9);
             stats.addView(statTile(String.valueOf(count("quoted")), "Con oferta", false),second);
             body.addView(stats);
-            spacer(body,18);
+            spacer(body,12);
 
             LinearLayout filters=row();
             Button newer=button("Nuevas ("+count("requested")+")",
@@ -733,7 +733,7 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(45),1);
             lp.leftMargin=dp(8);filters.addView(offers,lp);
             body.addView(filters);
-            spacer(body,17);
+            spacer(body,12);
         } else if ("viajes".equals(mode)) {
             addLine(body, "Mis viajes", 25, INK, true, 4);
             addLine(body, "Servicios confirmados y en curso", 13, MUTED, false, 18);
@@ -770,63 +770,147 @@ public final class MainActivity extends Activity {
             appendCard(body,empty,10);
         }
         spacer(body,4);
-        addLine(body,"Se actualiza cada 30 s mientras la app está abierta.",
+        addLine(body,"Se actualiza cada 30 s. Calculá cada ruta cuando la necesites.",
             11,MUTED,false,0);
     }
 
-    private void bookingCard(LinearLayout parent, JSONObject item) {
-        LinearLayout card=card();
-        LinearLayout top=row();
-        String date=item.optString("date",""),time=item.optString("time","");
-        TextView when=text(date+"  ·  "+time,13,INK,true);
-        top.addView(when,new LinearLayout.LayoutParams(0,-2,1));
+
+    private final java.util.Map<String,JSONObject> routeResults=new java.util.HashMap<>();
+
+    private String prettyAddress(String raw) {
+        if(raw==null)return "";
+        String value=raw.trim().replaceAll("\\s+"," ");
+        value=value.replaceAll("(?i),\\s*Montevideo\\s*,\\s*Montevideo\\s*$",", Montevideo");
+        java.util.Locale es=new java.util.Locale("es","UY");
+        if(!value.equals(value.toUpperCase(es)))return value;
+        String lower=value.toLowerCase(es);
+        StringBuilder out=new StringBuilder();
+        boolean startWord=true;
+        for(int i=0;i<lower.length();i++){
+            char c=lower.charAt(i);
+            if(Character.isLetter(c)&&startWord){out.append(Character.toUpperCase(c));startWord=false;}
+            else{out.append(c);if(!Character.isLetterOrDigit(c))startWord=true;}
+        }
+        return out.toString();
+    }
+    private String compactDate(String raw){
+        try{return java.time.LocalDate.parse(raw).format(
+            java.time.format.DateTimeFormatter.ofPattern("d MMM",new java.util.Locale("es","UY")));}
+        catch(Exception ignored){return raw;}
+    }
+    private String routeMetrics(JSONObject r){
+        if(r==null)return "Distancia pendiente";
+        double km=r.optDouble("distanceKm",Double.NaN);
+        int min=r.optInt("durationMinutes",-1);
+        if(!Double.isFinite(km)||km<=0||min<=0)return "Distancia pendiente";
+        return String.format(new java.util.Locale("es","UY"),"%.1f km  ·  %d min",km,min);
+    }
+    private void calculateRoute(JSONObject item,TextView metrics,TextView link){
+        String id=item.optString("id");
+        if(id.isEmpty()||!link.isEnabled())return;
+        link.setEnabled(false);
+        link.setText("Calculando…");
+        metrics.setText("Buscando ruta por carretera…");
+        api("GET","/api/operator/requests/"+Uri.encode(id)+"/route",null,
+            (status,payload,error)->{
+                link.setEnabled(true);
+                if(status==200){
+                    try{
+                        JSONObject r=new JSONObject(payload);
+                        if(r.optDouble("distanceKm",0)<=0)throw new Exception("Ruta vacía");
+                        routeResults.put(id,r);
+                        metrics.setText("↗  "+routeMetrics(r));
+                        metrics.setTextColor(TEAL_DARK);
+                        link.setText("Ruta ✓");
+                        link.setOnClickListener(v->details(item));
+                        return;
+                    }catch(Exception ignored){}
+                }
+                metrics.setText("Distancia no disponible");
+                link.setText("Reintentar");
+                String reason=error==null?"":error;
+                if(status==404)reason="El motor de distancias todavía no está publicado.";
+                else if(status==503)reason="Falta configurar Google Routes en Cloudflare.";
+                if(reason.isEmpty())reason="No se pudo calcular la ruta de conducción.";
+                message(reason);
+            });
+    }
+    private void bookingCard(LinearLayout parent,JSONObject item){
+        LinearLayout tile=column();
+        tile.setPadding(dp(14),dp(14),dp(14),dp(13));
+        tile.setBackground(bg(Color.WHITE,16,BORDER));
+        LinearLayout head=row();
+        TextView when=text(compactDate(item.optString("date",""))+
+            "  ·  "+item.optString("time",""),13,INK,true);
+        head.addView(when,new LinearLayout.LayoutParams(0,-2,1));
         String status=item.optString("status");
         TextView flag=text(statusName(status),11,stateColor(status),true);
         flag.setGravity(Gravity.CENTER);
-        flag.setPadding(dp(9),dp(6),dp(9),dp(6));
-        flag.setBackground(bg(SOFT,20,0));
-        top.addView(flag);
-        card.addView(top);
-        spacer(card,14);
+        flag.setPadding(dp(9),dp(4),dp(9),dp(4));
+        flag.setBackground(bg(SOFT,12,0));
+        head.addView(flag);
+        tile.addView(head);
+        spacer(tile,11);
 
         LinearLayout from=row();
-        TextView bullet=text("●",13,TEAL,true);
-        from.addView(bullet,new LinearLayout.LayoutParams(dp(22),-2));
-        TextView origin=text(item.optString("origin"),15,INK,true);
-        origin.setMaxLines(2);
-        origin.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        from.addView(origin,new LinearLayout.LayoutParams(0,-2,1));
-        card.addView(from);
-        LinearLayout branch=row();
-        TextView axis=text("│",14,Color.rgb(155,185,178),false);
-        branch.addView(axis,new LinearLayout.LayoutParams(dp(22),-2));
-        card.addView(branch);
-        LinearLayout to=row();
-        TextView target=text("◆",12,TEAL,true);
-        to.addView(target,new LinearLayout.LayoutParams(dp(22),-2));
-        TextView dest=text(item.optString("destination"),15,INK,true);
-        dest.setMaxLines(2);
-        dest.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        to.addView(dest,new LinearLayout.LayoutParams(0,-2,1));
-        card.addView(to);
-        spacer(card,13);
+        TextView fromPin=text("●",13,TEAL,true);
+        fromPin.setGravity(Gravity.CENTER);
+        from.addView(fromPin,new LinearLayout.LayoutParams(dp(23),-2));
+        LinearLayout fromBody=column();
+        addLine(fromBody,"ORIGEN",10,MUTED,true,2);
+        TextView origin=text(prettyAddress(item.optString("origin")),14,INK,true);
+        origin.setMaxLines(2);origin.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        fromBody.addView(origin);
+        from.addView(fromBody,new LinearLayout.LayoutParams(0,-2,1));
+        tile.addView(from);
+        spacer(tile,8);
 
-        int price=item.optInt("price",0);
-        addLine(card,item.optInt("passengers",1)+" pasaj.  ·  "+
-            item.optInt("bags",0)+" valijas"+(price>0?"  ·  $ "+price+" UYU":""),
-            12,MUTED,false,13);
+        LinearLayout to=row();
+        TextView toPin=text("◆",12,TEAL,true);
+        toPin.setGravity(Gravity.CENTER);
+        to.addView(toPin,new LinearLayout.LayoutParams(dp(23),-2));
+        LinearLayout toBody=column();
+        addLine(toBody,"DESTINO",10,MUTED,true,2);
+        TextView dest=text(prettyAddress(item.optString("destination")),14,INK,true);
+        dest.setMaxLines(2);dest.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        toBody.addView(dest);
+        to.addView(toBody,new LinearLayout.LayoutParams(0,-2,1));
+        tile.addView(to);
+        spacer(tile,10);
+
+        int pax=item.optInt("passengers",1),bags=item.optInt("bags",0);
+        tile.addView(text(pax+(pax==1?" pasajero":" pasajeros")+"  ·  "+
+            bags+(bags==1?" valija":" valijas")+
+            (item.optInt("price",0)>0?"  ·  $ "+item.optInt("price")+" UYU":""),
+            12,MUTED,false));
+        spacer(tile,10);
+
+        LinearLayout routeBar=row();
+        routeBar.setPadding(dp(11),dp(2),dp(4),dp(2));
+        routeBar.setBackground(bg(SOFT,11,0));
+        JSONObject found=routeResults.get(item.optString("id"));
+        TextView metric=text("↗  "+routeMetrics(found),12,found==null?MUTED:TEAL_DARK,true);
+        routeBar.addView(metric,new LinearLayout.LayoutParams(0,-2,1));
+        TextView link=actionText(found==null?"Calcular ruta":"Ruta ✓",TEAL_DARK,null);
+        link.setTextSize(12);
+        if(found==null)link.setOnClickListener(v->calculateRoute(item,metric,link));
+        else link.setOnClickListener(v->details(item));
+        routeBar.addView(link,new LinearLayout.LayoutParams(-2,dp(39)));
+        tile.addView(routeBar);
+        spacer(tile,10);
 
         LinearLayout actions=row();
-        Button see=button("Ver detalles",false,v->details(item));
-        actions.addView(see,new LinearLayout.LayoutParams(0,dp(46),1));
+        TextView see=actionText("Detalles",TEAL_DARK,v->details(item));
+        see.setGravity(Gravity.CENTER);
+        actions.addView(see,new LinearLayout.LayoutParams(0,dp(44),1));
         if("requested".equals(status)){
             Button quote=button("Cotizar  →",true,v->quote(item));
-            LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(0,dp(46),1);
-            qp.leftMargin=dp(8);
-            actions.addView(quote,qp);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(44),1);
+            lp.leftMargin=dp(9);
+            actions.addView(quote,lp);
         }
-        card.addView(actions);
-        appendCard(parent,card,12);
+        tile.addView(actions);
+        appendCard(parent,tile,10);
     }
 
     private static String statusName(String state) {
@@ -862,6 +946,10 @@ public final class MainActivity extends Activity {
         addLine(body, item.optString("origin"), 16, INK, true, 13);
         addLine(body, "DESTINO", 11, MUTED, true, 4);
         addLine(body, item.optString("destination"), 16, INK, true, 13);
+        JSONObject route=routeResults.get(item.optString("id"));
+        addLine(body,"DISTANCIA POR CARRETERA",11,MUTED,true,4);
+        addLine(body,route==null?"Pendiente de calcular":routeMetrics(route),
+            15,route==null?MUTED:TEAL_DARK,true,13);
         addLine(body, "PASAJEROS Y EQUIPAJE", 11, MUTED, true, 4);
         addLine(body, item.optInt("passengers",1) + " pasajero(s), " +
             item.optInt("bags",0) + " valija(s)", 15, INK, false, 13);
@@ -947,6 +1035,10 @@ public final class MainActivity extends Activity {
         price.setHint("Importe en UYU");
         LinearLayout wrap=column();
         wrap.setPadding(dp(23),dp(10),dp(23),dp(5));
+        JSONObject measured=routeResults.get(item.optString("id"));
+        addLine(wrap,measured==null?"Ruta pendiente de calcular · Podés cotizar manualmente":
+            "Ruta estimada: "+routeMetrics(measured)+" · sin tráfico en vivo",
+            13,measured==null?MUTED:TEAL_DARK,false,14);
         wrap.addView(price);
         new AlertDialog.Builder(this).setTitle("Sugerir precio")
           .setMessage("El pasajero recibirá una propuesta para decidir si la acepta. No se cobra comisión.")
