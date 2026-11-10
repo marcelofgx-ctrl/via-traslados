@@ -116,6 +116,26 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   try{const user=await createUser(env,payload,'admin');return send(user,201)}
   catch(e){if(/UNIQUE|constraint failed/i.test(String(e)))return err('Ese teléfono o correo ya está registrado',409);if(/Celular|contraseña|correo|nombre|datos/i.test(e.message))return err(e.message,400);throw e}
  }
+ if(path==='/api/admin/link-phone'&&req.method==='POST'){
+  // Compatible con administradores creados en la APK anterior, sin borrarlos.
+  const secret=req.headers.get('X-Operator-Key')||'';
+  if(!env.OPERATOR_KEY_HASH||!secret||secret.length>512||
+     !strongEqual(await hash(secret),env.OPERATOR_KEY_HASH.toLowerCase()))
+     return err('Se requiere la clave maestra',403);
+  let p,email,phone;
+  try{p=await parseJson(req);email=normalizeEmail(p.email);phone=normalizeStaffPhone(p.phone)}
+  catch(e){return err(e.message||'Datos inválidos',400)}
+  const row=await env.DB.prepare("SELECT id FROM staff_users WHERE email=? AND role='admin'").bind(email).first();
+  if(!row)return err('No existe un administrador con ese correo',404);
+  const existing=await env.DB.prepare('SELECT phone,email_verified_at FROM staff_contacts WHERE staff_id=?').bind(row.id).first();
+  if(existing && existing.phone!==phone)return err('El administrador ya tiene otro celular. Revisá la cuenta antes de reemplazarlo.',409);
+  if(!existing){
+   try{await env.DB.prepare('INSERT INTO staff_contacts(staff_id,phone,email_verified_at) VALUES (?,?,NULL)').bind(row.id,phone).run()}
+   catch(e){if(/UNIQUE|constraint/i.test(String(e)))return err('Celular ya registrado',409);throw e}
+  }
+  const sent=existing?.email_verified_at?false:await emailCode(env,row.id,email);
+  return send({linked:true,emailVerificationRequired:!existing?.email_verified_at,emailSent:sent});
+ }
  if(path==='/api/staff/resend-email'&&req.method==='POST'){
   let p,email;try{p=await parseJson(req);email=normalizeEmail(p.email)}catch{return err('Correo inválido',400)}
   if(!await limit(env,'resend-email-ip:'+ip(req),8,3600)||!await limit(env,'resend-email:'+email,3,3600))return err('Demasiados códigos solicitados',429);
