@@ -145,7 +145,7 @@ test('celular → correo asociado → OTP válido → sesión 30 días → logou
   assert.equal(replay.status,401);
   const logout=await customerRoutes(post('/api/customer/logout',{},headers),e,'/api/customer/logout',send);
   assert.equal(logout.status,200);
-  assert.equal((await customerRoutes(post('/api/customer/me',{},headers),e,'/api/customer/me',send)).status,401);
+  assert.equal((await customerRoutes(get('/api/customer/me',headers),e,'/api/customer/me',send)).status,401);
  }finally{globalThis.fetch=original}
 });
 test('verificación email de primera reserva crea sesión sin permitir nombre por teléfono solamente',async()=>{
