@@ -86,3 +86,27 @@ CREATE TABLE IF NOT EXISTS admin_audit (
  created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS admin_audit_recent ON admin_audit(created_at DESC);
+
+-- Registro telefónico con verificación de correo y sesiones biométricas.
+-- Tablas complementarias: sin ALTER destructivo de cuentas existentes.
+CREATE TABLE IF NOT EXISTS staff_contacts (
+ staff_id TEXT PRIMARY KEY REFERENCES staff_users(id) ON DELETE CASCADE,
+ phone TEXT NOT NULL UNIQUE,
+ email_verified_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS staff_contacts_verified ON staff_contacts(email_verified_at);
+CREATE TABLE IF NOT EXISTS staff_email_codes (
+ staff_id TEXT PRIMARY KEY REFERENCES staff_users(id) ON DELETE CASCADE,
+ code_hash TEXT NOT NULL,
+ expires_at INTEGER NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0,
+ sent_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS staff_refresh_tokens (
+ token_hash TEXT PRIMARY KEY,
+ staff_id TEXT NOT NULL REFERENCES staff_users(id) ON DELETE CASCADE,
+ expires_at INTEGER NOT NULL,
+ revoked_at INTEGER,
+ created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS staff_refresh_by_user ON staff_refresh_tokens(staff_id,expires_at);
