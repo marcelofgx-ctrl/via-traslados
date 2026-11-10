@@ -44,6 +44,22 @@ jobs:
           grep -F 'PUBLIC_ORIGIN = "https://viatraslados.com"' wrangler.toml
           grep -F 'database_name = "via-traslados-db"' wrangler.toml
           grep -F 'name = "via-traslados-api"' wrangler.toml
+          grep -F 'keep_vars = true' wrangler.toml
+      - name: Confirmar secretos del fundador sin leer sus valores
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 secret list --config wrangler.toml > /tmp/via-secret-names.json
+          node -e '
+            const fs=require("fs");
+            const entries=JSON.parse(fs.readFileSync("/tmp/via-secret-names.json","utf8"));
+            const names=new Set(entries.map(item=>item.name));
+            for(const key of ["VIA_FOUNDER_PHONE","VIA_FOUNDER_EMAIL"])
+              if(!names.has(key))throw Error("Falta un secreto privado obligatorio en via-traslados-api: "+key);
+            console.log("Los dos secretos fundadores están presentes. No se consultaron sus valores.");
+          '
       - name: Crear tablas administrativas sin alterar reservas existentes
         id: migration
         env:
@@ -66,7 +82,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -o pipefail
-          npx --yes wrangler@4 deploy --config wrangler.toml 2>&1 | tee /tmp/via-admin-deploy.log
+          npx --yes wrangler@4 deploy --config wrangler.toml --keep-vars 2>&1 | tee /tmp/via-admin-deploy.log
       - name: Comprobar producción, sin crear usuarios ni tocar reservas
         id: verify
         run: |
