@@ -197,6 +197,12 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   const derived=await secretHash(password,row.password_salt,Number(row.iterations));
   if(!strongEqual(derived,row.password_hash))return err('Celular o contraseña incorrectos',401);
   if(!row.email_verified_at)return err('Primero verificá tu correo electrónico',403);
+  // Una cuenta previa ya verificada, con contraseña correcta, se reconoce
+  // en el primer ingreso tras habilitar el fundador en el Worker.
+  // Nunca promovemos cuentas bloqueadas.
+  if(row.status!=='blocked' && await activateFounder(env,row)){
+   row.role='admin';row.status='approved';
+  }
   if(row.status!=='approved')return err(row.status==='pending'?'Cuenta pendiente de aprobación':'Cuenta bloqueada',403);
   return send(await issueSession(env,row.id,row));
  }
