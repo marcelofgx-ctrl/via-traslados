@@ -215,6 +215,10 @@ public final class MainActivity extends Activity {
             String entered = key.getText().toString();
             if (entered.isEmpty()) { key.setError("Ingresá tu clave"); return; }
             operatorKey = entered;
+            staffToken = null;
+            staffRole = "admin";
+            staffName = "Administrador principal";
+            adminLoaded = false;
             key.setText("");
             signInPending();
             fetchBookings(true);
