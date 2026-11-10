@@ -24,13 +24,16 @@ function isFounder(env,user){
  }catch{return false}
 }
 async function activateFounder(env,user){
- if(!isFounder(env,user))return false;
+ if(!isFounder(env,user)||user.status==='blocked')return false;
+ if(user.role==='admin'&&user.status==='approved')return true;
  const result=await env.DB.prepare("UPDATE staff_users SET role='admin',status='approved',approved_at=unixepoch(),updated_at=unixepoch() WHERE id=? AND role='driver' AND status IN ('pending','approved')")
   .bind(user.id).run();
- if((result?.meta?.changes||0)>0)
+ if((result?.meta?.changes||0)>0){
   await env.DB.prepare('INSERT INTO admin_audit(actor_id,action,target,detail) VALUES (?,?,?,?)')
-   .bind(user.id,'founder-activated',user.id,'Teléfono/correo configurados y correo OTP verificado').run();
- return true;
+   .bind(user.id,'founder-activated',user.id,'Cuenta fundadora activada mediante verificación autenticada').run();
+  return true;
+ }
+ return false;
 }
 
 export function normalizeStaffPhone(value){
@@ -116,7 +119,8 @@ async function issueSession(env,staffId,user){
   env.DB.prepare('INSERT INTO staff_refresh_tokens(token_hash,staff_id,expires_at) VALUES (?,?,?)').bind(await hash(refreshToken),staffId,now()+REFRESH_TTL)
  ]);
  return {token,refreshToken,expiresIn:ACCESS_TTL,refreshExpiresIn:REFRESH_TTL,
-  user:{id:user.id,name:user.display_name,email:user.email,phone:user.phone,role:user.role,status:user.status}};
+  user:{id:user.id,name:user.display_name,email:user.email,phone:user.phone,role:user.role,status:user.status,
+   capabilities:{manageTeam:!!user.email_verified_at&&user.role==='admin'&&user.status==='approved'&&isFounder(env,user)}}};
 }
 export async function staffPhoneRoutes(req,env,path,send,err){
  if(!path.startsWith('/api/staff/')&&path!=='/api/admin/bootstrap-phone')return null;
@@ -174,8 +178,9 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   const row=await env.DB.prepare('SELECT u.id,u.email,u.role,u.status,c.phone,c.email_verified_at FROM staff_users u JOIN staff_contacts c ON c.staff_id=u.id WHERE u.email=?').bind(email).first();
   if(!row)return err('Código inválido o vencido',401);
   if(row.email_verified_at){
-   const founder=await activateFounder(env,row);
-   return send({emailVerified:true,approvalRequired:!founder&&row.role!=='admin',role:founder?'admin':row.role,accountReady:founder||row.role==='admin'});
+   // No revelar el rol o la existencia de la cuenta fundadora a quien
+   // conoce solo su dirección de correo. La promoción exige login con clave.
+   return send({emailVerified:true,approvalRequired:true});
   }
   const attempt=await env.DB.prepare('UPDATE staff_email_codes SET attempts=attempts+1 WHERE staff_id=? AND attempts<5 AND expires_at>unixepoch() RETURNING code_hash').bind(row.id).first();
   if(!attempt||!strongEqual(await otpHash(env,row.id,code),attempt.code_hash))return err('Código inválido o vencido',401);
@@ -214,7 +219,8 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   if(!row)return err('Sesión vencida o revocada',401);
   const token=random(32);
   await env.DB.prepare('INSERT INTO staff_sessions(token_hash,staff_id,expires_at) VALUES (?,?,?)').bind(await hash(token),row.id,now()+ACCESS_TTL).run();
-  return send({token,expiresIn:ACCESS_TTL,user:{id:row.id,name:row.display_name,email:row.email,phone:row.phone,role:row.role,status:row.status}});
+  return send({token,expiresIn:ACCESS_TTL,user:{id:row.id,name:row.display_name,email:row.email,phone:row.phone,role:row.role,status:row.status,
+   capabilities:{manageTeam:!!row.email_verified_at&&row.role==='admin'&&row.status==='approved'&&isFounder(env,row)}}});
  }
  if(path==='/api/staff/logout-device'&&req.method==='POST'){
   let p;try{p=await parseJson(req)}catch{p={}}
