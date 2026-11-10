@@ -1350,27 +1350,49 @@ public final class MainActivity extends Activity {
     }
 
     private void navigation() {
+        LinearLayout dock = column();
+        dock.setBackgroundColor(Color.WHITE);
+        View line = new View(this);
+        line.setBackgroundColor(BORDER);
+        dock.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));
+
         LinearLayout bar=row();
-        bar.setPadding(dp(9),dp(5),dp(9),dp(5));
-        bar.setBackgroundColor(Color.WHITE);
+        bar.setPadding(dp(8),dp(7),dp(8),dp(6));
         boolean admin="admin".equals(staffRole);
-        String[] titles=admin?new String[]{"Solicitudes","Viajes","Historial","Administrar","Ajustes"}:new String[]{"Solicitudes","Viajes","Historial","Ajustes"};
-        String[] icons=admin?new String[]{"≡","▣","◷","⚙","☷"}:new String[]{"≡","▣","◷","⚙"};
-        String[] values=admin?new String[]{"solicitudes","viajes","historial","administrar","ajustes"}:new String[]{"solicitudes","viajes","historial","ajustes"};
-        for(int i=0;i<titles.length;i++) {
+        String[] titles=admin?
+            new String[]{"Solicitudes","Viajes","Historial","Administrar","Ajustes"}:
+            new String[]{"Solicitudes","Viajes","Historial","Ajustes"};
+        String[] icons=admin?
+            new String[]{"☷","▤","◷","◈","⚙"}:
+            new String[]{"☷","▤","◷","⚙"};
+        String[] values=admin?
+            new String[]{"solicitudes","viajes","historial","administrar","ajustes"}:
+            new String[]{"solicitudes","viajes","historial","ajustes"};
+        for(int i=0;i<titles.length;i++){
             final String next=values[i];
+            boolean active=next.equals(tab);
             LinearLayout slot=column();
             slot.setGravity(Gravity.CENTER);
-            TextView icon=text(icons[i],24,next.equals(tab)?TEAL:MUTED,false);
+            slot.setBackground(ripple(active?SOFT:Color.WHITE,0,12));
+            LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(57),1);
+            if(i>0)sp.leftMargin=dp(2);
+
+            TextView icon=text(icons[i],20,active?TEAL_DARK:MUTED,false);
             icon.setGravity(Gravity.CENTER);
             slot.addView(icon);
-            TextView name=text(titles[i],11,next.equals(tab)?TEAL:MUTED,next.equals(tab));
+            spacer(slot,2);
+            TextView name=text(titles[i],admin?10:11,active?TEAL_DARK:MUTED,active);
             name.setGravity(Gravity.CENTER);
+            name.setSingleLine(true);
             slot.addView(name);
+            slot.setContentDescription("Ir a "+titles[i]);
+            slot.setClickable(true);
+            slot.setFocusable(true);
             slot.setOnClickListener(v->{tab=next;dashboard();});
-            bar.addView(slot,new LinearLayout.LayoutParams(0,dp(62),1));
+            bar.addView(slot,sp);
         }
-        root.addView(bar,new LinearLayout.LayoutParams(-1,dp(72)));
+        dock.addView(bar,new LinearLayout.LayoutParams(-1,dp(70)));
+        root.addView(dock,new LinearLayout.LayoutParams(-1,-2));
     }
 
     private void message(String s) { Toast.makeText(this,s,Toast.LENGTH_LONG).show(); }
