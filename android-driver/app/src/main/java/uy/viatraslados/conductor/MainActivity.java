@@ -853,6 +853,37 @@ public final class MainActivity extends Activity {
             }).show();
     }
 
+    private void linkExistingAdmin(){
+        if(operatorKey==null){message("Ingresá primero con la clave maestra.");return;}
+        LinearLayout form=formContainer();
+        EditText phone=formInput(form,"Tu número de celular",InputType.TYPE_CLASS_PHONE);
+        EditText email=formInput(form,"Correo del administrador ya registrado",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        new AlertDialog.Builder(this).setTitle("Vincular celular a mi cuenta")
+            .setMessage("Para el administrador creado con la versión anterior. Mantendrás la misma contraseña y confirmarás el correo.")
+            .setView(form)
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Vincular",(d,w)->{
+                String address=email.getText().toString().trim();
+                JSONObject p=new JSONObject();
+                try{
+                    p.put("email",address);
+                    p.put("phone",phone.getText().toString().trim());
+                }catch(Exception ignored){}
+                api("POST","/api/admin/link-phone",p,(status,body,error)->{
+                    if(status==200){
+                        try{
+                            if(new JSONObject(body).optBoolean("emailVerificationRequired",false))
+                                verifyEmailDialog(address);
+                            else message("El celular ya estaba vinculado.");
+                        }catch(Exception e){verifyEmailDialog(address);}
+                    }else new AlertDialog.Builder(this).setTitle("No se pudo vincular")
+                        .setMessage(error.isEmpty()?"Revisá los datos":error)
+                        .setPositiveButton("Entendido",null).show();
+                });
+            }).show();
+    }
+
     private void loadAdmin() {
         api("GET", "/api/admin/drivers", null, (status, result, error) -> {
             if (status != 200) { message(error.isEmpty()?"No se pudieron consultar conductores":error); return; }
@@ -1061,6 +1092,9 @@ public final class MainActivity extends Activity {
             addLine(bootstrap,"Administrador con usuario personal",18,INK,true,7);
             addLine(bootstrap,"Creá tu cuenta administrativa una sola vez, usando la clave maestra actual.",13,MUTED,false,12);
             bootstrap.addView(button("Crear mi usuario administrador",true,v->bootstrapAdmin()),new LinearLayout.LayoutParams(-1,dp(51)));
+            spacer(bootstrap,9);
+            bootstrap.addView(button("Ya tengo usuario: vincular mi celular",false,v->linkExistingAdmin()),
+                new LinearLayout.LayoutParams(-1,dp(51)));
             appendCard(body,bootstrap,13);
         }
         LinearLayout info=card();
