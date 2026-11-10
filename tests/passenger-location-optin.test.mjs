@@ -72,5 +72,5 @@ test('on Android, no modal alerts; stable entry screen and cache invalidation',(
  assert.match(index,/reference\.js\?v=13/);
  assert.match(index,/address-autocomplete\.js\?v=\d+/);
  assert.match(index,/reference\.css\?v=13/);
- assert.match(sw,/const VERSION='via-traslados-pages-v\d+-/);
+ assert.match(sw,/const VERSION='via-traslados-(?:pages-v\d+-|passenger-passwordless-v\d+)/);
 });
