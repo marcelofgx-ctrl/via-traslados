@@ -1,0 +1,25 @@
+Vía Traslados: control público de sitio
+Despliegue: success
+Verificación: success
+Sitio: https://viatraslados.com
+Backend sigue separado y privado
+✨ Read 24 files from the assets directory /home/runner/work/via-traslados/via-traslados/pages
+🌀 Starting asset upload...
+🌀 Found 1 new or modified static asset to upload. Proceeding with upload...
++ /sw.js
+Uploaded 1 of 1 asset
+✨ Success! Uploaded 1 file (19 already uploaded) (0.69 sec)
+
+Total Upload: 10.05 KiB / gzip: 3.74 KiB
+Worker Startup Time: 2 ms
+Your Worker has access to the following bindings:
+Binding            Resource      
+env.ASSETS         Assets        
+
+Uploaded via-traslados-web-prod (3.96 sec)
+Deployed via-traslados-web-prod triggers (1.66 sec)
+  https://via-traslados-web-prod.marcelof-gx.workers.dev
+  viatraslados.com (custom domain)
+Current Version ID: c756d791-3838-4347-bf23-8b91ee685e0f
+
+Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md

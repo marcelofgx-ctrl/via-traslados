@@ -55,4 +55,25 @@ async function directions(request){
  }catch{return json({error:'El buscador de direcciones no está disponible ahora. Podés ingresar la dirección manualmente.',results:[]},503)}
  finally{clearTimeout(timer)}
 }
-export default {async fetch(request,env){const path=new URL(request.url).pathname;return path==='/api/direcciones'?directions(request):env.ASSETS.fetch(request)}};
+// Control de mantenimiento leído en D1 a través de la API: no depende de JavaScript del pasajero.
+// Mantiene /conductor.html y los recursos estáticos disponibles para recuperar la operación.
+const API_STATUS='https://via-traslados-api.marcelof-gx.workers.dev/api/public/status';
+const maintenance=()=>new Response('<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vía Traslados · Servicio temporalmente suspendido</title></head><body style="font:16px system-ui;margin:10vh auto;max-width:550px;padding:24px;color:#19393b"><h1>Vía Traslados</h1><h2>Servicio temporalmente suspendido</h2><p>Las solicitudes nuevas no están disponibles en este momento. Por favor, volvé a intentarlo más tarde.</p></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, max-age=0','X-Robots-Tag':'noindex'}});
+const isPublicPage=(request,path)=>{
+ if(request.method!=='GET')return false;
+ if(path==='/conductor.html'||path==='/admin.html')return false;
+ return path==='/'||path==='/index.html'||path==='/reserva.html'||path==='/mis-reservas.html'||(path.endsWith('.html')&&request.headers.get('Accept')?.includes('text/html'));
+};
+async function isClosed(){
+ try {
+   const response=await fetch(API_STATUS,{headers:{'Accept':'application/json','Cache-Control':'no-cache'},cf:{cacheTtl:0}});
+   if(!response.ok)return false; // El backend se encarga de bloquear solicitudes cuando no pueda responder.
+   const state=await response.json();
+   return state.enabled===false;
+ }catch{return false}
+}
+export default {async fetch(request,env){
+ const path=new URL(request.url).pathname;
+ if(isPublicPage(request,path) && await isClosed())return maintenance();
+ return path==='/api/direcciones'?directions(request):env.ASSETS.fetch(request);
+}};
