@@ -59,9 +59,13 @@ async function audit(env,actor,action,target,detail=''){
  await env.DB.prepare('INSERT INTO admin_audit(actor_id,action,target,detail) VALUES (?,?,?,?)').bind(actor.id,action,target,String(detail).slice(0,400)).run();
 }
 async function createStaff(env,name,email,password,role,status){
- const pass=await hashPassword(password),id=crypto.randomUUID();
- await env.DB.prepare('INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status,approved_at) VALUES (?,?,?,?,?,?,?,?,?)')
- .bind(id,email,name,pass.salt,pass.hash,pass.iterations,role,status,status==='approved'?now():null).run();
+ let pass;
+ try {pass=await hashPassword(password)}catch(e){console.error('via-staff', 'PASSWORD_DERIVE',e?.name);throw Object.assign(new Error('Alta no disponible'),{phase:'KDF'})}
+ const id=crypto.randomUUID();
+ try {
+  await env.DB.prepare('INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status,approved_at) VALUES (?,?,?,?,?,?,?,?,?)')
+   .bind(id,email,name,pass.salt,pass.hash,pass.iterations,role,status,status==='approved'?now():null).run();
+ }catch(e){if(String(e).includes('UNIQUE'))throw e;console.error('via-staff','STAFF_INSERT',e?.name);throw Object.assign(new Error('Alta no disponible'),{phase:'D1_INSERT'})}
  return {id,email,name,role,status};
 }
 
@@ -70,7 +74,7 @@ export async function staffRoutes(req,env,path,send,err){
    return send({enabled:await webEnabled(env)});
  }
  if(path==='/api/staff/register'&&req.method==='POST'){
-   if(!await throttle(env,'register-ip:'+ip(req),5,3600))return err('Demasiados registros. Intentá más tarde.',429);
+   try{if(!await throttle(env,'register-ip:'+ip(req),5,3600))return err('Demasiados registros. Intentá más tarde.',429)}catch(e){console.error('via-staff','RATE_LIMIT',e?.name);return err('Registro no disponible (R1)',503)}
    let p,name,email,password;
    try{p=await bodyLimit(req);name=cleanName(p.name);email=normalizeEmail(p.email);password=cleanPassword(p.password)}
    catch(e){return err(e.message||'Datos inválidos',400)}
@@ -78,7 +82,7 @@ export async function staffRoutes(req,env,path,send,err){
      const user=await createStaff(env,name,email,password,'driver','pending');
      await audit(env,{id:'self-register'},'driver-register',user.id,'Solicitud pendiente de aprobación');
      return send({registered:true,status:'pending',message:'Tu cuenta está pendiente de aprobación del administrador.'},201);
-   }catch(e){if(String(e).includes('UNIQUE'))return err('Ese correo ya está registrado',409);throw e}
+   }catch(e){if(String(e).includes('UNIQUE'))return err('Ese correo ya está registrado',409);console.error('via-staff','REGISTRATION',e?.phase||e?.name);return err('No se pudo crear la cuenta ('+(e?.phase||'AUDIT')+')',500)}
  }
  if(path==='/api/staff/login'&&req.method==='POST'){
    let p,email,password;
