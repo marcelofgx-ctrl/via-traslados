@@ -1,0 +1,90 @@
+name: Vía Traslados - fundador y experiencia de registro QA 0.5
+on:
+  push:
+    branches: [via-founder-ux-qa-v05]
+    paths:
+      - "backend/**"
+      - "android-driver/**"
+      - "tests/**"
+      - ".github/workflows/via-founder-ux-qa-v05.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-founder-ux-qa-v05
+  cancel-in-progress: true
+jobs:
+  qa_android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Seguridad, pruebas de administración y regresiones
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          node --check backend/staff-phone.js
+          node --check backend/staff.js
+      - name: Comprobar que la APK es independiente y no contiene datos fundadores
+        run: |
+          set -euo pipefail
+          FILE=android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -F "applicationId 'uy.viatraslados.conductor.founderqa'" android-driver/app/build.gradle
+          grep -F 'private void verifyEmailDialog(String address)' "$FILE"
+          grep -F 'private void driverRegister()' "$FILE"
+          grep -F 'VIA_FOUNDER_PHONE' backend/staff-phone.js
+          grep -F 'VIA_FOUNDER_EMAIL' backend/staff.js
+          grep -F 'authWaiting' "$FILE"
+          if grep -R -i 'quicktrip\|quick-trip' android-driver/app/src/main/java android-driver/app/src/main/AndroidManifest.xml; then exit 1; fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Preparar SDK Android
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Compilar APK QA 0.5
+        run: gradle -p android-driver :app:assembleDebug --no-daemon
+      - name: Validar integridad del APK
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-fundador-ux-qa-v0.5.0.apk
+          cd dist
+          sha256sum via-traslados-fundador-ux-qa-v0.5.0.apk > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          unzip -t via-traslados-fundador-ux-qa-v0.5.0.apk | tail -2
+          test "$(stat -c '%s' via-traslados-fundador-ux-qa-v0.5.0.apk)" -gt 100000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-fundador-ux-qa-v050
+          path: dist/*
+          retention-days: 30
+      - name: Publicar APK solo para pruebas internas
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: via-fundador-ux-qa-v0.5.0
+          target_commitish: via-founder-ux-qa-v05
+          name: "Vía Traslados · Registro y fundador · QA v0.5.0"
+          body: |
+            Versión de pruebas separada de la 0.4.
+            Registro y OTP sin ventanas modales, espera sutil y delegación de roles.
+            La activación automática del administrador fundador exige configuración segura en el Worker.
+            No incluye datos personales del fundador. NO es producción.
+          files: |
+            dist/via-traslados-fundador-ux-qa-v0.5.0.apk
+            dist/SHA256SUMS.txt
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
