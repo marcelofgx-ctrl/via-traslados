@@ -217,6 +217,9 @@ export async function staffRoutes(req,env,path,send,err){
    return send({bookingId:assign[1],driverId:user.id});
  }
  if(path==='/api/admin/audit'&&req.method==='GET'){
+   // La bitácora contiene identificadores internos y eventos del fundador:
+   // no exponerlos a administradores delegados.
+   if(!await founderAuthorized())return err('Acceso reservado',403);
    const rows=await env.DB.prepare('SELECT actor_id,action,target,detail,created_at FROM admin_audit ORDER BY id DESC LIMIT 100').all();
    return send({events:rows.results});
  }
