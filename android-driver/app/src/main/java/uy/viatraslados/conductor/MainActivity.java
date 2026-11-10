@@ -235,6 +235,119 @@ public final class MainActivity extends Activity {
         return shell;
     }
 
+    private boolean authFlow = false;
+    private JSONArray managedAdmins = new JSONArray();
+    private boolean canManageRoles = false;
+    private String staffUserId = "";
+
+    @Override public void onBackPressed() {
+        if (authFlow) { loginScreen(); return; }
+        super.onBackPressed();
+    }
+
+    private LinearLayout authPage(String eyebrow, String heading, String subtitle) {
+        authFlow = true;
+        root.removeAllViews();
+        root.setBackgroundColor(LIGHT);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+
+        LinearLayout page = column();
+        page.setPadding(dp(25), dp(16), dp(25), dp(28));
+        scroll.addView(page);
+        LinearLayout top = row();
+        TextView back = actionText("‹  Volver", TEAL_DARK, v -> loginScreen());
+        back.setTextSize(14);
+        top.addView(back, new LinearLayout.LayoutParams(0, dp(44), 1));
+        TextView signature = text("VÍA  /  TRASLADOS", 11, MUTED, true);
+        signature.setLetterSpacing(0.10f);
+        top.addView(signature);
+        page.addView(top);
+        spacer(page, 27);
+
+        TextView label = text(eyebrow, 11, TEAL_DARK, true);
+        label.setLetterSpacing(0.15f);
+        page.addView(label);
+        spacer(page, 10);
+        addLine(page, heading, 29, INK, true, 9);
+        addLine(page, subtitle, 14, MUTED, false, 23);
+        return page;
+    }
+
+    private EditText authField(LinearLayout page, String label, String hint, int inputType, boolean secret) {
+        TextView caption = text(label, 11, MUTED, true);
+        caption.setLetterSpacing(0.10f);
+        page.addView(caption);
+        spacer(page, 7);
+        EditText input = new EditText(this);
+        input.setHint(hint);
+        input.setInputType(inputType);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        page.addView(inputShell(secret ? "◈" : "·", input, secret),
+            new LinearLayout.LayoutParams(-1, dp(52)));
+        spacer(page, 15);
+        return input;
+    }
+
+    private LinearLayout authWaiting(LinearLayout page) {
+        LinearLayout wait = column();
+        wait.setVisibility(View.GONE);
+        TextView status = text("", 13, MUTED, false);
+        wait.addView(status);
+        spacer(wait, 8);
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null,
+            android.R.attr.progressBarStyleHorizontal);
+        bar.setIndeterminate(true);
+        bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TEAL));
+        wait.addView(bar, new LinearLayout.LayoutParams(-1, dp(3)));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
+        p.topMargin = dp(15);
+        page.addView(wait, p);
+        return wait;
+    }
+
+    private void authBusy(LinearLayout wait, Button button, boolean busy, String description) {
+        ((TextView) wait.getChildAt(0)).setText(description);
+        wait.setVisibility(busy ? View.VISIBLE : View.GONE);
+        button.setEnabled(!busy);
+        button.setAlpha(busy ? 0.68f : 1f);
+    }
+
+    private TextView authError(LinearLayout page) {
+        TextView error = text("", 13, ORANGE, false);
+        error.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(12);
+        page.addView(error, lp);
+        return error;
+    }
+
+    private void authErrorText(TextView view, String message) {
+        view.setText(message);
+        view.setVisibility(message == null || message.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void accountResult(boolean ready, String role) {
+        LinearLayout page = authPage("CUENTA VERIFICADA",
+            ready ? "Todo pronto." : "Correo confirmado.",
+            ready ? "Tu cuenta está lista para comenzar." :
+                    "Tu cuenta quedó registrada. Te avisaremos cuando el administrador la habilite.");
+        spacer(page, 9);
+        LinearLayout status = card();
+        addLine(status, ready ? "✓ Acceso habilitado" : "◷ Esperando aprobación",
+            17, ready ? TEAL_DARK : INK, true, 8);
+        addLine(status, ready && "admin".equals(role) ?
+            "Tu acceso de administrador fundador está activo." :
+            ready ? "Ya podés ingresar con tu celular y contraseña." :
+            "La verificación del correo está completa. Falta autorizar tu cuenta.",
+            13, MUTED, false, 0);
+        appendCard(page, status, 21);
+        Button enter = button("Ir a ingresar  →", true, v -> loginScreen());
+        page.addView(enter, new LinearLayout.LayoutParams(-1, dp(52)));
+    }
+
     private void loginPhone(String phone, String password) {
         if (phone.trim().isEmpty() || password.isEmpty()) {
             message("Ingresá tu celular y contraseña.");
@@ -255,6 +368,7 @@ public final class MainActivity extends Activity {
                     staffToken = parsed.getString("token");
                     staffRefreshToken = parsed.getString("refreshToken");
                     staffRole = user.getString("role");
+                    staffUserId = user.optString("id", "");
                     staffName = user.optString("name", "");
                     getSharedPreferences("via_preferences", MODE_PRIVATE)
                         .edit().putString("last_phone", phone.trim()).apply();
@@ -307,6 +421,7 @@ public final class MainActivity extends Activity {
     }
 
     private void loginScreen() {
+        authFlow = false;
         root.removeAllViews();
         operatorKey = null;
         staffToken = null;
@@ -526,6 +641,7 @@ public final class MainActivity extends Activity {
 
     private void dashboard() {
         if (operatorKey == null && staffToken == null) return;
+        authFlow = false;
         root.removeAllViews();
         root.setBackgroundColor(LIGHT);
 
@@ -953,6 +1069,7 @@ public final class MainActivity extends Activity {
                         staffRefreshToken=refresh;
                         operatorKey=null;
                         staffRole=user.getString("role");
+                        staffUserId=user.optString("id","");
                         staffName=user.optString("name","");
                         tab="solicitudes";
                         adminLoaded=false;
