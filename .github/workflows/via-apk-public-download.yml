@@ -1,0 +1,66 @@
+name: Vía Traslados - descarga pública APK Android
+on:
+  push:
+    branches: [worker-web-release]
+    paths: [".github/workflows/via-apk-public-download.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-web-gate-prod
+  cancel-in-progress: false
+jobs:
+  publish_apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bajar la APK privada ya compilada, sin almacenar claves
+        run: |
+          set -euo pipefail
+          mkdir -p pages/descargas
+          gh release download via-admin-qa-v0.2.1 \
+            --repo marcelofgx-ctrl/via-traslados \
+            --pattern 'via-traslados-admin-qa-v0.2.1.apk' \
+            --dir pages/descargas
+          gh release download via-admin-qa-v0.2.1 \
+            --repo marcelofgx-ctrl/via-traslados \
+            --pattern 'SHA256SUMS.txt' \
+            --dir pages/descargas
+          cd pages/descargas
+          sha256sum -c SHA256SUMS.txt
+          unzip -t via-traslados-admin-qa-v0.2.1.apk | tail -2
+          test "$(stat -c '%s' via-traslados-admin-qa-v0.2.1.apk)" -gt 1000000
+      - name: Verificar estructura de producción sin modificar páginas
+        run: |
+          set -euo pipefail
+          test -f pages/index.html
+          test -f pages/conductor.html
+          node --check pages/_worker.js
+          node --check pages/sw.js
+          node --test tests/web-gate.test.mjs
+          grep -F '"name": "via-traslados-web-prod"' wrangler.via-web.jsonc
+          grep -F '"pattern": "viatraslados.com"' wrangler.via-web.jsonc
+      - name: Publicar solo el Worker Vía Traslados y recursos estáticos
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy --config wrangler.via-web.jsonc
+      - name: Confirmar descarga Android desde dominio propio
+        run: |
+          set -euo pipefail
+          URL='https://viatraslados.com/descargas/via-traslados-admin-qa-v0.2.1.apk'
+          for i in 1 2 3 4 5 6; do
+            curl -fsSL --max-time 25 -H 'Cache-Control: no-cache' "$URL" -o /tmp/via-live-admin.apk && break
+            sleep 3
+          done
+          test -s /tmp/via-live-admin.apk
+          cmp pages/descargas/via-traslados-admin-qa-v0.2.1.apk /tmp/via-live-admin.apk
+          unzip -t /tmp/via-live-admin.apk | tail -2
+          curl -fsSL --max-time 25 https://viatraslados.com/ -o /tmp/site.html
+          grep -q 'Vía Traslados' /tmp/site.html
+          curl -fsSL --max-time 25 https://viatraslados.com/conductor.html -o /tmp/admin.html
+          grep -q 'ACCESO PRIVADO' /tmp/admin.html
+          echo 'DESCARGA APK VERIFICADA: HTTPS + bytes idénticos + ZIP válido'
