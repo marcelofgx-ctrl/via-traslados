@@ -29,6 +29,10 @@ function customer(){
 }
 function setCustomer(data){
  if(!data?.profile||!data?.sessionToken||!data?.expiresAt)throw Error('Sesión inválida');
+ const previous=customer();
+ // Un dispositivo compartido no debe conservar credenciales de reservas de otra cuenta.
+ if(!isDemo()&&previous?.profile?.email?.toLowerCase()!==data.profile.email?.toLowerCase())
+   localStorage.removeItem(ACCESS);
  localStorage.setItem(ACCOUNT,JSON.stringify({sessionToken:data.sessionToken,
    expiresAt:data.expiresAt,profile:data.profile,passkeys:data.passkeys||0}));
  global.dispatchEvent(new Event('via-customer-session'));
@@ -115,6 +119,9 @@ async function logout(){
  const c=customer();
  if(c&&!isDemo())try{await request('/api/customer/logout',{method:'POST',headers:customerHeader(),body:'{}'})}catch{}
  localStorage.removeItem(ACCOUNT);
+ // Borrar también los tokens por reserva del navegador cuando el cliente cierra sesión.
+ if(!isDemo())localStorage.removeItem(ACCESS);
+ clearVerified();
  global.dispatchEvent(new Event('via-customer-session'));
 }
 async function create(payload){
