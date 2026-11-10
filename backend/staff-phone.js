@@ -100,6 +100,28 @@ async function emailCode(env,staffId,email){
  await env.DB.prepare('DELETE FROM staff_email_codes WHERE staff_id=? AND code_hash=?').bind(staffId,digest).run();
  return false;
 }
+// Recuperación de contraseña separada de la verificación de correo:
+ // un OTP no puede reutilizarse para un propósito diferente.
+async function resetCodeHash(env,staffId,code){
+ const key=await crypto.subtle.importKey('raw',enc.encode(env.OTP_PEPPER),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ return bytesToHex(await crypto.subtle.sign('HMAC',key,enc.encode('via-staff-password-reset:'+staffId+':'+code)));
+}
+async function sendPasswordReset(env,staffId,email){
+ if(!env.RESEND_API_KEY||!env.RESEND_FROM||!env.OTP_PEPPER||env.OTP_PEPPER.length<32)return false;
+ const code=newOtp(),digest=await resetCodeHash(env,staffId,code);
+ await env.DB.prepare('INSERT INTO staff_password_resets(staff_id,code_hash,expires_at,attempts,sent_at) VALUES (?,?,unixepoch()+600,0,unixepoch()) ON CONFLICT(staff_id) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,attempts=0,sent_at=excluded.sent_at')
+   .bind(staffId,digest).run();
+ try {
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',
+   headers:{Authorization:'Bearer '+env.RESEND_API_KEY,'Content-Type':'application/json','Idempotency-Key':'via-reset-'+crypto.randomUUID()},
+   body:JSON.stringify({from:env.RESEND_FROM,to:[email],subject:'Restablecé tu contraseña · Vía Traslados',
+    text:'Solicitaste recuperar el acceso a Vía Traslados.\nCódigo: '+code+'\nVence en 10 minutos. Si no lo pediste, ignorá este mensaje. Nunca compartas este código.'})});
+  if(response.ok)return true;
+ }catch{}
+ await env.DB.prepare('DELETE FROM staff_password_resets WHERE staff_id=? AND code_hash=?').bind(staffId,digest).run();
+ return false;
+}
+
 async function createUser(env,payload,role){
  const {name,email,phone,password}=validateFields(payload);
  const salt=random(16),passHash=await secretHash(password,salt),id=crypto.randomUUID();
@@ -191,6 +213,55 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   ]);
   const founder=await activateFounder(env,row);
   return send({emailVerified:true,approvalRequired:!founder&&row.role!=='admin',role:founder?'admin':row.role,accountReady:founder||row.role==='admin'});
+ }
+ if(path==='/api/staff/password-reset/request'&&req.method==='POST'){
+  let phone;
+  try {const p=await parseJson(req);phone=normalizeStaffPhone(p.phone)}
+  catch{return err('Ingresá un celular válido',400)}
+  if(!await limit(env,'reset-start-ip:'+ip(req),10,3600)||
+     !await limit(env,'reset-start-phone:'+phone,4,3600))
+    return err('Demasiadas solicitudes. Probá más tarde.',429);
+  const row=await env.DB.prepare('SELECT u.id,u.email,c.email_verified_at FROM staff_contacts c JOIN staff_users u ON u.id=c.staff_id WHERE c.phone=?')
+    .bind(phone).first();
+  if(row?.email_verified_at){
+   const last=await env.DB.prepare('SELECT sent_at FROM staff_password_resets WHERE staff_id=?').bind(row.id).first();
+   if(!last||now()-Number(last.sent_at)>=60)await sendPasswordReset(env,row.id,row.email);
+  }
+  // Respuesta idéntica para usuarios registrados y no registrados.
+  return send({requested:true,message:'Si el celular corresponde a una cuenta con correo verificado, enviaremos un código a ese correo.'});
+ }
+ if(path==='/api/staff/password-reset/confirm'&&req.method==='POST'){
+  let phone,code,password;
+  try{
+   const p=await parseJson(req);
+   phone=normalizeStaffPhone(p.phone);code=String(p.code||'');password=p.newPassword;
+   if(!/^\d{6}$/.test(code))return err('Ingresá un código de seis cifras',400);
+   if(typeof password!=='string'||password.length<12||password.length>128)
+    return err('La contraseña debe tener entre 12 y 128 caracteres',400);
+  }catch{return err('Datos inválidos',400)}
+  if(!await limit(env,'reset-confirm-ip:'+ip(req),30,900)||
+     !await limit(env,'reset-confirm-phone:'+phone,10,900))
+    return err('Demasiados intentos. Solicitá otro código más tarde.',429);
+  const row=await env.DB.prepare('SELECT u.id,c.email_verified_at FROM staff_contacts c JOIN staff_users u ON u.id=c.staff_id WHERE c.phone=?')
+    .bind(phone).first();
+  if(!row?.email_verified_at||!env.OTP_PEPPER)return err('Código inválido o vencido',401);
+  const attempt=await env.DB.prepare('UPDATE staff_password_resets SET attempts=attempts+1 WHERE staff_id=? AND attempts<5 AND expires_at>unixepoch() RETURNING code_hash')
+    .bind(row.id).first();
+  if(!attempt||!strongEqual(await resetCodeHash(env,row.id,code),attempt.code_hash))
+   return err('Código inválido o vencido',401);
+  const consumed=await env.DB.prepare('DELETE FROM staff_password_resets WHERE staff_id=? AND code_hash=? AND expires_at>unixepoch() RETURNING staff_id')
+    .bind(row.id,attempt.code_hash).first();
+  if(!consumed)return err('Código inválido o ya utilizado',401);
+  const salt=random(16),passwordHash=await secretHash(password,salt);
+  await env.DB.batch([
+   env.DB.prepare('UPDATE staff_users SET password_salt=?,password_hash=?,iterations=?,updated_at=unixepoch() WHERE id=?')
+    .bind(salt,passwordHash,KDF_ITERATIONS,row.id),
+   env.DB.prepare('UPDATE staff_sessions SET revoked_at=unixepoch() WHERE staff_id=?').bind(row.id),
+   env.DB.prepare('UPDATE staff_refresh_tokens SET revoked_at=unixepoch() WHERE staff_id=?').bind(row.id),
+   env.DB.prepare('INSERT INTO admin_audit(actor_id,action,target,detail) VALUES (?,?,?,?)')
+    .bind(row.id,'staff-password-reset',row.id,'Contraseña restablecida con OTP de correo; sesiones anteriores revocadas')
+  ]);
+  return send({passwordReset:true,message:'Contraseña actualizada. Ingresá con tu nueva contraseña.'});
  }
  if(path==='/api/staff/login-phone'&&req.method==='POST'){
   let p,phone,password;

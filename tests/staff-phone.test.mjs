@@ -19,8 +19,8 @@ const request=async(req,env)=>{
 };
 const now=()=>Math.floor(Date.now()/1000);
 function db() {
- const users=new Map(),contacts=new Map(),codes=new Map(),sessions=new Map(),refresh=new Map(),limits=new Map(),audits=[];
- const DB={users,contacts,codes,sessions,refresh,limits,audits,
+ const users=new Map(),contacts=new Map(),codes=new Map(),resets=new Map(),sessions=new Map(),refresh=new Map(),limits=new Map(),audits=[];
+ const DB={users,contacts,codes,resets,sessions,refresh,limits,audits,
   prepare(sql){let args=[];const stm={
    bind(...values){args=values;return stm},
    async first() {
@@ -38,6 +38,31 @@ function db() {
     if(sql.startsWith('SELECT u.id,c.email_verified_at FROM staff_users u JOIN staff_contacts')){
       const x=[...users.values()].find(x=>x.email===args[0]);const c=x&&contacts.get(x.id);
       return x&&c?{id:x.id,email_verified_at:c.email_verified_at}:null;
+    }
+    if(sql.startsWith('SELECT u.id,u.email,c.email_verified_at FROM staff_contacts c JOIN staff_users')) {
+      for(const c of contacts.values())if(c.phone===args[0]) {
+        const u=users.get(c.staff_id);return {id:u.id,email:u.email,email_verified_at:c.email_verified_at};
+      }
+      return null;
+    }
+    if(sql.startsWith('SELECT u.id,c.email_verified_at FROM staff_contacts c JOIN staff_users')) {
+      for(const c of contacts.values())if(c.phone===args[0]){
+        const u=users.get(c.staff_id);return{id:u.id,email_verified_at:c.email_verified_at};
+      }
+      return null;
+    }
+    if(sql.startsWith('SELECT sent_at FROM staff_password_resets')){
+      return resets.get(args[0])||null;
+    }
+    if(sql.startsWith('UPDATE staff_password_resets SET attempts=attempts+1')) {
+      const v=resets.get(args[0]);
+      if(!v||v.attempts>=5||v.expires_at<=now())return null;
+      v.attempts++;return{code_hash:v.code_hash};
+    }
+    if(sql.startsWith('DELETE FROM staff_password_resets WHERE staff_id=? AND code_hash=? AND expires_at>')) {
+      const v=resets.get(args[0]);
+      if(!v||v.code_hash!==args[1]||v.expires_at<=now())return null;
+      resets.delete(args[0]);return{staff_id:args[0]};
     }
     if(sql.startsWith('SELECT sent_at FROM staff_email_codes')){
       return codes.get(args[0])||null;
@@ -84,6 +109,15 @@ function db() {
       contacts.set(staff_id,{staff_id,phone,email_verified_at:null});
     }
     if(sql.startsWith('INSERT INTO admin_audit'))audits.push(args);
+    if(sql.startsWith('INSERT INTO staff_password_resets(')){
+      resets.set(args[0],{code_hash:args[1],expires_at:now()+600,attempts:0,sent_at:now()});
+    }
+    if(sql.startsWith('DELETE FROM staff_password_resets WHERE staff_id=? AND code_hash=?')){
+      if(resets.get(args[0])?.code_hash===args[1])resets.delete(args[0]);
+    }
+    if(sql.startsWith('UPDATE staff_users SET password_salt=')){
+      const u=users.get(args[3]);if(u){u.password_salt=args[0];u.password_hash=args[1];u.iterations=args[2];}
+    }
     if(sql.startsWith('INSERT INTO staff_email_codes(')){
       codes.set(args[0],{code_hash:args[1],expires_at:now()+600,attempts:0,sent_at:now()-100});
     }
@@ -335,4 +369,72 @@ test('una llamada anónima al correo ya verificado no revela ni promueve al fund
   assert.equal(signed.status,200);
   assert.equal((await signed.json()).user.role,'admin');
  }finally{globalThis.fetch=original}
+});
+
+test('recuperación de contraseña usa código separado, sin revelar cuentas y revoca sesiones',async()=>{
+ const DB=db(),env={...makeEnv(DB),VIA_FOUNDER_PHONE:'099123456',VIA_FOUNDER_EMAIL:'owner@example.com'};
+ const previous=globalThis.fetch;let otp='';
+ globalThis.fetch=async(_url,opt)=>{
+  const mail=JSON.parse(opt.body);
+  otp=mail.text.match(/(\d{6})/)[1];
+  return new Response(JSON.stringify({id:'test-email'}),{status:200});
+ };
+ try{
+  const owner={name:'Dueño Prueba',email:'owner@example.com',phone:'099123456',password:'PrimeraClaveLarga2026'};
+  assert.equal((await request(post('/api/staff/register-phone',owner),env)).status,201);
+  assert.equal((await request(post('/api/staff/verify-email',{email:owner.email,code:otp}),env)).status,200);
+  const login=await (await request(post('/api/staff/login-phone',{phone:owner.phone,password:owner.password}),env)).json();
+  assert.equal(login.user.role,'admin');
+  otp='';
+  const requestUnknown=await request(post('/api/staff/password-reset/request',{phone:'099999999'}),env);
+  assert.equal(requestUnknown.status,200);
+  const req=await request(post('/api/staff/password-reset/request',{phone:owner.phone}),env);
+  assert.equal(req.status,200);
+  assert.deepEqual(await req.json(),await requestUnknown.json());
+  assert.match(otp,/^\d{6}$/);
+  const row=[...DB.users.values()][0];
+  assert.ok(DB.resets.has(row.id));
+  const bad=await request(post('/api/staff/password-reset/confirm',{
+   phone:owner.phone,code:'000000',newPassword:'NuevaClaveSegura2026'
+  }),env);
+  assert.equal(bad.status,401);
+  const short=await request(post('/api/staff/password-reset/confirm',{
+   phone:owner.phone,code:otp,newPassword:'corta'
+  }),env);
+  assert.equal(short.status,400);
+  const success=await request(post('/api/staff/password-reset/confirm',{
+   phone:owner.phone,code:otp,newPassword:'NuevaClaveSegura2026'
+  }),env);
+  assert.equal(success.status,200);
+  assert.equal((await success.json()).passwordReset,true);
+  assert.equal(DB.resets.has(row.id),false);
+  assert.notEqual(row.password_hash,'NuevaClaveSegura2026');
+  const reused=await request(post('/api/staff/password-reset/confirm',{
+   phone:owner.phone,code:otp,newPassword:'OtraClaveSegura2026'
+  }),env);
+  assert.equal(reused.status,401);
+  const old=await request(post('/api/staff/login-phone',{phone:owner.phone,password:owner.password}),env);
+  assert.equal(old.status,401);
+  const newLogin=await request(post('/api/staff/login-phone',{phone:owner.phone,password:'NuevaClaveSegura2026'}),env);
+  assert.equal(newLogin.status,200);
+  assert.equal((await newLogin.json()).user.role,'admin');
+  const oldSession=await request(post('/api/staff/refresh',{refreshToken:login.refreshToken}),env);
+  assert.equal(oldSession.status,401);
+ }finally{globalThis.fetch=previous}
+});
+test('un correo no verificado no permite restablecimiento de contraseña',async()=>{
+ const DB=db(),env=makeEnv(DB),previous=globalThis.fetch;let sent=0;
+ globalThis.fetch=async()=>{sent++;return new Response(JSON.stringify({id:'ok'}),{status:200})};
+ try{
+  const u={name:'Prueba Sin Verificar',phone:'099444444',email:'unverified@example.com',password:'ClaveInicialSegura2026'};
+  assert.equal((await request(post('/api/staff/register-phone',u),env)).status,201);
+  const before=sent;
+  const requested=await request(post('/api/staff/password-reset/request',{phone:u.phone}),env);
+  assert.equal(requested.status,200);
+  assert.equal(sent,before);
+  const denied=await request(post('/api/staff/password-reset/confirm',{
+   phone:u.phone,code:'000000',newPassword:'ClaveNuevaSegura2026'
+  }),env);
+  assert.equal(denied.status,401);
+ }finally{globalThis.fetch=previous}
 });

@@ -110,3 +110,13 @@ CREATE TABLE IF NOT EXISTS staff_refresh_tokens (
  created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS staff_refresh_by_user ON staff_refresh_tokens(staff_id,expires_at);
+
+-- Recuperación de contraseña del equipo: independiente del OTP de registro.
+-- Ejecutar solo en la D1 exclusiva via-traslados-db.
+CREATE TABLE IF NOT EXISTS staff_password_resets (
+ staff_id TEXT PRIMARY KEY REFERENCES staff_users(id) ON DELETE CASCADE,
+ code_hash TEXT NOT NULL,
+ expires_at INTEGER NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0,
+ sent_at INTEGER NOT NULL
+);
