@@ -18,6 +18,8 @@ const PLACES=[
 function correctKnownPortal(street,city,department,query){
  if(fold(city)!=='lagomar'||(department&&fold(department)!=='canelones'))return city;
  const streetBase=fold(street);
+ const typedNumbers=fold(query).match(/\b\d{3,5}\b/g)||[];
+ if(typedNumbers.length&&!typedNumbers.includes('1711'))return city;
  if(!/^(?:avenida |av )?roque saenz pena(?: 1711)?$/.test(streetBase))return city;
  if(!/\b1711\b/.test(streetBase+' '+fold(query)))return city;
  return 'Shangrilá';
