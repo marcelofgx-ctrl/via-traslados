@@ -37,7 +37,7 @@ async function throttle(env,scope,limit,seconds) {
  const row=await env.DB.prepare('INSERT INTO otp_rate_limits (rate_key,window_started,attempts) VALUES (?,unixepoch(),1) ON CONFLICT(rate_key) DO UPDATE SET window_started=CASE WHEN unixepoch()-window_started>=? THEN unixepoch() ELSE window_started END,attempts=CASE WHEN unixepoch()-window_started>=? THEN 1 ELSE attempts+1 END RETURNING attempts').bind(k,seconds,seconds).first();
  return Number(row?.attempts||0)<=limit;
 }
-const publicStaff=x=>({id:x.id,name:x.display_name,email:x.email,role:x.role,status:x.status,createdAt:x.created_at,updatedAt:x.updated_at});
+const publicStaff=x=>({id:x.id,name:x.display_name,email:x.email,phone:x.phone||null,emailVerified:Boolean(x.email_verified_at),role:x.role,status:x.status,createdAt:x.created_at,updatedAt:x.updated_at});
 const ip=req=>(req.headers.get('CF-Connecting-IP')||'unknown').slice(0,72);
 
 export async function identity(req,env){
@@ -127,7 +127,7 @@ export async function staffRoutes(req,env,path,send,err){
  const actor=await identity(req,env);
  if(actor?.role!=='admin')return err('Solo el administrador puede realizar esta operación',403);
  if(path==='/api/admin/drivers'&&req.method==='GET'){
-   const users=await env.DB.prepare("SELECT id,email,display_name,role,status,created_at,updated_at FROM staff_users WHERE role='driver' ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC LIMIT 250").all();
+   const users=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE u.role='driver' ORDER BY CASE u.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,u.created_at DESC LIMIT 250").all();
    return send({drivers:users.results.map(publicStaff)});
  }
  const driver=path.match(/^\/api\/admin\/drivers\/([a-f0-9-]{36})$/i);
@@ -136,8 +136,15 @@ export async function staffRoutes(req,env,path,send,err){
    if(!allowedStatus.has(p.status))return err('Estado inválido');
    const row=await env.DB.prepare("SELECT id,status FROM staff_users WHERE id=? AND role='driver'").bind(driver[1]).first();
    if(!row)return err('Conductor no encontrado',404);
+   if(p.status==='approved'){
+     const check=await env.DB.prepare('SELECT email_verified_at FROM staff_contacts WHERE staff_id=?').bind(driver[1]).first();
+     if(check && !check.email_verified_at)return err('El conductor debe verificar primero su correo electrónico',409);
+   }
    await env.DB.prepare("UPDATE staff_users SET status=?,updated_at=unixepoch(),approved_at=CASE WHEN ?='approved' THEN unixepoch() ELSE approved_at END WHERE id=? AND role='driver'").bind(p.status,p.status,driver[1]).run();
-   if(p.status==='blocked')await env.DB.prepare('UPDATE staff_sessions SET revoked_at=unixepoch() WHERE staff_id=?').bind(driver[1]).run();
+   if(p.status==='blocked'){
+     await env.DB.prepare('UPDATE staff_sessions SET revoked_at=unixepoch() WHERE staff_id=?').bind(driver[1]).run();
+     await env.DB.prepare('UPDATE staff_refresh_tokens SET revoked_at=unixepoch() WHERE staff_id=?').bind(driver[1]).run();
+   }
    await audit(env,actor,'driver-status',driver[1],row.status+' -> '+p.status);
    return send({id:driver[1],status:p.status});
  }
