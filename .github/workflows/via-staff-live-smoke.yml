@@ -1,4 +1,5 @@
 name: Via Traslados - prueba real de registro sin conservar datos QA
+# Verifica diagnóstico del alta después de actualizar la autenticación.
 on:
   push:
     branches: [main]
