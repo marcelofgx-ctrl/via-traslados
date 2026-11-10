@@ -37,10 +37,13 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String API = "https://via-traslados-api.marcelof-gx.workers.dev";
-    private static final int TEAL = Color.rgb(9, 126, 121);
-    private static final int INK = Color.rgb(24, 43, 49);
-    private static final int MUTED = Color.rgb(109, 128, 134);
-    private static final int LIGHT = Color.rgb(244, 248, 247);
+    private static final int TEAL = Color.rgb(3, 116, 109);
+    private static final int TEAL_DARK = Color.rgb(0, 96, 91);
+    private static final int BORDER = Color.rgb(223, 234, 230);
+    private static final int SOFT = Color.rgb(234, 246, 242);
+    private static final int INK = Color.rgb(24, 44, 48);
+    private static final int MUTED = Color.rgb(105, 123, 125);
+    private static final int LIGHT = Color.rgb(247, 250, 248);
     private static final int ORANGE = Color.rgb(211, 110, 43);
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -143,26 +146,35 @@ public final class MainActivity extends Activity {
         container.addView(t, p);
     }
 
-    private Button button(String s, boolean primary, View.OnClickListener click) {
+    private android.graphics.drawable.Drawable ripple(int color, int border, int radius) {
+        return new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Color.argb(31, 0, 102, 95)),
+            bg(color, radius, border), null);
+    }
+
+    private Button button(String label, boolean primary, View.OnClickListener click) {
         Button b = new Button(this);
-        b.setText(s);
+        b.setText(label);
         b.setAllCaps(false);
         b.setTextSize(14);
+        b.setLetterSpacing(0);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setTextColor(primary ? Color.WHITE : TEAL);
-        b.setBackground(bg(primary ? TEAL : Color.WHITE, 14,
-            primary ? 0 : Color.rgb(204, 226, 223)));
-        b.setPadding(dp(13), dp(8), dp(13), dp(8));
+        b.setTextColor(primary ? Color.WHITE : TEAL_DARK);
+        b.setBackground(ripple(primary ? TEAL : Color.WHITE, primary ? 0 : BORDER, 13));
+        b.setElevation(0);
+        b.setStateListAnimator(null);
+        b.setPadding(dp(14), dp(6), dp(14), dp(6));
         b.setMinHeight(dp(48));
+        b.setMinWidth(0);
         b.setOnClickListener(click);
         return b;
     }
 
     private LinearLayout card() {
         LinearLayout c = column();
-        c.setPadding(dp(18), dp(17), dp(18), dp(17));
-        c.setBackground(bg(Color.WHITE, 18, Color.rgb(225, 233, 231)));
-        c.setElevation(dp(2));
+        c.setPadding(dp(16), dp(16), dp(16), dp(16));
+        c.setBackground(bg(Color.WHITE, 16, BORDER));
+        c.setElevation(0);
         return c;
     }
 
@@ -178,6 +190,122 @@ public final class MainActivity extends Activity {
         l.addView(v, new LinearLayout.LayoutParams(1, dp(height)));
     }
 
+    private TextView actionText(String label, int color, View.OnClickListener action) {
+        TextView v = text(label, 13, color, true);
+        v.setGravity(Gravity.CENTER);
+        v.setMinHeight(dp(46));
+        v.setPadding(dp(9), dp(9), dp(9), dp(9));
+        v.setBackground(ripple(Color.TRANSPARENT, 0, 10));
+        v.setOnClickListener(action);
+        v.setClickable(true);
+        v.setFocusable(true);
+        return v;
+    }
+
+    private LinearLayout inputShell(String icon, EditText input, boolean isPassword) {
+        LinearLayout shell = row();
+        shell.setPadding(dp(13), 0, dp(12), 0);
+        shell.setBackground(bg(Color.WHITE, 12, BORDER));
+        TextView leading = text(icon, 19, MUTED, false);
+        leading.setGravity(Gravity.CENTER);
+        shell.addView(leading, new LinearLayout.LayoutParams(dp(24), dp(48)));
+        LinearLayout.LayoutParams inputLayout = new LinearLayout.LayoutParams(0, dp(52), 1);
+        inputLayout.leftMargin = dp(10);
+        input.setBackgroundColor(Color.TRANSPARENT);
+        input.setTextSize(16);
+        input.setSingleLine(true);
+        input.setTextColor(INK);
+        input.setHintTextColor(Color.rgb(153, 168, 165));
+        input.setPadding(0, dp(6), 0, dp(6));
+        shell.addView(input, inputLayout);
+        if (isPassword) {
+            TextView eye = actionText("Mostrar", TEAL_DARK, v -> {
+                int cursor = input.getSelectionStart();
+                boolean hidden = (input.getInputType() & InputType.TYPE_TEXT_VARIATION_PASSWORD) != 0;
+                input.setInputType(InputType.TYPE_CLASS_TEXT | (hidden ?
+                    InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD :
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD));
+                input.setTypeface(Typeface.DEFAULT);
+                input.setSelection(Math.min(Math.max(cursor,0), input.length()));
+                ((TextView) v).setText(hidden ? "Ocultar" : "Mostrar");
+            });
+            eye.setTextSize(12);
+            shell.addView(eye, new LinearLayout.LayoutParams(-2, dp(48)));
+        }
+        return shell;
+    }
+
+    private void loginPhone(String phone, String password) {
+        if (phone.trim().isEmpty() || password.isEmpty()) {
+            message("Ingresá tu celular y contraseña.");
+            return;
+        }
+        JSONObject data = new JSONObject();
+        try {
+            data.put("phone", phone.trim());
+            data.put("password", password);
+        } catch (Exception ignored) {}
+        signInPending();
+        api("POST", "/api/staff/login-phone", data, (status, response, error) -> {
+            if (status == 200) {
+                try {
+                    JSONObject parsed = new JSONObject(response);
+                    JSONObject user = parsed.getJSONObject("user");
+                    operatorKey = null;
+                    staffToken = parsed.getString("token");
+                    staffRefreshToken = parsed.getString("refreshToken");
+                    staffRole = user.getString("role");
+                    staffName = user.optString("name", "");
+                    getSharedPreferences("via_preferences", MODE_PRIVATE)
+                        .edit().putString("last_phone", phone.trim()).apply();
+                    tab = "solicitudes";
+                    adminLoaded = false;
+                    fetchBookings(true);
+                    offerBiometric();
+                } catch (Exception e) {
+                    loginScreen();
+                    message("No se pudo completar el ingreso.");
+                }
+            } else {
+                loginScreen();
+                new AlertDialog.Builder(this)
+                    .setTitle("No pudimos ingresar")
+                    .setMessage(error == null || error.isEmpty() ?
+                        "Verificá tu número y contraseña." : error)
+                    .setPositiveButton("Entendido", null).show();
+            }
+        });
+    }
+
+    private void adminMasterDialog() {
+        LinearLayout form = formContainer();
+        addLine(form, "Esta clave es solo para crear o recuperar tu cuenta de administrador. El acceso habitual se hace con celular y contraseña.",
+            14, MUTED, false, 12);
+        EditText key = formInput(form, "Clave maestra de administrador",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+            .setTitle("Acceso de administración")
+            .setView(form)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Continuar", (dialog, which) -> {
+                String entered = key.getText().toString();
+                key.setText("");
+                if (entered.isEmpty()) {
+                    message("Ingresá la clave maestra.");
+                    return;
+                }
+                operatorKey = entered;
+                staffToken = null;
+                staffRefreshToken = null;
+                staffRole = "admin";
+                staffName = "Administrador principal";
+                tab = "administrar";
+                adminLoaded = false;
+                signInPending();
+                fetchBookings(true);
+            }).show();
+    }
+
     private void loginScreen() {
         root.removeAllViews();
         operatorKey = null;
@@ -185,65 +313,109 @@ public final class MainActivity extends Activity {
         staffRefreshToken = null;
         staffRole = "driver";
         staffName = "";
+        root.setBackgroundColor(LIGHT);
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        LinearLayout pane = column();
-        pane.setPadding(dp(25), dp(56), dp(25), dp(28));
-        scroll.addView(pane);
 
-        TextView monogram = text("V", 33, Color.WHITE, true);
-        monogram.setGravity(Gravity.CENTER);
-        monogram.setBackground(bg(TEAL, 22, 0));
-        pane.addView(monogram, new LinearLayout.LayoutParams(dp(70), dp(70)));
-        spacer(pane, 25);
-        addLine(pane, "Vía Traslados", 30, INK, true, 4);
-        addLine(pane, "Panel privado del conductor", 16, MUTED, false, 34);
+        LinearLayout page = column();
+        page.setPadding(dp(24), dp(27), dp(24), dp(16));
+        scroll.addView(page);
 
-        LinearLayout authCard = card();
-        addLine(authCard, "Acceso del conductor", 22, INK, true, 7);
-        addLine(authCard,
-            "Ingresá la clave privada que recibiste. Por seguridad no se guarda en el teléfono.",
-            14, MUTED, false, 20);
-        EditText key = new EditText(this);
-        key.setSingleLine(true);
-        key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        key.setHint("Clave del operador");
-        key.setTextSize(16);
-        key.setPadding(dp(13), dp(9), dp(13), dp(9));
-        key.setBackground(bg(LIGHT, 12, Color.rgb(211, 227, 224)));
-        authCard.addView(key, new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(authCard, 16);
-        Button signIn = button("Ingresar al panel  →", true, v -> {
-            String entered = key.getText().toString();
-            if (entered.isEmpty()) { key.setError("Ingresá tu clave"); return; }
-            operatorKey = entered;
-            staffRole = "admin";
-            staffName = "Administrador principal";
-            adminLoaded = false;
-            key.setText("");
-            signInPending();
-            fetchBookings(true);
+        LinearLayout brand = row();
+        TextView mark = text("V", 25, Color.WHITE, true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(bg(TEAL, 14, 0));
+        brand.addView(mark, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        LinearLayout titles = column();
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, -2, 1);
+        tl.leftMargin = dp(12);
+        brand.addView(titles, tl);
+        addLine(titles, "Vía Traslados", 21, INK, true, 2);
+        addLine(titles, "Centro de operaciones", 12, MUTED, false, 0);
+        page.addView(brand);
+        spacer(page, 43);
+
+        addLine(page, "Bienvenido", 30, INK, true, 7);
+        addLine(page, "Ingresá para gestionar tus traslados.", 14, MUTED, false, 26);
+
+        TextView phoneLabel = text("CELULAR", 11, MUTED, true);
+        phoneLabel.setLetterSpacing(0.12f);
+        page.addView(phoneLabel);
+        spacer(page, 8);
+        EditText phone = new EditText(this);
+        phone.setInputType(InputType.TYPE_CLASS_PHONE);
+        phone.setHint("099 123 456");
+        phone.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        phone.setText(getSharedPreferences("via_preferences", MODE_PRIVATE).getString("last_phone", ""));
+        page.addView(inputShell("♧", phone, false), new LinearLayout.LayoutParams(-1, dp(54)));
+        spacer(page, 17);
+
+        TextView passLabel = text("CONTRASEÑA", 11, MUTED, true);
+        passLabel.setLetterSpacing(0.12f);
+        page.addView(passLabel);
+        spacer(page, 8);
+        EditText password = new EditText(this);
+        password.setHint("Tu contraseña");
+        password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        page.addView(inputShell("◇", password, true), new LinearLayout.LayoutParams(-1, dp(54)));
+        password.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                loginPhone(phone.getText().toString(), password.getText().toString());
+                return true;
+            }
+            return false;
         });
-        authCard.addView(signIn, new LinearLayout.LayoutParams(-1, dp(54)));
-        appendCard(pane, authCard, 15);
-        pane.addView(button("Ingresar con celular y contraseña", false, v -> accountLogin()),
-            new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(pane, 11);
+        spacer(page, 16);
+
+        Button enter = button("Ingresar   →", true, v ->
+            loginPhone(phone.getText().toString(), password.getText().toString()));
+        enter.setTextSize(16);
+        page.addView(enter, new LinearLayout.LayoutParams(-1, dp(54)));
+
         if (BiometricVault.hasSaved(this) && BiometricVault.supported(this)) {
-            pane.addView(button("Ingresar con huella digital", true, v -> biometricLogin()),
-                new LinearLayout.LayoutParams(-1, dp(54)));
-            spacer(pane, 11);
+            spacer(page, 10);
+            Button fingerprint = button("◎  Ingresar con huella", false, v -> biometricLogin());
+            fingerprint.setTextSize(14);
+            fingerprint.setContentDescription("Ingresar usando la huella del teléfono");
+            page.addView(fingerprint, new LinearLayout.LayoutParams(-1, dp(52)));
         }
-        pane.addView(button("Registrarme como conductor", false, v -> driverRegister()),
-            new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(pane, 11);
-        pane.addView(button("Verificar mi correo electrónico", false, v -> askEmailForVerification()),
-            new LinearLayout.LayoutParams(-1, dp(54)));
-        spacer(pane, 24);
-        addLine(pane, "Solo para el conductor autorizado · Vía Traslados", 12, MUTED, false, 10);
-        addLine(pane, "No hay comisiones de plataforma ni cargos por cada oferta.",
-            12, MUTED, false, 0);
+
+        spacer(page, 27);
+        View line = new View(this);
+        line.setBackgroundColor(BORDER);
+        page.addView(line, new LinearLayout.LayoutParams(-1, dp(1)));
+        spacer(page, 14);
+
+        LinearLayout signup = row();
+        TextView question = text("¿Sos nuevo?", 13, MUTED, false);
+        signup.addView(question);
+        TextView register = actionText("Solicitar registro  →", TEAL_DARK, v -> driverRegister());
+        signup.addView(register);
+        page.addView(signup);
+        spacer(page, 5);
+
+        LinearLayout extras = row();
+        TextView verify = actionText("Verificar correo", MUTED, v -> askEmailForVerification());
+        extras.addView(verify);
+        View tiny = new View(this);
+        tiny.setBackgroundColor(BORDER);
+        LinearLayout.LayoutParams sep = new LinearLayout.LayoutParams(dp(1), dp(16));
+        sep.leftMargin = dp(5);
+        sep.rightMargin = dp(5);
+        extras.addView(tiny, sep);
+        TextView admin = actionText("Acceso administrador", MUTED, v -> adminMasterDialog());
+        extras.addView(admin);
+        page.addView(extras);
+        spacer(page, 14);
+
+        TextView foot = text("ACCESO SEGURO  ·  VÍA TRASLADOS", 10, MUTED, true);
+        foot.setGravity(Gravity.CENTER);
+        foot.setLetterSpacing(0.10f);
+        page.addView(foot);
     }
 
     private void signInPending() {
