@@ -522,7 +522,13 @@ public final class MainActivity extends Activity {
         sep.leftMargin = dp(5);
         sep.rightMargin = dp(5);
         extras.addView(tiny, sep);
-        TextView admin = actionText("Acceso administrador", MUTED, v -> adminMasterDialog());
+        TextView admin = actionText("Ayuda para ingresar", MUTED, v ->
+            new AlertDialog.Builder(this)
+                .setTitle("Acceso a Vía Traslados")
+                .setMessage("Si sos el titular fundador, ingresá con tu celular y contraseña. Tu rol de administrador se reconocerá automáticamente cuando esté habilitado en el servidor. La clave maestra anterior solo se usa para recuperación excepcional.")
+                .setNegativeButton("Cerrar", null)
+                .setPositiveButton("Recuperación avanzada", (d,w) -> adminMasterDialog())
+                .show());
         extras.addView(admin);
         page.addView(extras);
         spacer(page, 14);
