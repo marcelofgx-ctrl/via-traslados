@@ -1087,91 +1087,174 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void verifyEmailDialog(String address){
-        LinearLayout content=formContainer();
-        addLine(content,"Te enviamos un código de seis dígitos a "+address+
-            ". Es válido durante 10 minutos.",14,MUTED,false,12);
-        EditText code=formInput(content,"Código de seis cifras",InputType.TYPE_CLASS_NUMBER);
-        new AlertDialog.Builder(this).setTitle("Confirmá tu correo")
-            .setView(content)
-            .setNeutralButton("Reenviar código",(dialog,which)->{
-                JSONObject p=new JSONObject();
-                try{p.put("email",address);}catch(Exception ignored){}
-                api("POST","/api/staff/resend-email",p,(status,result,error)->{
-                    message(status==200?"Si el correo está pendiente, llegará un código nuevo.":error);
-                    verifyEmailDialog(address);
-                });
-            })
-            .setNegativeButton("Más tarde",null)
-            .setPositiveButton("Verificar",(dialog,which)->{
-                JSONObject p=new JSONObject();
-                try{
-                    p.put("email",address);
-                    p.put("code",code.getText().toString().trim());
-                }catch(Exception ignored){}
-                code.setText("");
-                api("POST","/api/staff/verify-email",p,(status,result,error)->{
-                    if(status==200)
-                        new AlertDialog.Builder(this).setTitle("Correo verificado")
-                          .setMessage("Tu correo quedó confirmado. Si sos conductor, ahora falta la aprobación del administrador.")
-                          .setPositiveButton("Entendido",null).show();
-                    else{
-                        message(error.isEmpty()?"Código incorrecto o vencido":error);
-                        verifyEmailDialog(address);
-                    }
-                });
-            }).show();
+    private void verifyEmailDialog(String address) {
+        LinearLayout page = authPage("PASO 02  /  02", "Confirmá tu correo",
+            "Ingresá el código de seis cifras que enviamos a " + address +
+            ". Podés seguir trabajando mientras llega.");
+        LinearLayout notice = row();
+        notice.setPadding(dp(12), dp(12), dp(12), dp(12));
+        notice.setBackground(bg(SOFT, 12, 0));
+        TextView note = text("✉   Código válido durante 10 minutos", 12, TEAL_DARK, false);
+        notice.addView(note);
+        page.addView(notice, new LinearLayout.LayoutParams(-1, -2));
+        spacer(page, 27);
+        EditText code = authField(page, "CÓDIGO DE VERIFICACIÓN", "·  ·  ·  ·  ·  ·",
+            InputType.TYPE_CLASS_NUMBER, false);
+        code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
+        code.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        Button check = button("Confirmar correo  →", true, null);
+        check.setTextSize(15);
+        page.addView(check, new LinearLayout.LayoutParams(-1, dp(52)));
+        LinearLayout wait = authWaiting(page);
+        TextView error = authError(page);
+
+        check.setOnClickListener(v -> {
+            String digits = code.getText().toString().trim();
+            if (!digits.matches("[0-9]{6}")) {
+                authErrorText(error, "Ingresá las seis cifras del correo.");
+                return;
+            }
+            authErrorText(error, "");
+            authBusy(wait, check, true, "Verificando tu código de forma segura…");
+            JSONObject p = new JSONObject();
+            try { p.put("email", address); p.put("code", digits); } catch(Exception ignored) {}
+            api("POST", "/api/staff/verify-email", p, (status, body, reason) -> {
+                authBusy(wait, check, false, "");
+                if (status == 200) {
+                    try {
+                        JSONObject response = new JSONObject(body);
+                        accountResult(response.optBoolean("accountReady", false),
+                            response.optString("role", "driver"));
+                    } catch(Exception ignored) { accountResult(false, "driver"); }
+                } else {
+                    code.setText("");
+                    authErrorText(error, reason.isEmpty() ?
+                        "El código no es válido o venció. Probá otra vez." : reason);
+                }
+            });
+        });
+        code.setOnEditorActionListener((v, actionId, event) -> {
+            if(actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                check.performClick(); return true;
+            }
+            return false;
+        });
+        spacer(page, 19);
+        LinearLayout links = row();
+        TextView resend = actionText("Reenviar código", TEAL_DARK, v -> {
+            authErrorText(error, "");
+            resendCode(address, wait, check, error);
+        });
+        links.addView(resend, new LinearLayout.LayoutParams(0, dp(46), 1));
+        TextView later = actionText("Más tarde", MUTED, v -> loginScreen());
+        links.addView(later, new LinearLayout.LayoutParams(0, dp(46), 1));
+        page.addView(links);
+        spacer(page, 12);
+        addLine(page, "Revisá también la carpeta de spam. No compartas el código con nadie.",
+            12, MUTED, false, 0);
     }
 
-    private void askEmailForVerification(){
-        LinearLayout form=formContainer();
-        EditText email=formInput(form,"Correo usado en el registro",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        new AlertDialog.Builder(this).setTitle("Verificar correo")
-            .setView(form).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Continuar",(d,w)->{
-                String value=email.getText().toString().trim();
-                if(!value.isEmpty())verifyEmailDialog(value);
-            }).show();
+    private void resendCode(String address, LinearLayout wait, Button button, TextView error) {
+        authBusy(wait, button, true, "Solicitando otro código…");
+        JSONObject p = new JSONObject();
+        try { p.put("email", address); } catch(Exception ignored) {}
+        api("POST", "/api/staff/resend-email", p, (status, body, reason) -> {
+            authBusy(wait, button, false, "");
+            if(status == 200) {
+                try {
+                    int seconds = new JSONObject(body).optInt("waitSeconds", 0);
+                    authErrorText(error, seconds > 0 ?
+                        "Ya se solicitó un código. Podés volver a intentarlo en " + seconds + " segundos." :
+                        "Solicitud recibida. Si tu correo sigue pendiente, llegará un código.");
+                } catch(Exception ignored) {
+                    authErrorText(error, "Solicitud recibida. Revisá el correo.");
+                }
+            } else authErrorText(error, reason.isEmpty() ?
+                "No pudimos solicitar otro código. Intentá nuevamente." : reason);
+        });
+    }
+
+    private void askEmailForVerification() {
+        LinearLayout page = authPage("VERIFICACIÓN", "Retomá tu registro",
+            "Si ya creaste tu cuenta, ingresá el correo que utilizaste para continuar.");
+        EditText email = authField(page, "CORREO ELECTRÓNICO", "nombre@correo.com",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, false);
+        Button go = button("Continuar  →", true, v -> {
+            String address = email.getText().toString().trim();
+            if(address.contains("@") && address.contains("."))verifyEmailDialog(address);
+            else message("Ingresá un correo electrónico válido.");
+        });
+        page.addView(go, new LinearLayout.LayoutParams(-1, dp(52)));
     }
 
     private void driverRegister() {
-        LinearLayout form=formContainer();
-        EditText name=formInput(form,"Nombre y apellido",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        EditText phone=formInput(form,"Celular, por ejemplo 099 123 456",InputType.TYPE_CLASS_PHONE);
-        EditText email=formInput(form,"Correo para recibir el código",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText password=formInput(form,"Contraseña propia, mínimo 12 caracteres",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        new AlertDialog.Builder(this).setTitle("Registro de conductor")
-            .setMessage("Primero verificás tu correo. Después el administrador debe aprobar tu cuenta.")
-            .setView(form)
-            .setNegativeButton("Cancelar",null)
-            .setPositiveButton("Solicitar registro",(dialog,which)->{
-                String registeredEmail=email.getText().toString().trim();
-                JSONObject p=new JSONObject();
-                try{
-                    p.put("name",name.getText().toString().trim());
-                    p.put("phone",phone.getText().toString().trim());
-                    p.put("email",registeredEmail);
-                    p.put("password",password.getText().toString());
-                }catch(Exception ignored){}
-                password.setText("");
-                api("POST","/api/staff/register-phone",p,(status,body,error)->{
-                    if(status==201){
-                        try{
-                            boolean sent=new JSONObject(body).optBoolean("emailSent",false);
-                            if(sent)verifyEmailDialog(registeredEmail);
-                            else new AlertDialog.Builder(this).setTitle("Cuenta creada")
-                                .setMessage("El envío del correo falló. Usá «Verificar correo» para solicitar otro código.")
-                                .setPositiveButton("Entendido",null).show();
-                        }catch(Exception e){verifyEmailDialog(registeredEmail);}
-                    }else new AlertDialog.Builder(this).setTitle("No se pudo registrar")
-                        .setMessage(error.isEmpty()?"Revisá los datos":error)
-                        .setPositiveButton("Entendido",null).show();
-                });
-            }).show();
+        LinearLayout page = authPage("PASO 01  /  02", "Creá tu cuenta",
+            "Un registro simple, con tus datos personales. Después verificás tu correo para activar el acceso.");
+        EditText name = authField(page, "NOMBRE Y APELLIDO", "Tu nombre completo",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, false);
+        EditText phone = authField(page, "CELULAR", "099 123 456", InputType.TYPE_CLASS_PHONE, false);
+        phone.setText(getSharedPreferences("via_preferences", MODE_PRIVATE).getString("last_phone", ""));
+        EditText email = authField(page, "CORREO ELECTRÓNICO", "nombre@correo.com",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, false);
+        EditText password = authField(page, "CONTRASEÑA", "Mínimo 12 caracteres",
+            InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, true);
+        password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        spacer(page, 2);
+        Button submit = button("Crear cuenta  →", true, null);
+        submit.setTextSize(15);
+        page.addView(submit, new LinearLayout.LayoutParams(-1, dp(52)));
+        LinearLayout wait = authWaiting(page);
+        TextView error = authError(page);
+        spacer(page, 14);
+        addLine(page, "Tus datos se transmiten de forma segura. La cuenta solo se activa después de verificar el correo.",
+            12, MUTED, false, 0);
+        submit.setOnClickListener(v -> {
+            String fullName=name.getText().toString().trim();
+            String number=phone.getText().toString().trim();
+            String address=email.getText().toString().trim();
+            String secret=password.getText().toString();
+            if(fullName.length()<3) { authErrorText(error,"Ingresá tu nombre completo."); return; }
+            if(number.replaceAll("[^0-9]","").length()<9) {
+                authErrorText(error,"Revisá el número de celular."); return;
+            }
+            if(!address.contains("@")||!address.contains(".")) {
+                authErrorText(error,"Ingresá un correo válido."); return;
+            }
+            if(secret.length()<12) {
+                authErrorText(error,"La contraseña debe tener al menos 12 caracteres."); return;
+            }
+            authErrorText(error, "");
+            authBusy(wait, submit, true, "Creando tu cuenta y preparando el correo…");
+            JSONObject p = new JSONObject();
+            try {
+                p.put("name", fullName);
+                p.put("phone", number);
+                p.put("email", address);
+                p.put("password", secret);
+            } catch(Exception ignored) {}
+            api("POST", "/api/staff/register-phone", p, (status, body, reason) -> {
+                authBusy(wait, submit, false, "");
+                if(status == 201) {
+                    getSharedPreferences("via_preferences", MODE_PRIVATE)
+                        .edit().putString("last_phone",number).apply();
+                    password.setText("");
+                    verifyEmailDialog(address);
+                    try {
+                        if(!new JSONObject(body).optBoolean("emailSent", false))
+                            message("La cuenta se creó, pero el correo no salió. Usá «Reenviar código».");
+                    } catch(Exception ignored) {}
+                } else {
+                    authErrorText(error, reason.isEmpty() ?
+                        "No pudimos completar el registro. Revisá los datos." : reason);
+                }
+            });
+        });
+        password.setOnEditorActionListener((v, actionId, event) -> {
+            if(actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                submit.performClick();return true;
+            }
+            return false;
+        });
     }
 
     private void bootstrapAdmin() {
