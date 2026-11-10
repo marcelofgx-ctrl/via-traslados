@@ -43,6 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/cloudflare-d1.mjs
+          export VIA_D1_DATABASE_ID="$(sed -n 's/^VIA_D1_DATABASE_ID=//p' "$GITHUB_ENV" | tail -1)"
+          test -n "$VIA_D1_DATABASE_ID"
           VIA_PUBLIC_ORIGIN=https://viatraslados.com VIA_RESEND_FROM='Vía Traslados <reservas@viatraslados.com>' node scripts/create-wrangler.mjs
+          npx --yes wrangler@4 d1 execute via-traslados-db --remote --config wrangler.toml --command "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'staff%'; SELECT count(*) AS staff_count FROM staff_users;"
           npx --yes wrangler@4 d1 execute via-traslados-db --remote --config wrangler.toml --command "DELETE FROM staff_sessions WHERE staff_id IN (SELECT id FROM staff_users WHERE email='$QA_EMAIL'); DELETE FROM staff_users WHERE email='$QA_EMAIL';"
           npx --yes wrangler@4 d1 execute via-traslados-db --remote --config wrangler.toml --command "SELECT count(*) AS remaining FROM staff_users WHERE email='$QA_EMAIL';"
