@@ -1,0 +1,66 @@
+name: Vía Traslados - publicar APK Premium 0.4
+on:
+  push:
+    branches: [worker-web-release]
+    paths: [".github/workflows/via-premium-apk-download.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-web-gate-prod
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conservar descargas anteriores e incorporar APK Premium validada
+        run: |
+          set -euo pipefail
+          mkdir -p pages/descargas
+          gh release download via-admin-qa-v0.2.1 --repo marcelofgx-ctrl/via-traslados \
+            --pattern 'via-traslados-admin-qa-v0.2.1.apk' --pattern 'SHA256SUMS.txt' --dir /tmp/via-old
+          gh release download via-phone-bio-qa-v0.3.0 --repo marcelofgx-ctrl/via-traslados \
+            --pattern 'via-traslados-telefono-huella-qa-v0.3.0.apk' --pattern 'SHA256SUMS.txt' --dir /tmp/via-phone
+          gh release download via-native-premium-qa-v0.4.0 --repo marcelofgx-ctrl/via-traslados \
+            --pattern 'via-traslados-premium-qa-v0.4.0.apk' --pattern 'SHA256SUMS.txt' --dir /tmp/via-premium
+          (cd /tmp/via-old && sha256sum -c SHA256SUMS.txt)
+          (cd /tmp/via-phone && sha256sum -c SHA256SUMS.txt)
+          (cd /tmp/via-premium && sha256sum -c SHA256SUMS.txt)
+          cp /tmp/via-old/*.apk /tmp/via-phone/*.apk /tmp/via-premium/*.apk pages/descargas/
+          unzip -t pages/descargas/via-traslados-premium-qa-v0.4.0.apk | tail -2
+          test "$(stat -c '%s' pages/descargas/via-traslados-premium-qa-v0.4.0.apk)" -gt 1000000
+      - name: Comprobar aislamiento, portada y control de suspensión
+        run: |
+          set -euo pipefail
+          test -f pages/index.html
+          test -f pages/conductor.html
+          grep -F '"name": "via-traslados-web-prod"' wrangler.via-web.jsonc
+          grep -F '"pattern": "viatraslados.com"' wrangler.via-web.jsonc
+          node --check pages/_worker.js
+          node --check pages/sw.js
+          node --test tests/web-gate.test.mjs
+      - name: Publicar solo assets de la web Vía Traslados
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy --config wrangler.via-web.jsonc
+      - name: Verificar APK Premium en dominio y sitio existente
+        run: |
+          set -euo pipefail
+          URL=https://viatraslados.com/descargas/via-traslados-premium-qa-v0.4.0.apk
+          for n in 1 2 3 4 5 6; do
+            curl -fsSL --max-time 30 -H 'Cache-Control: no-cache' "$URL" -o /tmp/via-premium-live.apk && break
+            sleep 3
+          done
+          test -s /tmp/via-premium-live.apk
+          cmp pages/descargas/via-traslados-premium-qa-v0.4.0.apk /tmp/via-premium-live.apk
+          unzip -t /tmp/via-premium-live.apk | tail -2
+          curl -fsSL --max-time 25 https://viatraslados.com/ -o /tmp/via-index.html
+          grep -q 'Vía Traslados' /tmp/via-index.html
+          curl -fsSL --max-time 25 https://viatraslados.com/conductor.html -o /tmp/via-conductor.html
+          grep -q 'ACCESO PRIVADO' /tmp/via-conductor.html
+          echo 'Vía Traslados premium 0.4: APK validada por bytes, portada operativa y panel privado conservado'
