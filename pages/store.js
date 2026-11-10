@@ -168,5 +168,5 @@ async function passkeyRequest(path,payload){
  return request('/api/customer/passkeys/'+path,{method:'POST',headers:customerHeader(),body:JSON.stringify(payload||{})});
 }
 global.ViaStore={isDemo,startVerification,verifyCode,create,get,mine,list,operatorUpdate,
- accept,cancel,resume,customer,customerHeader,startPhoneLogin,finishPhoneLogin,logout,passkeyRequest};
+ accept,cancel,resume,customer,saveCustomer:setCustomer,customerHeader,startPhoneLogin,finishPhoneLogin,logout,passkeyRequest};
 })(window);
