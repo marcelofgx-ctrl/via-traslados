@@ -119,7 +119,8 @@ async function issueSession(env,staffId,user){
   env.DB.prepare('INSERT INTO staff_refresh_tokens(token_hash,staff_id,expires_at) VALUES (?,?,?)').bind(await hash(refreshToken),staffId,now()+REFRESH_TTL)
  ]);
  return {token,refreshToken,expiresIn:ACCESS_TTL,refreshExpiresIn:REFRESH_TTL,
-  user:{id:user.id,name:user.display_name,email:user.email,phone:user.phone,role:user.role,status:user.status}};
+  user:{id:user.id,name:user.display_name,email:user.email,phone:user.phone,role:user.role,status:user.status,
+   capabilities:{manageTeam:!!user.email_verified_at&&user.role==='admin'&&user.status==='approved'&&isFounder(env,user)}}};
 }
 export async function staffPhoneRoutes(req,env,path,send,err){
  if(!path.startsWith('/api/staff/')&&path!=='/api/admin/bootstrap-phone')return null;
@@ -218,7 +219,8 @@ export async function staffPhoneRoutes(req,env,path,send,err){
   if(!row)return err('Sesión vencida o revocada',401);
   const token=random(32);
   await env.DB.prepare('INSERT INTO staff_sessions(token_hash,staff_id,expires_at) VALUES (?,?,?)').bind(await hash(token),row.id,now()+ACCESS_TTL).run();
-  return send({token,expiresIn:ACCESS_TTL,user:{id:row.id,name:row.display_name,email:row.email,phone:row.phone,role:row.role,status:row.status}});
+  return send({token,expiresIn:ACCESS_TTL,user:{id:row.id,name:row.display_name,email:row.email,phone:row.phone,role:row.role,status:row.status,
+   capabilities:{manageTeam:!!row.email_verified_at&&row.role==='admin'&&row.status==='approved'&&isFounder(env,row)}}});
  }
  if(path==='/api/staff/logout-device'&&req.method==='POST'){
   let p;try{p=await parseJson(req)}catch{p={}}
