@@ -280,3 +280,29 @@ test('el fundador puede designar administradores y revocar sus sesiones; otros a
   assert.equal(demote.status,200);assert.equal(driver.role,'driver');
  }finally{globalThis.fetch=previous}
 });
+
+test('cuenta fundadora ya verificada pasa de pendiente a admin al iniciar sesión',async()=>{
+ const DB=db(),env=makeEnv(DB),previous=globalThis.fetch;let otp='';
+ globalThis.fetch=async(_url,opt)=>{
+   otp=JSON.parse(opt.body).text.match(/(\d{6})/)[1];
+   return new Response(JSON.stringify({id:'test-email'}),{status:200});
+ };
+ try {
+  const fields={name:'Titular Fundador',phone:'099203302',email:'fundador@example.com',password:'ContraseñaFundadora2026'};
+  const reg=await request(post('/api/staff/register-phone',fields),env);
+  assert.equal(reg.status,201);
+  const verified=await request(post('/api/staff/verify-email',{email:fields.email,code:otp}),env);
+  assert.equal(verified.status,200);
+  const before=await request(post('/api/staff/login-phone',{phone:fields.phone,password:fields.password}),env);
+  assert.equal(before.status,403);
+  assert.match((await before.json()).error,/pendiente/);
+  env.VIA_FOUNDER_PHONE=fields.phone;
+  env.VIA_FOUNDER_EMAIL=fields.email;
+  const after=await request(post('/api/staff/login-phone',{phone:fields.phone,password:fields.password}),env);
+  assert.equal(after.status,200);
+  assert.equal((await after.json()).user.role,'admin');
+  const u=[...DB.users.values()][0];
+  assert.equal(u.status,'approved');
+  assert.equal(u.role,'admin');
+ }finally{globalThis.fetch=previous}
+});
