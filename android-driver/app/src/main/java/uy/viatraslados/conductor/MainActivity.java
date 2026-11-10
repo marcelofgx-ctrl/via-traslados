@@ -1333,8 +1333,22 @@ public final class MainActivity extends Activity {
                 if (code != 200) { message(err.isEmpty()?"No se pudo consultar configuración":err); return; }
                 try {
                     siteEnabled = new JSONObject(data).getBoolean("publicEnabled");
-                    adminLoaded = true;
-                    if ("administrar".equals(tab)) dashboard();
+                    canManageRoles = false;
+                    managedAdmins = new JSONArray();
+                    if(staffToken == null) {
+                        adminLoaded = true;
+                        if ("administrar".equals(tab)) dashboard();
+                    } else api("GET", "/api/admin/team", null, (teamStatus, teamResult, teamError) -> {
+                        if(teamStatus == 200) {
+                            try {
+                                JSONObject dataTeam = new JSONObject(teamResult);
+                                managedAdmins = dataTeam.getJSONArray("admins");
+                                canManageRoles = dataTeam.optBoolean("canManageRoles", false);
+                            } catch(Exception ignored) { canManageRoles = false; }
+                        }
+                        adminLoaded = true;
+                        if("administrar".equals(tab)) dashboard();
+                    });
                 } catch (Exception e) { message("Configuración inválida"); }
             });
         });
@@ -1441,11 +1455,62 @@ public final class MainActivity extends Activity {
                 control.setAlpha(0.45f);
             }
             c.addView(control,new LinearLayout.LayoutParams(-1,dp(44)));
+            if(canManageRoles && "approved".equals(status) && verified) {
+                spacer(c,8);
+                Button delegate=button("Nombrar administrador",false,
+                    v->confirmTeamRole(id,driver.optString("name"),"admin"));
+                c.addView(delegate,new LinearLayout.LayoutParams(-1,dp(44)));
+            }
             appendCard(content,c,10);
+        }
+        if(canManageRoles) {
+            spacer(content,18);
+            addLine(content,"Administradores",21,INK,true,5);
+            addLine(content,"Vos decidís quién puede administrar el servicio.",
+                13,MUTED,false,15);
+            for(int i=0;i<managedAdmins.length();i++) {
+                JSONObject admin=managedAdmins.optJSONObject(i);
+                if(admin==null)continue;
+                LinearLayout a=card();
+                String id=admin.optString("id");
+                boolean founder=id.equals(staffUserId);
+                addLine(a,admin.optString("name","Administrador"),16,INK,true,5);
+                addLine(a,admin.optString("phone",""),13,MUTED,false,4);
+                addLine(a,founder?"Cuenta fundadora":"Administrador autorizado",
+                    12,TEAL_DARK,false,9);
+                if(!founder){
+                    a.addView(button("Retirar permiso de administración",false,
+                        v->confirmTeamRole(id,admin.optString("name"),"driver")),
+                        new LinearLayout.LayoutParams(-1,dp(44)));
+                }
+                appendCard(content,a,9);
+            }
         }
         spacer(content,5);
         addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
             12,MUTED,false,13);
+    }
+
+    private void confirmTeamRole(String id,String name,String role) {
+        if(!canManageRoles||staffToken==null)return;
+        boolean promote="admin".equals(role);
+        new AlertDialog.Builder(this)
+            .setTitle(promote?"Nombrar administrador":"Retirar permiso administrativo")
+            .setMessage(promote?
+                name+" podrá aprobar conductores y administrar el servicio. ¿Querés habilitarlo?" :
+                name+" volverá a ser conductor. Deberá iniciar sesión nuevamente.")
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Confirmar",(d,w)->{
+                JSONObject payload=new JSONObject();
+                try{payload.put("role",role);}catch(Exception ignored){}
+                api("PATCH","/api/admin/team/"+id+"/role",payload,(status,result,error)->{
+                    if(status==200) {
+                        message(promote?"Administrador habilitado.":"Permiso retirado.");
+                        adminLoaded=false;
+                        loadAdmin();
+                    }else message(error.isEmpty()?"No fue posible cambiar el permiso":error);
+                });
+            }).show();
     }
 
     private void confirmServiceSwitch() {
