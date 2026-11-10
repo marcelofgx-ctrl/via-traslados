@@ -1,55 +1,29 @@
 Proyecto: via-traslados-api
-Despliegue: success
-Verificación CORS y OTP: success
+Despliegue: failure
+Verificación CORS y OTP: skipped
 Origen: https://viatraslados.com
-Commit: 1281cf5e8cf3653e8d847c7753588c07d938065a
+Commit: c3da6a31e3664e14f32ce370481ea6355ce891d1
 Registro de Wrangler:
+
+ ⛅️ wrangler 4.160.0
 ────────────────────
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mThe local configuration being used (generated from your local configuration file) differs from the remote configuration of your Worker set via the Cloudflare Dashboard:[0m
-
-   {
-     d1_databases: [
-       {
-  +      database_name: "via-traslados-db"
-       }
-     ]
-   }
-  
-  
-  Uploading the Worker will override the remote configuration with your local one.
-
-
-Total Upload: 71.91 KiB / gzip: 16.44 KiB
-Worker Startup Time: 5 ms
-Your Worker has access to the following bindings:
-Binding                                                               Resource                  
-env.DB (via-traslados-db)                                             D1 Database               
-env.PUBLIC_ORIGIN ("https://viatraslados.com")                        Environment Variable      
-env.OPERATOR_ORIGIN ("https://viatraslados.com")                      Environment Variable      
-env.RESEND_FROM ("Vía Traslados <reservas@viatraslados....")          Environment Variable      
-
-Uploaded via-traslados-api (4.17 sec)
-Deployed via-traslados-api triggers (1.59 sec)
-  https://via-traslados-api.marcelof-gx.workers.dev
-Current Version ID: 326c7c98-98ea-4fd4-9f63-95ec2c7788da
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
-Respuesta de API:
-HTTP/2 200 
-date: Tue, 10 Nov 2026 16:18:07 GMT
-content-type: application/json; charset=utf-8
-content-length: 54
-access-control-allow-origin: https://viatraslados.com
-cache-control: no-store
-vary: Origin
-access-control-allow-headers: Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization
-access-control-allow-methods: GET,POST,PATCH,OPTIONS
-referrer-policy: no-referrer
-x-content-type-options: nosniff
-report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=6Y57%2FerexKCanQsYN7R9O6KCAo7HSHJscysNTFY5FkvpmuTYOxv1Xp4kBOcwjK9Yn%2FHucFaCetbxNX5YSIptW1qrNYSojuQqRxdrRcEFLqyjCOFhrN4kAy2lsUpKm%2BjFL7wmJgXUAkZxXyZi%2Fb%2BLWuMjLhrJ2QwAz3Li6Q%3D%3D"}]}
-nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
-server: cloudflare
-cf-ray: a5865f0e7d9feae1-DFW
-alt-svc: h3=":443"; ma=86400
 
-{"ok":true,"name":"via-traslados","otpAvailable":true}
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 1 error:[0m
+
+  [31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mCould not resolve "@simplewebauthn/server"[0m
+  
+      backend/customer-passkeys.js:46:51:
+  [37m      46 │ ...nerateRegistrationOptions}=await import([32m'@simplewebauthn/server'[37m);
+           ╵                                            [32m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+    To fix this, you can add an entry to "alias" in your Wrangler configuration.
+    For more guidance see: [4m[4mhttps://developers.cloudflare.com/workers/wrangler/configuration/#bundling-issues[0m[0m
+    
+  
+  
+
+
+🪵  Logs were written to "/home/runner/.config/.wrangler/logs/wrangler-2026-11-10_18-20-06_119.log"
+Respuesta de API:
