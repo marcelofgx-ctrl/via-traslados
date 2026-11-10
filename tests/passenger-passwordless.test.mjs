@@ -50,6 +50,20 @@ test('al cerrar sesión deja de reconocer al pasajero',async()=>{
  await S.logout();
  assert.equal(S.customer(),null);
 });
+test('recuperar sesión por celular tras cerrar sesión en QA, usando solo OTP simulado',async()=>{
+ const {S}=createClient();
+ await S.startVerification('cliente@example.com');
+ await S.verifyCode('cliente@example.com','123456',{name:'Cliente Demo',phone:'094 222 333'});
+ await S.logout();
+ assert.equal(S.customer(),null);
+ const result=await S.startPhoneLogin('094 222 333');
+ assert.equal(result.sent,true);
+ assert.equal(S.customer(),null,'tener el celular no permite entrar');
+ await assert.rejects(S.finishPhoneLogin('094 222 333','000000'));
+ assert.equal(S.customer(),null,'el código incorrecto no autentica');
+ await S.finishPhoneLogin('094 222 333','123456');
+ assert.equal(S.customer().profile.name,'Cliente Demo');
+});
 test('un token de sesión falso o vencido no se reconoce como usuario real',()=>{
  const local=storage();
  local.setItem('via-customer-session-v1',JSON.stringify({
