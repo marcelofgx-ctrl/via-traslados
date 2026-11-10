@@ -10,6 +10,78 @@ function initPassenger(){
  const localDate=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
  date.min=localDate;date.value=localDate;
  let step=1,verificationEmail='',lastPayload=null,turnstileToken='';
+ const known=$('known-customer'),login=$('return-form'),feedback=$('return-feedback');
+ const shownName=profile=>String(profile.name||'').trim().split(/\s+/)[0]||'';
+ function showAccount(){
+  const user=S.customer()?.profile;
+  if(known)known.classList.toggle('hidden',!user);
+  if(user){
+   $('name').value=user.name||'';
+   $('phone').value=user.phone||'';
+   $('email').value=user.email||'';
+   $('known-customer-title').textContent='Hola, '+shownName(user)+'. Ya te reconocimos.';
+   $('identity-description').textContent='Solo confirmá tus datos y enviá la solicitud. No necesitás otro código.';
+   $('send-code').innerHTML='Confirmar solicitud <span>→</span>';
+   $('return-toggle').classList.add('hidden');
+   login?.classList.add('hidden');
+  }else{
+   $('identity-description').textContent='Verificá tu correo una vez; después te reconoceremos en este dispositivo.';
+   $('send-code').innerHTML=S.isDemo()?'Continuar con código de prueba <span>→</span>':'Recibir código de verificación <span>→</span>';
+   $('return-toggle').classList.remove('hidden');
+  }
+ }
+ showAccount();S.resume().then(showAccount).catch(()=>{});
+ $('forget-customer')?.addEventListener('click',async()=>{
+  await S.logout();$('name').value='';$('phone').value='';$('email').value='';
+  showAccount();
+ });
+ function loginInfo(message,isError=false){
+  if(!feedback)return;
+  feedback.textContent=message;
+  feedback.classList.toggle('error',isError);
+  feedback.classList.toggle('hidden',!message);
+ }
+ $('return-toggle')?.addEventListener('click',()=>{
+  login?.classList.toggle('hidden');
+  $('return-phone').value=$('phone').value||'';
+  if(!login?.classList.contains('hidden'))$('return-phone').focus();
+ });
+ $('return-passkey')?.addEventListener('click',async()=>{
+  const button=$('return-passkey');
+  button.disabled=true;loginInfo('Abriendo acceso seguro del teléfono…');
+  try{
+   const result=await window.ViaPasskeys.signIn($('return-phone').value);
+   showAccount();loginInfo('');
+   if(result.profile) $('identity-heading').textContent='¡Bienvenido de nuevo!';
+  }catch(e){loginInfo(e.message||'No fue posible utilizar la huella. Podés recibir un código por correo.',true)}
+  finally{button.disabled=false}
+ });
+ $('return-send-code')?.addEventListener('click',async()=>{
+  const button=$('return-send-code');
+  if(!S.isDemo()&&!turnstileToken){loginInfo('Completá la comprobación de seguridad que aparece más abajo.',true);return}
+  button.disabled=true;loginInfo('Enviando código al correo asociado…');
+  try{
+   const result=await S.startPhoneLogin($('return-phone').value,turnstileToken);
+   if(!result.sent){loginInfo(result.message||'No encontramos la cuenta. Completá tu nombre, celular y correo.',true);return}
+   $('return-otp').classList.remove('hidden');
+   $('return-otp-info').textContent=S.isDemo()?'DEMO: usá 123456. No se envía correo.':
+    'Enviamos un código a '+(result.maskedEmail||'tu correo registrado')+'.';
+   if(S.isDemo())$('return-code').value='123456';
+   loginInfo('');turnstileToken='';
+  }catch(e){loginInfo(e.message||'No se pudo enviar el código.',true)}
+  finally{button.disabled=false}
+ });
+ $('return-verify')?.addEventListener('click',async()=>{
+  const code=$('return-code').value.trim();
+  if(!/^\d{6}$/.test(code)){loginInfo('Ingresá las seis cifras del correo.',true);return}
+  const button=$('return-verify');button.disabled=true;
+  try{
+   await S.finishPhoneLogin($('return-phone').value,code);
+   showAccount();loginInfo('');
+   $('identity-heading').textContent='¡Bienvenido de nuevo!';
+  }catch(e){loginInfo(e.message||'El código es incorrecto o venció.',true)}
+  finally{button.disabled=false}
+ });
  const showError=msg=>{errorPlace('form-result',msg);$('form-result').scrollIntoView({behavior:'smooth',block:'nearest'})};
  const clearError=()=>{$('form-result').classList.add('hidden')};
  const changeStep=n=>{
@@ -29,7 +101,7 @@ function initPassenger(){
   if(!Number.isInteger(p.passengers)||p.passengers<1||p.passengers>8)return 'Cantidad de pasajeros incorrecta.';
   return ''}
  $('to-contact').addEventListener('click',()=>{const e=validateTrip(tripPayload());if(e)return showError(e);changeStep(2)});
- async function loadTurnstile(){if(S.isDemo())return;if(!window.VIA_CONFIG?.turnstileSiteKey){showError('La verificación anti-bots aún no está configurada. No se pueden enviar solicitudes reales.');return}
+ async function loadTurnstile(){if(S.isDemo()||S.customer())return;if(!window.VIA_CONFIG?.turnstileSiteKey){showError('La verificación anti-bots aún no está configurada. No se pueden enviar solicitudes reales.');return}
   const box=$('turnstile-box');box.classList.remove('hidden');
   if(window.turnstile)return;
   const script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.defer=true;
@@ -42,15 +114,24 @@ function initPassenger(){
   if(p.name.length<2||digits.length<8||digits.length>15)return showError('Completá nombre y un número de celular válido.');
   if(!(p.email.length<=200&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)))return showError('Ingresá un correo electrónico válido.');
   if(!$('privacy-consent').checked)return showError('Necesitamos tu consentimiento para gestionar la solicitud.');
-  if(!S.isDemo()&&!turnstileToken)return showError('Completá la verificación anti-bots antes de continuar.');
-  const button=$('send-code');button.disabled=true;button.textContent='Solicitando código…';
+  const remembered=S.customer()?.profile;
+  const sessionMatches=!!remembered&&remembered.email.toLowerCase()===p.email.toLowerCase();
+  if(!S.isDemo()&&!turnstileToken&&!sessionMatches)return showError('Completá la verificación anti-bots antes de continuar.');
+  const button=$('send-code');button.disabled=true;
+  button.textContent=sessionMatches?'Confirmando solicitud…':'Solicitando código…';
   try{
+   if(sessionMatches){
+    const result=await S.create(p);
+    location.href='./reserva.html?id='+encodeURIComponent(result.id);
+    return;
+   }
    const result=await S.startVerification(p.email,turnstileToken);
    verificationEmail=result.email;lastPayload={...p,email:result.email};
    $('verification-description').textContent=S.isDemo()?'Código de demostración. No se envía ningún correo.':'Enviamos un código al correo '+result.maskedEmail+'.';
-   $('otp-guidance').textContent=S.isDemo()?'DEMO: ingresá 123456. Esto no verifica un correo real.':'El código vence en 10 minutos. No lo compartas con nadie.';
-   changeStep(3);$('otp-code').focus();turnstileToken='';
-  }catch(e){showError(e.message||'No fue posible enviar el código')}finally{button.disabled=false;button.innerHTML='Recibir código de verificación <span>→</span>'}
+   $('otp-guidance').textContent=S.isDemo()?'DEMO: utilizá 123456. No se envía un correo.':'El código vence en 10 minutos. No lo compartas con nadie.';
+   if(S.isDemo())$('otp-code').value='123456';
+   changeStep(3);if(!S.isDemo())$('otp-code').focus();turnstileToken='';
+  }catch(e){showError(e.message||'No fue posible enviar el código')}finally{button.disabled=false;showAccount()}
  }
  $('send-code').addEventListener('click',sendCode);
  $('resend-code').addEventListener('click',async()=>{changeStep(2);$('email').focus();showError('Revisá el correo y solicitá un código nuevo.')});
@@ -58,7 +139,7 @@ function initPassenger(){
   const code=$('otp-code').value.trim();if(!/^\d{4,10}$/.test(code))return showError('Ingresá el código numérico recibido.');
   const button=$('verify-and-book');button.disabled=true;button.textContent='Comprobando…';
   try{
-   await S.verifyCode(verificationEmail,code);
+   await S.verifyCode(verificationEmail,code,{name:lastPayload?.name,phone:lastPayload?.phone});
    if(!lastPayload)throw new Error('Volvé a cargar los datos del viaje.');
    const result=await S.create(lastPayload);
    location.href='./reserva.html?id='+encodeURIComponent(result.id);
