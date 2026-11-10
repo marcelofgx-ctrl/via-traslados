@@ -22,7 +22,7 @@ export function validateBooking(p){
  return q
 }
 const publicRow=r=>({id:r.id,origin:r.origin,destination:r.destination,date:r.trip_date,time:r.trip_time,passengers:r.passengers,bags:r.bags,notes:r.notes,status:r.status,price:r.price_uyu,created_at:r.created_at,updated_at:r.updated_at});
-const operatorRow=r=>({...publicRow(r),name:r.customer_name,phone:r.phone,email:r.email});
+const operatorRow=r=>({...publicRow(r),name:r.customer_name,phone:r.phone,email:r.email,assignedDriverId:r.assigned_driver_id||null,assignedDriverName:r.assigned_driver_name||null});
 const authorized=async(req,env)=>identity(req,env);
 const getBooking=async(req,env,id)=>{const token=req.headers.get('X-Booking-Token')||'';if(!token||token.length>200)return null;const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();return row&&equal(await hash(token),row.access_token_hash)?row:null};
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
@@ -67,10 +67,10 @@ export default {async fetch(req,env){
   if(path==='/api/operator/requests'&&req.method==='GET'){
    const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
    if(actor.role==='admin'){
-     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
+     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
      return send(rows.results.map(operatorRow));
    }
-   const rows=await env.DB.prepare('SELECT b.* FROM bookings b JOIN driver_assignments a ON a.booking_id=b.id WHERE a.driver_id=? ORDER BY b.trip_date DESC,b.trip_time DESC LIMIT 200').bind(actor.id).all();
+   const rows=await env.DB.prepare('SELECT b.*,a.driver_id AS assigned_driver_id,u.display_name AS assigned_driver_name FROM bookings b JOIN driver_assignments a ON a.booking_id=b.id JOIN staff_users u ON u.id=a.driver_id WHERE a.driver_id=? ORDER BY b.trip_date DESC,b.trip_time DESC LIMIT 200').bind(actor.id).all();
    return send(rows.results.map(operatorRow))
   }
   const op=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)$/);
