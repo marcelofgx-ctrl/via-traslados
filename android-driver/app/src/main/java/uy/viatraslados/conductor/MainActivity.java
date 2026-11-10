@@ -423,7 +423,13 @@ public final class MainActivity extends Activity {
         LinearLayout c = column();
         c.setGravity(Gravity.CENTER);
         root.addView(c, new LinearLayout.LayoutParams(-1, -1));
-        TextView t = text("Conectando con Vía Traslados…", 17, TEAL, true);
+        android.widget.ProgressBar spinner = new android.widget.ProgressBar(this);
+        spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TEAL));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(38),dp(38));
+        lp.gravity=Gravity.CENTER_HORIZONTAL;
+        c.addView(spinner,lp);
+        spacer(c,20);
+        TextView t = text("Preparando tu espacio…", 15, INK, true);
         t.setGravity(Gravity.CENTER);
         c.addView(t);
     }
@@ -1332,31 +1338,39 @@ public final class MainActivity extends Activity {
     }
 
     private void settings(LinearLayout body) {
-        addLine(body, "Configuración", 27, INK, true, 5);
-        addLine(body, "Vía Traslados · Conductor", 14, MUTED, false, 20);
-        LinearLayout c=card();
-        addLine(c,"Cuenta del conductor",19,INK,true,9);
-        addLine(c,"Sesión activa en este dispositivo",14,TEAL,true,14);
-        addLine(c,"Tu contraseña nunca se guarda. Si activás la huella, Android protege una sesión renovable cifrada.",
-            14,MUTED,false,14);
-        if (staffToken!=null && BiometricVault.supported(this) && !BiometricVault.hasSaved(this)){
-            c.addView(button("Activar acceso con huella",true,v->saveBiometric()),
-                new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(c,9);
+        addLine(body,"Ajustes",25,INK,true,4);
+        addLine(body,"Cuenta, seguridad y aplicación",13,MUTED,false,19);
+
+        LinearLayout account=card();
+        addLine(account,"MI CUENTA",11,MUTED,true,10);
+        addLine(account,staffName.isEmpty()?
+            ("admin".equals(staffRole)?"Administrador general":"Conductor"):
+            staffName,19,INK,true,5);
+        addLine(account,"admin".equals(staffRole)?"Rol: administrador general":"Rol: conductor autorizado",
+            13,TEAL,true,15);
+        if(staffToken!=null && BiometricVault.supported(this)){
+            if(BiometricVault.hasSaved(this)){
+                addLine(account,"✓ Acceso con huella habilitado",13,TEAL_DARK,true,11);
+                account.addView(button("Desactivar acceso con huella",false,v->{
+                    BiometricVault.clear(this);
+                    message("La huella quedó desactivada en este teléfono.");
+                    dashboard();
+                }),new LinearLayout.LayoutParams(-1,dp(47)));
+            }else{
+                addLine(account,"Protegé tu acceso con la huella del teléfono.",13,MUTED,false,12);
+                account.addView(button("Activar huella",false,v->saveBiometric()),
+                    new LinearLayout.LayoutParams(-1,dp(47)));
+            }
+            spacer(account,12);
         }
-        if (BiometricVault.hasSaved(this)){
-            c.addView(button("Quitar acceso con huella",false,v->{
-                BiometricVault.clear(this);
-                message("Se eliminó el acceso biométrico de este dispositivo.");
-                dashboard();
-            }),new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(c,9);
-        }
-        c.addView(button("Cerrar sesión",false,v->{
-            if (staffToken!=null){
-                JSONObject p=new JSONObject();
-                try{if(staffRefreshToken!=null)p.put("refreshToken",staffRefreshToken);}catch(Exception ignored){}
-                api("POST","/api/staff/logout-device",p,(status,response,error)->{});
+        addLine(account,"La contraseña no se guarda en el dispositivo.",12,MUTED,false,12);
+        Button leave=button("Cerrar sesión",false,v->{
+            if(staffToken!=null){
+                JSONObject payload=new JSONObject();
+                try{
+                    if(staffRefreshToken!=null)payload.put("refreshToken",staffRefreshToken);
+                }catch(Exception ignored){}
+                api("POST","/api/staff/logout-device",payload,(status,response,error)->{});
             }
             BiometricVault.clear(this);
             operatorKey=null;
@@ -1365,34 +1379,35 @@ public final class MainActivity extends Activity {
             bookings=new JSONArray();
             lastPayload="";
             loginScreen();
-        }),new LinearLayout.LayoutParams(-1,dp(50)));
-        appendCard(body,c,14);
-        if ("admin".equals(staffRole) && operatorKey!=null) {
+        });
+        account.addView(leave,new LinearLayout.LayoutParams(-1,dp(46)));
+        appendCard(body,account,14);
+
+        if("admin".equals(staffRole) && operatorKey!=null){
             LinearLayout bootstrap=card();
-            addLine(bootstrap,"Administrador con usuario personal",18,INK,true,7);
-            addLine(bootstrap,"Creá tu cuenta administrativa una sola vez, usando la clave maestra actual.",13,MUTED,false,12);
-            bootstrap.addView(button("Crear mi usuario administrador",true,v->bootstrapAdmin()),new LinearLayout.LayoutParams(-1,dp(51)));
+            addLine(bootstrap,"CONFIGURAR ADMINISTRADOR",11,MUTED,true,9);
+            addLine(bootstrap,"Tu acceso personal",19,INK,true,6);
+            addLine(bootstrap,"Creá una cuenta con tu celular, contraseña y correo verificado. La clave maestra quedará solo para recuperación.",
+                13,MUTED,false,15);
+            bootstrap.addView(button("Crear cuenta personal",true,v->bootstrapAdmin()),
+                new LinearLayout.LayoutParams(-1,dp(48)));
             spacer(bootstrap,9);
-            bootstrap.addView(button("Ya tengo usuario: vincular mi celular",false,v->linkExistingAdmin()),
-                new LinearLayout.LayoutParams(-1,dp(51)));
-            appendCard(body,bootstrap,13);
+            bootstrap.addView(button("Ya tengo cuenta · Vincular celular",false,v->linkExistingAdmin()),
+                new LinearLayout.LayoutParams(-1,dp(48)));
+            appendCard(body,bootstrap,14);
         }
+
         LinearLayout info=card();
-        addLine(info,"Información",19,INK,true,10);
-        addLine(info,"Versión 0.3.0 · Pruebas QA",14,INK,false,5);
-        addLine(info,"Servidor: via-traslados-api",13,MUTED,false,6);
-        addLine(info,"Moneda: pesos uruguayos (UYU)",13,MUTED,false,6);
-        addLine(info,"Actualización: cada 30 segundos con la app abierta",13,MUTED,false,10);
-        addLine(info,"Mensajería en la app, notificaciones push y cálculo de precios automáticos: pendientes.",
-            13,MUTED,false,5);
-        appendCard(body,info,14);
-        LinearLayout r=card();
-        addLine(r,"Soporte",19,INK,true,9);
-        addLine(r,"La aplicación utiliza exclusivamente Vía Traslados. No tiene acceso a Quick Trip ni a sus cuentas.",
-            13,MUTED,false,12);
-        r.addView(button("Verificar conexión",false,v->fetchBookings(true)),
-            new LinearLayout.LayoutParams(-1,dp(50)));
-        appendCard(body,r,10);
+        addLine(info,"INFORMACIÓN",11,MUTED,true,9);
+        addLine(info,"Vía Traslados",17,INK,true,7);
+        addLine(info,"Versión 0.4.0 · Diseño renovado",13,MUTED,false,5);
+        addLine(info,"Actualización de viajes: cada 30 segundos",13,MUTED,false,12);
+        info.addView(button("Comprobar conexión",false,v->fetchBookings(true)),
+            new LinearLayout.LayoutParams(-1,dp(46)));
+        appendCard(body,info,13);
+
+        addLine(body,"Vía Traslados funciona de forma independiente de cualquier otra aplicación.",
+            11,MUTED,false,5);
     }
 
     private void navigation() {
