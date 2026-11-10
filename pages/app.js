@@ -175,10 +175,80 @@ function cardHTML(b){let actions='';if(b.status==='requested'){actions=`<form cl
 const pill=['confirmed','accepted','en_route','arrived','in_progress'].includes(b.status)?'confirmed':['completed','cancelled'].includes(b.status)?'done':'';return `<article class="request-card"><div><div class="request-head"><span class="pill ${pill}">${esc(labels[b.status]||b.status)}</span><span>· ${esc(fmtDate(b.date))} ${esc(b.time)}</span></div><h3>${esc(b.origin)} → ${esc(b.destination)}</h3><p>Pasajero: <strong>${esc(b.name)}</strong> · ${esc(b.phone)} · ${esc(b.passengers)} persona(s) · ${esc(b.bags)} valija(s)</p>${b.notes?`<p>Nota: ${esc(b.notes)}</p>`:''}${b.price!=null?`<p><strong>Propuesta: $ ${Number(b.price).toLocaleString('es-UY')} UYU</strong></p>`:''}<p style="font-size:10px;color:#9daaa3">${esc(b.id)}</p></div><div class="request-actions">${actions}</div></article>`}
 async function renderDriver(){try{const rows=await S.list(operatorKey);$('driver-error').classList.add('hidden');$('stat-total').textContent=rows.length;$('stat-pending').textContent=rows.filter(x=>x.status==='requested').length;$('stat-confirmed').textContent=rows.filter(x=>['accepted','confirmed','en_route','arrived','in_progress'].includes(x.status)).length;const rs=filtered(rows);$('requests-list').innerHTML=rs.length?rs.map(cardHTML).join(''):`<div class="empty"><span class="empty-icon">◇</span><h3>Sin solicitudes en esta vista</h3><p>Desde la PWA del pasajero podés crear una reserva de prueba y verla acá, en este mismo navegador.</p><a href="./index.html">Abrir PWA de pasajeros →</a></div>`}catch(err){if(/acceso|clave|auth|401/i.test(err.message)){$('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden');sessionStorage.removeItem('via-operator-key')}else errorPlace('driver-error',err.message)}}
 function initDriver(){$('today-chip').textContent=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});if(!S.isDemo()){operatorKey=sessionStorage.getItem('via-operator-key')||'';if(!operatorKey){$('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden')}}$('auth-form').addEventListener('submit',async(e)=>{e.preventDefault();operatorKey=$('driver-key').value.trim();sessionStorage.setItem('via-operator-key',operatorKey);$('driver-auth').classList.add('hidden');$('driver-content').classList.remove('hidden');await renderDriver()});$('refresh-btn').addEventListener('click',renderDriver);document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(c=>c.classList.toggle('active',b===c));renderDriver()}));$('requests-list').addEventListener('submit',async(e)=>{const form=e.target.closest('form[data-action="quote"]');if(!form)return;e.preventDefault();const price=Number(new FormData(form).get('price'));if(!Number.isInteger(price)||price<1)return;try{await S.operatorUpdate(form.dataset.id,{status:'quoted',price},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});$('requests-list').addEventListener('click',async(e)=>{const b=e.target.closest('button[data-action]');if(!b)return;const status=b.dataset.action;if(!['confirm','en_route','arrived','in_progress','completed'].includes(status))return;try{await S.operatorUpdate(b.dataset.id,{status:status==='confirm'?'confirmed':status},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});renderDriver();window.addEventListener('storage',renderDriver);window.addEventListener('via-updated',renderDriver)}
-async function initMine(){const container=$('mine-list');if(!container)return;try{
- const rows=await S.mine();
- if(!rows.length){container.innerHTML='<div class="empty"><h3>Todavía no tenés reservas</h3><p>Cuando solicites un traslado, aparecerá acá para que puedas consultar su estado.</p><a href="./index.html">Solicitar un traslado →</a></div>';return}
- container.innerHTML=rows.map(b=>`<a class="mine-item" href="./reserva.html?id=${encodeURIComponent(b.id)}"><div><strong>${esc(b.origin)} → ${esc(b.destination)}</strong><p>${esc(fmtDate(b.date))} · ${esc(b.time)} · ${esc(labels[b.status]||b.status)}</p></div><span aria-hidden="true">→</span></a>`).join('');
- }catch(e){container.textContent='No fue posible consultar las reservas de este dispositivo.'}}
+async function initMine(){
+ const container=$('mine-list'),login=$('mine-login-card'),welcome=$('mine-welcome');
+ if(!container)return;
+ let captchaToken='',turnstileLoaded=false;
+ const note=message=>{const el=$('mine-login-feedback');if(el)el.textContent=message||''};
+ async function draw(){
+  const person=S.customer()?.profile;
+  login?.classList.toggle('hidden',!!person);
+  welcome?.classList.toggle('hidden',!person);
+  if(person){
+   const first=String(person.name||'').trim().split(/\s+/)[0];
+   $('mine-greeting').textContent='Hola, '+first+'. Tus viajes están aquí.';
+  }
+  try{
+   const rows=await S.mine();
+   if(!rows.length){
+    container.innerHTML='<div class="empty"><h3>Todavía no tenés reservas</h3><p>Cuando solicites un traslado, aparecerá aquí. Podrás consultarlo desde tus dispositivos una vez que ingreses a tu cuenta.</p><a href="./index.html">Solicitar un traslado →</a></div>';
+    return;
+   }
+   container.innerHTML=rows.map(b=>'<a class="mine-item" href="./reserva.html?id='+encodeURIComponent(b.id)+'"><div><strong>'+esc(b.origin)+' → '+esc(b.destination)+'</strong><p>'+esc(fmtDate(b.date))+' · '+esc(b.time)+' · '+esc(labels[b.status]||b.status)+'</p></div><span aria-hidden="true">→</span></a>').join('');
+  }catch(e){container.textContent='No pudimos consultar tus viajes. Revisá tu conexión e intentá entrar nuevamente.'}
+ }
+ function turnstile(){
+  if(S.isDemo()||S.customer()||turnstileLoaded||!window.VIA_CONFIG?.turnstileSiteKey)return;
+  turnstileLoaded=true;
+  const box=$('mine-turnstile');box?.classList.remove('hidden');
+  const show=()=>{
+   if(!window.turnstile||!box)return;
+   window.turnstile.render('#mine-turnstile',{sitekey:window.VIA_CONFIG.turnstileSiteKey,
+    action:'otp',callback:value=>{captchaToken=value},'expired-callback':()=>{captchaToken=''}});
+  };
+  if(window.turnstile){show();return}
+  const js=document.createElement('script');
+  js.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+  js.async=true;js.defer=true;js.onload=show;document.head.appendChild(js);
+ }
+ $('mine-login-passkey')?.addEventListener('click',async()=>{
+  const button=$('mine-login-passkey');button.disabled=true;note('Abriendo la identificación del teléfono…');
+  try{
+   await window.ViaPasskeys.signIn($('mine-login-phone').value);
+   note('');await draw();
+  }catch(e){note(e.message||'No pudimos identificarte con huella. Podés recibir el código por correo.')}
+  finally{button.disabled=false}
+ });
+ $('mine-login-send')?.addEventListener('click',async()=>{
+  if(!S.isDemo()&&!captchaToken){note('Completá la comprobación de seguridad para enviar el correo.');return}
+  const button=$('mine-login-send');button.disabled=true;note('Verificando tu celular…');
+  try{
+   const result=await S.startPhoneLogin($('mine-login-phone').value,captchaToken);
+   if(!result.sent){note(result.message||'Si es tu primera visita, solicitá un traslado y verificá tu correo.');return}
+   $('mine-login-verify').classList.remove('hidden');
+   if(S.isDemo())$('mine-login-code').value='123456';
+   note('Código enviado a '+(result.maskedEmail||'tu correo asociado')+'.');
+   captchaToken='';
+  }catch(e){note(e.message||'No pudimos enviar el código.')}
+  finally{button.disabled=false}
+ });
+ $('mine-login-confirm')?.addEventListener('click',async()=>{
+  const button=$('mine-login-confirm');button.disabled=true;note('Verificando…');
+  try{
+   await S.finishPhoneLogin($('mine-login-phone').value,$('mine-login-code').value.trim());
+   note('');await draw();
+  }catch(e){note(e.message||'Código inválido o vencido.')}
+  finally{button.disabled=false}
+ });
+ $('mine-logout')?.addEventListener('click',async()=>{
+  await S.logout();note('Sesión cerrada. Podés ingresar nuevamente con tu celular.');
+  await draw();turnstileLoaded=false;turnstile();
+ });
+ await draw();
+ await S.resume();
+ await draw();
+ turnstile();
+}
+
 const page=document.body.dataset.page;if(page==='passenger')initPassenger();if(page==='booking')initBooking();if(page==='mine')initMine();if(page==='driver')initDriver();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 })();
