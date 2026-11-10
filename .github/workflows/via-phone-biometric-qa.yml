@@ -1,0 +1,104 @@
+name: Vía Traslados - celular, email y huella Android QA
+on:
+  push:
+    branches: [via-phone-biometric-qa]
+    paths:
+      - "backend/**"
+      - "android-driver/**"
+      - "tests/**"
+      - ".github/workflows/via-phone-biometric-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-phone-biometric-qa
+  cancel-in-progress: true
+jobs:
+  security_and_android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probar registro y revocación de credenciales de equipo
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          node --check backend/staff-phone.js
+      - name: Validar migración SQL reversible sin tocar producción
+        run: |
+          python3 - <<'PY'
+          import sqlite3,pathlib
+          db=sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys=ON')
+          sql=pathlib.Path('backend/schema.sql').read_text()
+          db.executescript(sql)
+          db.executescript(sql)
+          tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          assert {'staff_contacts','staff_email_codes','staff_refresh_tokens','bookings','staff_users','driver_assignments'}<=tables
+          db.execute("INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status) VALUES ('test1','test@example.com','Test','s','h',100000,'driver','pending')")
+          db.execute("INSERT INTO staff_contacts(staff_id,phone) VALUES ('test1','+59899123456')")
+          try:
+           db.execute("INSERT INTO staff_contacts(staff_id,phone) VALUES ('test2','+59899123456')")
+           raise AssertionError('Unique phone index missing')
+          except sqlite3.IntegrityError:pass
+          db.execute("INSERT INTO bookings(id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,access_token_hash) VALUES ('VIA-QA','Passenger','099','p@example.com','a','b','2026-12-30','10:00',1,0,'x')")
+          db.executescript(sql)
+          assert db.execute("SELECT COUNT(*) FROM bookings").fetchone()[0]==1
+          print('D1: migración aditiva, celular único, reservas intactas')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Preparar SDK de Android
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Verificar APK aislada y sin contraseña incrustada
+        run: |
+          set -euo pipefail
+          grep -F "applicationId 'uy.viatraslados.conductor.qa3'" android-driver/app/build.gradle
+          grep -F 'via-traslados-api.marcelof-gx.workers.dev' android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          test -f android-driver/app/src/main/java/uy/viatraslados/conductor/BiometricVault.java
+          if grep -R -i 'quicktrip\|quick-trip' android-driver/app/src/main/java android-driver/app/src/main/AndroidManifest.xml; then exit 1; fi
+      - name: Compilar APK Android Java
+        run: gradle -p android-driver :app:assembleDebug --no-daemon
+      - name: Verificar archivo instalable
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-telefono-huella-qa-v0.3.0.apk
+          cd dist
+          sha256sum via-traslados-telefono-huella-qa-v0.3.0.apk > SHA256SUMS.txt
+          unzip -t via-traslados-telefono-huella-qa-v0.3.0.apk | tail -2
+          test "$(stat -c '%s' via-traslados-telefono-huella-qa-v0.3.0.apk)" -gt 100000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-phone-bio-v030
+          path: dist/*
+          retention-days: 30
+      - name: Publicar descarga Android para QA, no producción
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: via-phone-bio-qa-v0.3.0
+          target_commitish: via-phone-biometric-qa
+          name: "Vía Traslados · teléfono y huella QA 0.3.0"
+          body: |
+            APK de pruebas independiente de la 0.2.
+            Nuevos accesos con celular y contraseña, verificación de correo, huella mediante Android Keystore.
+            No guarda contraseñas. Requiere las rutas de backend nuevas antes de usar cuentas reales.
+          files: |
+            dist/via-traslados-telefono-huella-qa-v0.3.0.apk
+            dist/SHA256SUMS.txt
+          prerelease: true
+          make_latest: false
