@@ -7,6 +7,9 @@ on:
       - "backend/staff-phone.js"
       - "backend/worker.js"
       - "backend/route-estimate.js"
+      - "backend/customer-auth.js"
+      - "backend/customer-passkeys.js"
+      - "package.json"
       - "backend/schema.sql"
       - ".github/workflows/via-admin-backend-deploy.yml"
   workflow_dispatch:
@@ -24,6 +27,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Instalar dependencias WebAuthn antes de pruebas y empaquetado
+        run: npm install --no-audit --no-fund
       - name: Comprobar código antes de producción
         run: |
           set -euo pipefail
@@ -32,6 +37,8 @@ jobs:
           node --check backend/staff.js
           node --check backend/staff-phone.js
           node --check backend/route-estimate.js
+          node --check backend/customer-auth.js
+          node --check backend/customer-passkeys.js
       - name: Consultar únicamente D1 exclusiva via-traslados-db
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

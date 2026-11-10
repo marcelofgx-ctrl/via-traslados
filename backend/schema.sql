@@ -130,3 +130,38 @@ CREATE TABLE IF NOT EXISTS booking_routes (
  provider TEXT NOT NULL,
  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+
+-- Pasajeros: sesión recordada hasta 30 días, sin contraseñas ni sesiones de staff.
+-- Los tokens se guardan solo como SHA-256. El correo sigue siendo la identidad verificada.
+CREATE TABLE IF NOT EXISTS customer_sessions (
+ token_hash TEXT PRIMARY KEY,
+ email TEXT NOT NULL REFERENCES customers(email) ON DELETE CASCADE,
+ expires_at INTEGER NOT NULL,
+ created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ revoked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS customer_sessions_email ON customer_sessions(email,expires_at);
+
+-- Credenciales WebAuthn: solo clave pública y contador, jamás huellas ni PIN.
+CREATE TABLE IF NOT EXISTS customer_passkeys (
+ credential_id TEXT PRIMARY KEY,
+ email TEXT NOT NULL REFERENCES customers(email) ON DELETE CASCADE,
+ public_key TEXT NOT NULL,
+ counter INTEGER NOT NULL DEFAULT 0,
+ transports TEXT NOT NULL DEFAULT '[]',
+ created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ last_used_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS customer_passkeys_email ON customer_passkeys(email);
+
+-- Desafíos WebAuthn de uso único, con vencimiento corto.
+CREATE TABLE IF NOT EXISTS customer_passkey_challenges (
+ id TEXT PRIMARY KEY,
+ email TEXT NOT NULL,
+ challenge TEXT NOT NULL,
+ purpose TEXT NOT NULL CHECK(purpose IN ('registration','authentication')),
+ expires_at INTEGER NOT NULL,
+ consumed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS customer_challenges_expiry ON customer_passkey_challenges(expires_at);
