@@ -1,5 +1,5 @@
 name: Via Traslados - prueba real de registro sin conservar datos QA
-# Verifica diagnóstico del alta después de actualizar la autenticación.
+# Verifica el nombre del error WebCrypto, sin exponer contraseñas.
 on:
   push:
     branches: [main]
