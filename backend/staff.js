@@ -142,7 +142,7 @@ export async function staffRoutes(req,env,path,send,err){
   const result=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE u.role='admin' ORDER BY u.created_at ASC LIMIT 50").all();
   return send({admins:result.results.map(publicStaff),canManageRoles:true,founderId:actor.id});
  }
- const roleMatch=path.match(/^\\/api\\/admin\\/team\\/([a-f0-9-]{36})\\/role$/i);
+ const roleMatch=path.match(/^\/api\/admin\/team\/([a-f0-9-]{36})\/role$/i);
  if(roleMatch&&req.method==='PATCH'){
   if(!await founderAuthorized())return err('Solo el administrador fundador puede gestionar otros administradores',403);
   if(roleMatch[1]===actor.id)return err('No podés retirar tu propia cuenta fundadora',409);
