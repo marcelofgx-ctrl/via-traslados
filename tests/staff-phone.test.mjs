@@ -201,7 +201,7 @@ test('solo el teléfono y correo fundadores verificados activan administración 
  const previous=globalThis.fetch;
  let otp='';
  globalThis.fetch=async(_url,opt)=>{
-   otp=JSON.parse(opt.body).text.match(/(\\d{6})/)[1];
+   otp=JSON.parse(opt.body).text.match(/(\d{6})/)[1];
    return new Response(JSON.stringify({id:'mail-otp'}),{status:200});
  };
  try {
@@ -232,7 +232,7 @@ test('conocer solo el celular del fundador nunca concede permisos administrativo
  const DB=db(),env={...makeEnv(DB),VIA_FOUNDER_PHONE:'099 123 456',VIA_FOUNDER_EMAIL:'fundador@example.com'};
  const previous=globalThis.fetch;let otp='';
  globalThis.fetch=async(_url,opt)=>{
-   otp=JSON.parse(opt.body).text.match(/(\\d{6})/)[1];
+   otp=JSON.parse(opt.body).text.match(/(\d{6})/)[1];
    return new Response(JSON.stringify({id:'mail-otp'}),{status:200});
  };
  try{
@@ -248,7 +248,7 @@ test('el fundador puede designar administradores y revocar sus sesiones; otros a
  const DB=db(),env={...makeEnv(DB),VIA_FOUNDER_PHONE:'099 123 456',VIA_FOUNDER_EMAIL:'fundador@example.com'};
  const previous=globalThis.fetch;let otp='';
  globalThis.fetch=async(_url,opt)=>{
-   otp=JSON.parse(opt.body).text.match(/(\\d{6})/)[1];
+   otp=JSON.parse(opt.body).text.match(/(\d{6})/)[1];
    return new Response(JSON.stringify({id:'mail-otp'}),{status:200});
  };
  try{
