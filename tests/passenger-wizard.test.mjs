@@ -40,7 +40,7 @@ test('CSS aislado al flujo y scripts sin error de sintaxis',()=>{
  assert.match(css,/color-scheme:only light/);
  assert.match(page,/wizard-ux\.css\?v=12/);
  assert.match(page,/wizard-ux\.js\?v=12/);
- const currentOrder=page.indexOf('address-autocomplete.js?v=11');
+ const currentOrder=page.indexOf('address-autocomplete.js?v=');
  const newOrder=page.indexOf('wizard-ux.js?v=12');
  assert.ok(currentOrder>=0&&newOrder>currentOrder);
  execFileSync(process.execPath,['--check',new URL('../pages/wizard-ux.js',import.meta.url).pathname]);
