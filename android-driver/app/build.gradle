@@ -4,11 +4,11 @@ android {
     namespace 'uy.viatraslados.conductor'
     compileSdk 35
     defaultConfig {
-        applicationId 'uy.viatraslados.conductor.routeqa'
+        applicationId 'uy.viatraslados.conductor.autoqa'
         minSdk 26
         targetSdk 35
-        versionCode 7
-        versionName '0.7.0-route-qa'
+        versionCode 8
+        versionName '0.8.0-auto-route-qa'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
