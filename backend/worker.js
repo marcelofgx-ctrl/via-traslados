@@ -63,14 +63,18 @@ function scheduleMissingRoutes(env,ctx,rows,max=2){
 }
 const authorized=async(req,env)=>identity(req,env);
 const getBooking=async(req,env,id)=>{
- const token=req.headers.get('X-Booking-Token')||'';
- if(token&&token.length<=200){
-  const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
-  if(row&&equal(await hash(token),row.access_token_hash))return row;
- }
  const account=await customerSession(req,env);
- if(!account)return null;
- return env.DB.prepare(`SELECT ${FIELDS} FROM bookings WHERE id=? AND email=?`).bind(id,account.email).first();
+ // Si hay una cuenta autenticada, únicamente puede consultar sus propias reservas.
+ // Un token antiguo en un teléfono compartido no prevalece sobre otra identidad.
+ if(account){
+  return env.DB.prepare(`SELECT ${FIELDS} FROM bookings WHERE id=? AND email=?`)
+   .bind(id,account.email).first();
+ }
+ // Compatibilidad con reservas anteriores al sistema de cuentas: enlace con token.
+ const token=req.headers.get('X-Booking-Token')||'';
+ if(!token||token.length>200)return null;
+ const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
+ return row&&equal(await hash(token),row.access_token_hash)?row:null;
 };
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
 export default {async fetch(req,env,ctx){
