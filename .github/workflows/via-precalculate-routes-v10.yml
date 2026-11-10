@@ -1,0 +1,97 @@
+name: Vía Traslados — Geoapify Free, kilómetros automáticos QA 1.0
+on:
+  push:
+    branches: [via-precalculate-routes-v10]
+    paths: [backend/**, android-driver/**, tests/**, .github/workflows/via-precalculate-routes-v10.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-precalculate-routes-v10
+  cancel-in-progress: true
+jobs:
+  qa_android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verificar reglas de rutas, permisos, privacidad y regresión
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          node --check backend/route-estimate.js
+          node --check backend/staff-phone.js
+          node --check backend/staff.js
+      - name: Verificar aislamiento y APK independiente
+        run: |
+          set -euo pipefail
+          FILE=android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -F "applicationId 'uy.viatraslados.conductor.autoprecalcqa'" android-driver/app/build.gradle
+          grep -F 'private void bookingCard(' "$FILE"
+          grep -F 'private void requestVisibleRoutes()' "$FILE"
+          grep -F 'private void requestRouteAutomatically(' "$FILE"
+          if grep -F 'Calcular ruta' "$FILE"; then echo 'No debe exigir pulsar para calcular'; exit 1; fi
+          grep -F 'private void passwordResetConfirm(' "$FILE"
+          grep -F 'VIA_GEOAPIFY_API_KEY' backend/route-estimate.js
+          grep -F 'JSONObject saved=item.optJSONObject("route")' "$FILE"
+          grep -F 'scheduleMissingRoutes(env,ctx' backend/worker.js
+          grep -F 'Powered by Geoapify' "$FILE"
+          grep -F '© OpenStreetMap contributors' "$FILE"
+          if grep -R 'routes.googleapis.com\|VIA_GOOGLE_ROUTES_KEY' backend/route-estimate.js; then
+            echo 'La ruta de Geoapify no puede depender de Google Routes'; exit 1
+          fi
+          if grep -RiE 'quicktrip|quick-trip' android-driver/app/src/main/java android-driver/app/src/main/AndroidManifest.xml; then exit 1; fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Preparar SDK Android
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Compilar APK con kilómetros precomputados 1.0
+        run: gradle -p android-driver :app:assembleDebug --no-daemon
+      - name: Verificar APK
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-kilometros-auto-qa-v1.0.0.apk
+          cd dist
+          sha256sum via-traslados-kilometros-auto-qa-v1.0.0.apk > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          unzip -t via-traslados-kilometros-auto-qa-v1.0.0.apk | tail -2
+          test "$(stat -c '%s' via-traslados-kilometros-auto-qa-v1.0.0.apk)" -gt 100000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-precalculate-routes-v100
+          path: dist/*
+          retention-days: 30
+      - name: Publicar APK solo para QA
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: via-automatic-routes-qa-v1.0.0
+          target_commitish: via-precalculate-routes-v10
+          name: "Vía Traslados · Kilómetros automáticos en tarjeta · QA v1.0.0"
+          body: |
+            APK independiente de pruebas visuales de Vía Traslados.
+            La API calcula y almacena kilómetros y minutos al crearse una solicitud y la APK los muestra inmediatamente cuando ya están guardados.
+            Se calculan únicamente las tarjetas visibles, con deduplicación para el refresco de 30 segundos.
+            Los botones tienen jerarquía de una única acción principal y los filtros son compactos.
+            La clave VIA_GEOAPIFY_API_KEY debe agregarse como Secret en Cloudflare. No se incrusta en la APK. Si falta, no se inventan cifras.
+            No se inventan distancias ni precios. No cambia Quick Trip ni la web pública.
+          files: |
+            dist/via-traslados-kilometros-auto-qa-v1.0.0.apk
+            dist/SHA256SUMS.txt
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
