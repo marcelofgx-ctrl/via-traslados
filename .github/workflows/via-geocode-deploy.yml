@@ -44,7 +44,7 @@ jobs:
             return result.get('result') or {}
           def cleaned_html(s):
             t=s.decode('utf-8','replace')
-            t=re.sub(r'<script\b[^>]*\bsrc="https://static\.cloudflareinsights\.com/beacon[^"]*"[^>]*>\s*</script>','',t,flags=re.I|re.S)
+            t=re.sub(r'<script\b[^>]*static\.cloudflareinsights\.com[^>]*>.*?</script>','',t,flags=re.I|re.S)
             return re.sub(r'\s+',' ',t).strip()
           def geocode(url):
             status,body=get(url)
@@ -70,7 +70,17 @@ jobs:
             return post(DEPLOY_URL,{'strategy':'percentage','versions':[{'percentage':100,'version_id':PREVIOUS}],'annotations':{'workers/message':'Rollback automático: prueba de geocodificación'}})
           live_root=get(LIVE+'/')[1]
           staged_root=get(PREVIEW+'/')[1]
-          assert cleaned_html(live_root)==cleaned_html(staged_root),'La portada de staging no coincide con producción sin analytics'
+          if cleaned_html(live_root)!=cleaned_html(staged_root):
+            from difflib import SequenceMatcher
+            a=cleaned_html(live_root);b=cleaned_html(staged_root)
+            m=SequenceMatcher(None,a,b,autojunk=False)
+            print('HTML_AFTER_STRIP_LENGTHS',len(a),len(b),'SIMILARITY',round(m.ratio(),5))
+            for op,i,j,k,l in m.get_opcodes():
+              if op!='equal':
+                print('FIRST_DIFFERENCE',op,repr(a[max(0,i-90):min(len(a),j+90)]),repr(b[max(0,k-90):min(len(b),l+90)]))
+                break
+            raise AssertionError('La portada de staging no coincide tras quitar analytics')
+          print('HTML_MATCHES_AFTER_STRIPPING_ANALYTICS')
           for route in ['app.js','address-autocomplete.js','store.js','reference.js','sw.js','config.js','premium.css']:
             old=get(LIVE+'/'+route)[1];new=get(PREVIEW+'/'+route)[1]
             assert old==new,f'El asset {route} difiere: abortar sin publicar'
