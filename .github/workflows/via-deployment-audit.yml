@@ -171,5 +171,33 @@ jobs:
               b_lines=b_body.replace('><','>\n<').splitlines()
               chunks=list(difflib.unified_diff(a_lines,b_lines,fromfile='production',tofile='preview',n=1))[:40]
               print('DIFF_SAMPLE','\n'.join(c[:250] for c in chunks))
+          if re.fullmatch(r'[a-f0-9]{32}',account,re.I):
+            token=os.environ.get('CF_WORKER_TOKEN','')
+            for worker in ['via-traslados-web-prod','via-traslados-api','traslados-web']:
+              status,body,_=fetch(api+'/workers/scripts/'+worker+'/settings',token)
+              out={'http':status}
+              if status==200:
+                try:
+                  raw=json.loads(body).get('result') or {}
+                  out['bindings']=[{'name':b.get('name'),'type':b.get('type'),
+                    'database_name':b.get('database_name') if b.get('type')=='d1' else None} for b in raw.get('bindings',[])]
+                except:pass
+              print('ISOLATION_WORKER',worker,json.dumps(out))
+            status,body,_=fetch(api+'/workers/domains',token)
+            print('ISOLATION_WORKER_DOMAINS_HTTP',status)
+            if status==200:
+              try:
+                data=json.loads(body)
+                rows=data.get('result') or []
+                print('VIA_WORKER_DOMAINS',[{'hostname':x.get('hostname'),'service':x.get('service')} for x in rows if 'via' in str(x.get('hostname','')) or 'via' in str(x.get('service',''))])
+              except:pass
+            status,body,_=fetch(api+'/d1/database',token)
+            print('ISOLATION_D1_LIST_HTTP',status)
+            if status==200:
+              try:
+                data=json.loads(body).get('result') or []
+                if isinstance(data,dict):data=data.get('databases',[])
+                print('VIA_D1_NAMES',[x.get('name') for x in data if 'via-' in str(x.get('name',''))])
+              except:pass
           print('READ_ONLY_AUDIT_COMPLETE: no database queries, no mutations, no emails, no bookings')
           PY
