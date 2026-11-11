@@ -45,7 +45,7 @@ jobs:
           def cleaned_html(s):
             t=s.decode('utf-8','replace')
             t=re.sub(r'<script\b[^>]*static\.cloudflareinsights\.com[^>]*>.*?</script>','',t,flags=re.I|re.S)
-            return re.sub(r'\s+',' ',t).strip()
+            return re.sub(r'>\s+<','><',re.sub(r'\s+',' ',t)).strip()
           def geocode(url):
             status,body=get(url)
             if status!=200:return False
