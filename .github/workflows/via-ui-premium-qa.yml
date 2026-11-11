@@ -137,7 +137,9 @@ jobs:
             req=urllib.request.Request(site+path,headers={'User-Agent':'ViaUIQA/1.0'})
             with urllib.request.urlopen(req,timeout=22) as response:
               assert response.status==200,(path,response.status)
-              return response.read().decode('utf-8','replace')
+              body=response.read().decode('utf-8','replace')
+              print('PREVIEW_RESPONSE',path,'CT',response.headers.get('Content-Type'),'X-Preview',response.headers.get('X-Via-Premium-Preview'),'bytes',len(body),'start',repr(body[:95]))
+              return body
           html=get('/__via/booking-premium.css?preview=1')
           assert '/__via/booking-premium.css' in html
           assert '/__via/booking-premium.js' in html
