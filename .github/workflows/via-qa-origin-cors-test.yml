@@ -1,0 +1,46 @@
+name: Via Traslados - verificar arreglo OTP QA sin publicar
+on:
+  push:
+    branches: [via-qa-otp-cors-20261111]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Ejecutar validaciones CORS, seguridad de CAPTCHA y regresión general
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/origins.js
+      - name: Comprobar empaquetado del backend sin subir código ni leer D1
+        run: |
+          cat > wrangler-otp-qa-dryrun.toml <<'EOF'
+          name = "via-traslados-api-qa-dryrun"
+          main = "backend/worker.js"
+          compatibility_date = "2026-11-04"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "via-traslados-db"
+          database_id = "00000000-0000-4000-8000-000000000000"
+          EOF
+          npx --yes wrangler@4 deploy --dry-run --config wrangler-otp-qa-dryrun.toml --outdir /tmp/via-otp-qa-dryrun
+          test -s /tmp/via-otp-qa-dryrun/worker.js
+      - name: Diagnóstico CORS previo sin correos ni reservas
+        run: |
+          python3 - <<'PY'
+          import urllib.request
+          api='https://via-traslados-api.marcelof-gx.workers.dev/api/auth/start'
+          for origin in ['https://viatraslados.com','https://via-traslados-pasajeros.pages.dev','https://visual-premium-qa.via-traslados-pasajeros.pages.dev','https://evil.example']:
+            r=urllib.request.Request(api,method='OPTIONS',headers={'Origin':origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type'})
+            with urllib.request.urlopen(r,timeout=20) as res:
+              print('PREFLIGHT_BEFORE_DEPLOY',origin,'status',res.status,'allow_origin',res.headers.get('Access-Control-Allow-Origin'))
+          print('NO_EMAILS_SENT_NO_BOOKINGS_CREATED')
+          PY
