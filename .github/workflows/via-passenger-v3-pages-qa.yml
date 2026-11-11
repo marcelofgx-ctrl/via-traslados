@@ -1,0 +1,148 @@
+name: Via Traslados V3 — visual QA y acceso por celular
+on:
+  push:
+    branches: [via-passenger-v3-pages]
+    paths:
+      - "pages/index.html"
+      - "pages/app.js"
+      - "pages/store.js"
+      - "pages/reserva.html"
+      - "pages/via-v3.css"
+      - ".github/workflows/via-passenger-v3-pages-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validar scripts y hojas
+        run: |
+          node --check pages/app.js
+          node --check pages/store.js
+          node --check pages/passkeys.js
+          node --check pages/wizard-ux.js
+          test -s pages/via-v3.css
+          grep -Fq 'via-v3.css?v=1' pages/index.html
+          grep -Fq 'via-v3.css?v=1' pages/reserva.html
+      - name: Publicar SOLAMENTE vista previa Pages, sin tocar dominio ni base
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.VIA_PAGES_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages deploy pages --project-name via-traslados-pasajeros --branch visual-premium-qa
+      - name: Confirmar Pages QA
+        run: |
+          python3 - <<'PY'
+          import urllib.request,time
+          root='https://visual-premium-qa.via-traslados-pasajeros.pages.dev'
+          for i in range(9):
+            try:
+              with urllib.request.urlopen(root,timeout=20) as r:body=r.read().decode('utf-8')
+              if 'via-v3.css?v=1' in body:break
+            except Exception:pass
+            time.sleep(3)
+          else:raise AssertionError('Pages V3 no se publicó')
+          with urllib.request.urlopen(root+'/via-v3.css',timeout=20) as r:css=r.read().decode('utf-8')
+          assert 'via-route-overview' in css
+          print('VIA_V3_PAGES_PREVIEW_OK',root)
+          PY
+      - name: Preparar pruebas Chromium móvil
+        run: |
+          npm install --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Probar móvil y usuarios conocidos/nuevos usando API simulada (sin escribir DB ni mandar correos)
+        run: |
+          cat > /tmp/via-v3-qa.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright');
+          const root='https://visual-premium-qa.via-traslados-pasajeros.pages.dev';
+          const api='https://via-traslados-api.marcelof-gx.workers.dev';
+          const mockProfile={name:'Ana QA',phone:'094123456',email:'test@example.invalid'};
+          async function setup(browser,width,height,registered=false) {
+            const p=await browser.newPage({viewport:{width,height},isMobile:width<700,hasTouch:width<700});
+            await p.addInitScript(()=>{
+              window.turnstile={render(_node,options){window.__viaCaptcha=options.callback;setTimeout(()=>options.callback('preview-qa-token'),5);return 1},
+                reset(){setTimeout(()=>window.__viaCaptcha?.('preview-qa-token'),5)}};
+            });
+            await p.route(api+'/**',async route=>{
+              const url=new URL(route.request().url());
+              const path=url.pathname;
+              let result={error:'QA simulated route not implemented: '+path};let status=500;
+              if(path==='/api/public/route-preview'){status=200;result={distanceKm:18.5,durationMinutes:26,estimate:true,trafficIncluded:false}}
+              if(path==='/api/customer/phone/identify'){status=200;result={registered,grant:'qa-signed-grant',hasPin:registered,hasPasskey:registered,maskedEmail:'te•••@example.invalid'}}
+              if(path==='/api/customer/pin/login'){status=200;result={sessionToken:'a'.repeat(64),expiresAt:4102444800,profile:mockProfile,passkeys:0}}
+              if(path==='/api/customer/me'){status=200;result={profile:mockProfile,passkeys:0,expiresAt:4102444800}}
+              if(path==='/api/auth/start'){status=200;result={email:mockProfile.email,maskedEmail:'te•••@example.invalid'}}
+              if(path==='/api/auth/verify'){status=200;result={email:mockProfile.email,verificationToken:'b'.repeat(64)}}
+              if(path==='/api/customer/session'){status=201;result={sessionToken:'a'.repeat(64),expiresAt:4102444800,profile:mockProfile,passkeys:0}}
+              if(path==='/api/customer/pin/set'){status=200;result={configured:true}}
+              if(path==='/api/requests'){status=201;result={id:'VIA-QA-000',access_token:'token-qa',status:'requested'}}
+              if(path==='/api/requests/VIA-QA-000'){status=200;result={id:'VIA-QA-000',origin:'Montevideo Shopping',destination:'Aeropuerto Internacional de Carrasco',date:'2026-11-19',time:'10:00',passengers:1,bags:1,status:'requested',route:{distanceKm:18.5,durationMinutes:26}}}
+              return route.fulfill({status,contentType:'application/json',headers:{'Access-Control-Allow-Origin':root},body:JSON.stringify(result)});
+            });
+            await p.route('**/api/direcciones?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:[]})}));
+            await p.goto(root,{waitUntil:'domcontentloaded',timeout:45000});
+            return p;
+          }
+          (async()=>{
+            const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+            for(const [w,h] of [[320,640],[360,740],[390,844],[1280,820]]) {
+              const p=await setup(browser,w,h,true);
+              await p.locator('#home-origin').fill('Montevideo Shopping, Montevideo');
+              await p.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
+              await p.locator('#start-booking').click();
+              await p.waitForTimeout(220);
+              const t=await p.locator('#via-route-distance').textContent();
+              if(!t.includes('18,5 km'))throw Error('route preview absent: '+t);
+              const box=await p.evaluate(()=>({full:document.documentElement.scrollWidth,width:innerWidth,cta:document.querySelector('#to-contact').getBoundingClientRect().bottom}));
+              console.log('V3_STEP1',w,h,JSON.stringify(box));
+              if(box.full>w+2||box.cta>h+3)throw Error('Step1 overflows '+w);
+              await p.screenshot({path:'via-v3-step1-'+w+'.png'});
+              await p.locator('#to-contact').click();
+              if(!(await p.locator('#phone-first').isVisible())||(await p.locator('#new-account').isVisible()))throw Error('Phone not first');
+              await p.locator('#account-phone').fill('094123456');
+              await p.waitForTimeout(100);
+              await p.locator('#phone-lookup').click();
+              await p.waitForTimeout(250);
+              if(!(await p.locator('#pin-login').isVisible()))throw Error('Known user PIN not shown');
+              await p.locator('#return-pin').fill('739251');
+              await p.locator('#return-pin-submit').click();
+              await p.waitForTimeout(200);
+              if(!(await p.locator('#booking-confirm').isVisible()))throw Error('Known user confirmation missing');
+              await p.screenshot({path:'via-v3-known-'+w+'.png'});
+              await p.close();
+            }
+            const p=await setup(browser,390,844,false);
+            await p.locator('#home-origin').fill('Avenida Italia 5785, Montevideo');
+            await p.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
+            await p.locator('#start-booking').click();
+            await p.locator('#to-contact').click();
+            await p.locator('#account-phone').fill('094123456');
+            await p.waitForTimeout(100);await p.locator('#phone-lookup').click();await p.waitForTimeout(150);
+            if(!(await p.locator('#new-account').isVisible()))throw Error('Registration not offered');
+            if(await p.locator('#return-form').isVisible())throw Error('Known account shown to new user');
+            await p.screenshot({path:'via-v3-new.png'});
+            await p.close();
+            const status=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+            await status.route(api+'/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'VIA-QA-000',origin:'Montevideo Shopping',destination:'Aeropuerto Internacional de Carrasco',date:'2026-11-19',time:'10:00',passengers:1,bags:1,status:'requested',route:{distanceKm:18.5,durationMinutes:26}})}));
+            await status.goto(root+'/reserva.html?id=VIA-QA-000',{waitUntil:'domcontentloaded'});
+            await status.waitForTimeout(180);
+            const content=await status.locator('#status-container').textContent();
+            if(!content.includes('18,5 km'))throw Error('Route distance missing in status');
+            await status.screenshot({path:'via-v3-status.png'});
+            await status.close();
+            await browser.close();
+            console.log('VIA_V3_BROWSER_QA_PASS; all requests mocked, no live registrations');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/via-v3-qa.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v3-qa-mobile-screenshots
+          path: via-v3-*.png
+          retention-days: 14
