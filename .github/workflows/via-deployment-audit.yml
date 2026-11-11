@@ -150,5 +150,14 @@ jobs:
                   safe=l[:270]
                   if re.search(r'(?i)(api[_-]?key|secret|token|password|bearer|pepper)\s*[:=]',safe):safe='[sensitive line omitted]'
                   print('CLIENT_LINE',name,i+1,repr(safe))
+          preview='https://37bf21a4-via-traslados-web-prod.marcelof-gx.workers.dev'
+          for url in ['https://viatraslados.com/',preview+'/',preview+'/api/direcciones?mode=suggest&q=Roque%20S%C3%A1enz%20Pe%C3%B1a%201711',preview+'/api/direcciones?mode=resolve&q=Roque%20S%C3%A1enz%20Pe%C3%B1a%201711%2C%20Shangril%C3%A1%2C%20Canelones']:
+            status,body,headers=fetch(url)
+            print('VERSION_PROBE',url,'HTTP',status,'TYPE',headers.get('Content-Type'),'LEN',len(body),'SHA',digest(body),'PREFIX',repr(body[:250]))
+            if '/api/direcciones?' in url and status==200:
+              try:
+                parsed=json.loads(body)
+                print('VERSION_RESULT',json.dumps([{k:v.get(k) for k in ('label','city','department','accuracy')} for v in parsed.get('results',[])[:5]],ensure_ascii=False))
+              except:pass
           print('READ_ONLY_AUDIT_COMPLETE: no database queries, no mutations, no emails, no bookings')
           PY
