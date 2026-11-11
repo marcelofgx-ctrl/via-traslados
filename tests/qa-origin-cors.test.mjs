@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {allowedOriginsFor,expectedChallengeHostname,QA_PASSENGER_ORIGINS} from '../backend/origins.js';
 import {challenge} from '../backend/auth.js';
+import worker from '../backend/worker.js';
 
 const env={PUBLIC_ORIGIN:'https://viatraslados.com',OPERATOR_ORIGIN:'https://viatraslados.com',TURNSTILE_SECRET_KEY:'test-secret'};
 
@@ -53,4 +54,22 @@ test('Turnstile retains action otp and checks the real host in the verified resp
   globalThis.fetch=badActionFetch;
   assert.equal(await challenge(req,env,'test-valid-turnstile-token'),false);
  }finally{globalThis.fetch=prior}
+});
+
+test('Preflight HTTP CORS respects path-scoped exact origin allowlist',async()=>{
+ async function preflight(origin,path) {
+  return worker.fetch(new Request('https://via-traslados-api.marcelof-gx.workers.dev'+path,{
+   method:'OPTIONS',headers:{Origin:origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type'}
+  }),env,{waitUntil(){}});
+ }
+ for(const origin of [env.PUBLIC_ORIGIN,...QA_PASSENGER_ORIGINS]){
+  const response=await preflight(origin,'/api/auth/start');
+  assert.equal(response.status,204);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'),origin);
+  assert.match(response.headers.get('Access-Control-Allow-Headers'),/Content-Type/);
+ }
+ const rejected=await preflight('https://evil.example','/api/auth/start');
+ assert.notEqual(rejected.headers.get('Access-Control-Allow-Origin'),'https://evil.example');
+ const admin=await preflight(QA_PASSENGER_ORIGINS[1],'/api/admin/drivers');
+ assert.notEqual(admin.headers.get('Access-Control-Allow-Origin'),QA_PASSENGER_ORIGINS[1]);
 });
