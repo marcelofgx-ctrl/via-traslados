@@ -40,13 +40,13 @@ jobs:
           python3 - <<'PY'
           import urllib.request,time
           root='https://visual-premium-qa.via-traslados-pasajeros.pages.dev'
-          for i in range(9):
+          for i in range(24):
             try:
               with urllib.request.urlopen(root,timeout=20) as r:body=r.read().decode('utf-8')
               if 'via-v3.css?v=1' in body:break
             except Exception:pass
             time.sleep(3)
-          else:raise AssertionError('Pages V3 no se publicó')
+          else:raise AssertionError('Pages V3 no se publicó después de 72 segundos')
           with urllib.request.urlopen(root+'/via-v3.css',timeout=20) as r:css=r.read().decode('utf-8')
           assert 'via-route-overview' in css
           print('VIA_V3_PAGES_PREVIEW_OK',root)
