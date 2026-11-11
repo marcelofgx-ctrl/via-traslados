@@ -91,7 +91,7 @@ async function phoneFinish(req,env,p){
  return ok(identityResult({name:user.name,phone:user.phone,email:user.email},session));
 }
 // La comprobación por celular NO crea sesión: Turnstile + cupos + comprobante efímero.
-const encode64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+const encode64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const decode64=value=>Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-value.length%4)%4)),c=>c.charCodeAt(0));
 async function signHmac(env,data){
  if(!env.OTP_PEPPER||String(env.OTP_PEPPER).length<16)throw Error('Autenticación temporalmente no disponible');
@@ -104,7 +104,7 @@ async function phoneGrant(env,phone){
  return part+'.'+encode64(await signHmac(env,'via-phone-check:'+part));
 }
 async function validPhoneGrant(env,phone,grant){
- if(typeof grant!=='string'||grant.length>900||!/^[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+$/.test(grant))return false;
+ if(typeof grant!=='string'||grant.length>900||!/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/.test(grant))return false;
  try{
   const [part,sig]=grant.split('.');
   const j=JSON.parse(new TextDecoder().decode(decode64(part)));
@@ -128,7 +128,7 @@ async function identifyPhone(req,env,p){
  return ok({registered:true,maskedEmail:maskEmail(user.email),hasPin:!!configured,
   hasPasskey:Number(passkey?.n||0)>0,grant:await phoneGrant(env,phone)});
 }
-const pinValid=p=>/^\\d{6}$/.test(String(p||''))&&!/^(\\d)\\1{5}$/.test(p)&&
+const pinValid=p=>/^\d{6}$/.test(String(p||''))&&!/^(\d)\1{5}$/.test(p)&&
  !['123456','654321','012345','111111','000000','121212','112233','123123','999999'].includes(String(p));
 const pinDigest=(env,email,salt,pin)=>signHmac(env,'via-customer-pin-v1:'+email+':'+salt+':'+pin);
 const hex=bytes=>Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('');
@@ -146,7 +146,7 @@ async function pinSet(req,env,p){
 }
 async function pinLogin(req,env,p){
  let phone;try{phone=normalizePhone(p.phone)}catch{return error('Credenciales incorrectas',401)}
- if(!/^\\d{6}$/.test(String(p.pin||'')))return error('Credenciales incorrectas',401);
+ if(!/^\d{6}$/.test(String(p.pin||'')))return error('Credenciales incorrectas',401);
  if(!await validPhoneGrant(env,phone,p.grant))return error('Volvé a validar tu teléfono para continuar.',403);
  const ip=req.headers.get('CF-Connecting-IP')||'unknown';
  if(!await limited(env,'pin-login-phone:'+phone,5,900)||!await limited(env,'pin-login-ip:'+ip,25,900))
