@@ -1,0 +1,99 @@
+name: Via Traslados - auditar versiones activas (solo lectura)
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/via-deployment-audit.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Comparar web principal, Pages, buscadores y Workers sin modificar nada
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_WORKER_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_PAGES_TOKEN: ${{ secrets.VIA_PAGES_DEPLOY_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,urllib.parse,json,hashlib,re,os
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin,urlparse
+          class Scripts(HTMLParser):
+            def __init__(self):super().__init__();self.urls=[]
+            def handle_starttag(self,tag,attrs):
+              if tag=='script':
+                src=dict(attrs).get('src')
+                if src:self.urls.append(src)
+          def fetch(url,token=None):
+            headers={'User-Agent':'ViaReadOnlyAudit/1.0','Accept-Encoding':'identity'}
+            if token:headers['Authorization']='Bearer '+token
+            try:
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=14) as r:
+                data=r.read(1600000);return r.status,data.decode('utf-8','replace'),dict(r.headers)
+            except urllib.error.HTTPError as e:return e.code,'',{}
+            except Exception as e:return 'ERR:'+str(type(e).__name__),'',{}
+          def digest(s):return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16]
+          def flags(s):
+            s=s.lower();return {k:k in s for k in ['shangril','lagomar','roque','saenz','direcciones','geocode','nominatim','openstreetmap','api/direcciones','correctlocality','correctknownportal']}
+          def result(url):
+            status,body,headers=fetch(url);out={'status':status}
+            if status==200:
+              try:
+                obj=json.loads(body)
+                if isinstance(obj,dict):
+                  out['keys']=list(obj.keys())[:10]
+                  out['results']=[{k:x.get(k) for k in ['label','street','city','department','accuracy','kind'] if k in x} for x in obj.get('results',[])[:6] if isinstance(x,dict)]
+                  if 'error' in obj:out['error']=str(obj['error'])[:90]
+              except:out['sha']=digest(body)
+            return out
+          for name in ['viatraslados.com','via-traslados-pasajeros.pages.dev']:
+            base='https://'+name
+            print('\nSITE',name)
+            status,body,headers=fetch(base+'/')
+            print('ROOT',status,'sha',digest(body),'bytes',len(body),'flags',json.dumps(flags(body)))
+            if status!=200:continue
+            parser=Scripts();parser.feed(body)
+            for src in parser.urls[:30]:
+              link=urljoin(base+'/',src)
+              if urlparse(link).netloc!=name:continue
+              code,b,head=fetch(link)
+              print('ASSET',src,'http',code,'sha',digest(b),'bytes',len(b),'flags',json.dumps(flags(b)))
+              if code==200 and '.js' in src:
+                found=sorted(set(re.findall(r'/api/[a-zA-Z0-9/_-]+',b)))[:25]
+                if found:print('API_PATHS',src,','.join(found))
+            for mode in ['suggest','resolve']:
+              url=base+'/api/direcciones?'+urllib.parse.urlencode({'mode':mode,'q':'Roque Sáenz Peña 1711'})
+              print('GEOCODE',mode,json.dumps(result(url),ensure_ascii=False))
+          backend='https://via-traslados-api.marcelof-gx.workers.dev'
+          print('\nBACKEND_HEALTH',json.dumps(result(backend+'/api/health'),ensure_ascii=False))
+          for origin in ['https://viatraslados.com','https://via-traslados-pasajeros.pages.dev']:
+            req=urllib.request.Request(backend+'/api/auth/start',method='OPTIONS',headers={'Origin':origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type'})
+            try:
+              with urllib.request.urlopen(req,timeout=12) as r: print('PREFLIGHT',origin,r.status,r.headers.get('Access-Control-Allow-Origin'))
+            except Exception as e:print('PREFLIGHT_ERROR',origin,type(e).__name__)
+          account=os.environ.get('CF_ACCOUNT_ID','')
+          if re.fullmatch(r'[a-f0-9]{32}',account,re.I):
+            api='https://api.cloudflare.com/client/v4/accounts/'+account
+            for name in ['via-traslados-web-prod','via-traslados-api','traslados-web']:
+              token=os.environ.get('CF_WORKER_TOKEN','')
+              if not token:continue
+              status,body,headers=fetch(api+'/workers/scripts/'+name,token)
+              print('WORKER_SOURCE',name,'http',status,'sha',digest(body),'bytes',len(body),'flags',json.dumps(flags(body)))
+            for name in ['via-traslados-pasajeros','via-traslados-web-prod']:
+              token=os.environ.get('CF_PAGES_TOKEN','')
+              if not token:continue
+              status,body,headers=fetch(api+'/pages/projects/'+name,token)
+              data={'http':status}
+              if status==200:
+                try:
+                  v=json.loads(body).get('result') or {}
+                  data.update({'name':v.get('name'),'subdomain':v.get('subdomain'),'production_branch':v.get('production_branch'),'domains':v.get('domains',[])[:8],'latest_deployment':{k:(v.get('latest_deployment') or {}).get(k) for k in ['id','created_on','url']}})
+                except:pass
+              print('PAGES_PROJECT',name,json.dumps(data))
+          else:print('CF_ACCOUNT_ID invalid or missing')
+          print('READ_ONLY_AUDIT_COMPLETE: no database queries, no mutations, no emails, no bookings')
+          PY
