@@ -1,0 +1,25 @@
+name: Vía Traslados V3 - diagnosticar alias de Pages
+on:
+  push:
+    branches: [via-passenger-v3-pages]
+    paths: [".github/workflows/via-v3-remote-inspect.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Leer portada de los despliegues QA, sin modificación
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error
+          for base in ['https://99c73656.via-traslados-pasajeros.pages.dev','https://visual-premium-qa.via-traslados-pasajeros.pages.dev']:
+            for path in ['/','/index.html','/via-v3.css','/app.js?v=19']:
+              try:
+                req=urllib.request.Request(base+path,headers={'User-Agent':'ViaV3QA/1.0','Cache-Control':'no-cache'})
+                with urllib.request.urlopen(req,timeout=20) as r:
+                  body=r.read(60000)
+                  print('URL',base+path,'status',r.status,'ct',r.headers.get('content-type'),'size',len(body),
+                    'v3',b'via-v3.css?v=1' in body,'head',repr(body[:140]))
+              except Exception as e:print('URL_ERROR',base+path,str(e)[:300])
+          PY
