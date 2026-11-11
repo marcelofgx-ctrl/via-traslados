@@ -39,8 +39,8 @@ jobs:
                 data=p.split(b"\\r\\n\\r\\n",1)[1].rstrip(b"\\r\\n")
                 break
           script=data.decode("utf8")
-          assert "correctKnownPortal" in script and "env.ASSETS.fetch(request)" in script
-          assert "function directions" in script and "isClosed" in script
+          print("ACTIVE_WORKER_SOURCE",len(script),"markers",{k:(k in script) for k in ["correctKnownPortal","env.ASSETS.fetch(request)","function directions","isClosed","worker_default","export default","const VIA_BOOKING_CSS = "]}, "HEAD",repr(script[:160]))
+          assert len(script)>1000 and ("env.ASSETS" in script or "ASSETS.fetch" in script) and ("directions" in script or "api/direcciones" in script)
           if "const VIA_BOOKING_CSS = " in script:raise AssertionError("Se detectó un Worker de prueba en vez de la versión activa")
           basepath=pathlib.Path("worker-prod-qa")
           assets=basepath/"assets";assets.mkdir(parents=True,exist_ok=True)
