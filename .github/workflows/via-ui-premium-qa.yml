@@ -84,10 +84,11 @@ jobs:
               if(path === "/api/via-premium-preview"){
                 const response = await env.ASSETS.fetch(new Request(new URL("/index.html",request.url),request));
                 if(!response.ok) return response;
-                return new HTMLRewriter()
-                  .on("head",{element(el){el.prepend('<base href="/">',{html:true});el.append('<link rel="stylesheet" href="/__via/booking-premium.css?v=1">',{html:true})}})
-                  .on("body",{element(el){el.append('<script src="/__via/booking-premium.js?v=1"></script>',{html:true})}})
-                  .transform(response);
+                const pageHTML = await response.text();
+                const replacement = pageHTML
+                  .replace("</head>",'<base href="/"><link rel="stylesheet" href="/__via/booking-premium.css?v=1"></head>')
+                  .replace("</body>",'<script src="/__via/booking-premium.js?v=1"></script></body>');
+                return new Response(replacement,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-via-premium-preview":"yes"}});
               }
               __BASE_FETCH__
               if((path !== "/" && path !== "/index.html") || response.status !== 200 || request.method !== "GET")return response;
