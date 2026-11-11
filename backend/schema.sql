@@ -165,3 +165,24 @@ CREATE TABLE IF NOT EXISTS customer_passkey_challenges (
  consumed_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS customer_challenges_expiry ON customer_passkey_challenges(expires_at);
+
+-- PIN de seis cifras: solo HMAC con secreto del Worker y sal por cuenta. Nunca guardar PIN en claro.
+-- La recuperación exige primero una sesión obtenida con correo OTP verificado.
+CREATE TABLE IF NOT EXISTS customer_pins (
+ email TEXT PRIMARY KEY REFERENCES customers(email) ON DELETE CASCADE,
+ salt TEXT NOT NULL CHECK(length(salt)=32),
+ pin_hash TEXT NOT NULL CHECK(length(pin_hash)=64),
+ failed_attempts INTEGER NOT NULL DEFAULT 0,
+ locked_until INTEGER NOT NULL DEFAULT 0,
+ created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- Caché de trayectos públicos: solo HMAC irreversible de direcciones; 6 h de validez.
+CREATE TABLE IF NOT EXISTS route_preview_cache (
+ route_hash TEXT PRIMARY KEY CHECK(length(route_hash)=64),
+ distance_m INTEGER NOT NULL CHECK(distance_m BETWEEN 100 AND 2000000),
+ duration_s INTEGER NOT NULL CHECK(duration_s BETWEEN 1 AND 432000),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS route_preview_recent ON route_preview_cache(updated_at);

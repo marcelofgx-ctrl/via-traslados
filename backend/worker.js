@@ -26,7 +26,10 @@ export function validateBooking(p){
  if(!Number.isInteger(q.passengers)||q.passengers<1||q.passengers>8||!Number.isInteger(q.bags)||q.bags<0||q.bags>5)throw Error('Pasajeros o valijas inválidos');
  return q
 }
-const publicRow=r=>({id:r.id,origin:r.origin,destination:r.destination,date:r.trip_date,time:r.trip_time,passengers:r.passengers,bags:r.bags,notes:r.notes,status:r.status,price:r.price_uyu,created_at:r.created_at,updated_at:r.updated_at});
+const publicRow=r=>({id:r.id,origin:r.origin,destination:r.destination,date:r.trip_date,time:r.trip_time,passengers:r.passengers,bags:r.bags,notes:r.notes,status:r.status,price:r.price_uyu,created_at:r.created_at,updated_at:r.updated_at,
+ route:r.route_provider==='geoapify'&&Number(r.route_distance_m)>0&&Number(r.route_duration_s)>0?
+ {distanceKm:Math.round(Number(r.route_distance_m)/100)/10,durationMinutes:Math.ceil(Number(r.route_duration_s)/60),
+  estimate:true,trafficIncluded:false,source:'Geoapify',attribution:'© OpenStreetMap contributors · Powered by Geoapify'}:null});
 const operatorRow=r=>({...publicRow(r),name:r.customer_name,phone:r.phone,email:r.email,
  assignedDriverId:r.assigned_driver_id||null,assignedDriverName:r.assigned_driver_name||null,
  route:r.route_provider==='geoapify'&&Number(r.route_distance_m)>0&&Number(r.route_duration_s)>0?
@@ -68,13 +71,13 @@ const getBooking=async(req,env,id)=>{
  // Si hay una cuenta autenticada, únicamente puede consultar sus propias reservas.
  // Un token antiguo en un teléfono compartido no prevalece sobre otra identidad.
  if(account){
-  return env.DB.prepare(`SELECT ${FIELDS} FROM bookings WHERE id=? AND email=?`)
+  return env.DB.prepare(`SELECT ${FIELDS},${routeSelect('bookings')} FROM bookings WHERE id=? AND email=?`)
    .bind(id,account.email).first();
  }
  // Compatibilidad con reservas anteriores al sistema de cuentas: enlace con token.
  const token=req.headers.get('X-Booking-Token')||'';
  if(!token||token.length>200)return null;
- const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
+ const row=await env.DB.prepare(`SELECT ${FIELDS},${routeSelect('bookings')},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
  return row&&equal(await hash(token),row.access_token_hash)?row:null;
 };
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
@@ -91,6 +94,7 @@ export default {async fetch(req,env,ctx){
   if(path==='/api/health'&&req.method==='GET')return send({ok:true,name:'via-traslados',otpAvailable:emailOtpAvailable(env)});
   const phoneHandled=await staffPhoneRoutes(req,env,path,send,err);if(phoneHandled)return phoneHandled;
   const handled=await staffRoutes(req,env,path,send,err);if(handled)return handled;
+  if(path==='/api/public/route-preview'&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio.',503);
   const distanceHandled=await routeEstimateRoutes(req,env,path,send);if(distanceHandled)return distanceHandled;
   if((path.startsWith('/api/auth/')||path.startsWith('/api/customer/')||path==='/api/requests'||path.startsWith('/api/requests/'))&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio. Volvé a intentar más tarde.',503);
   if(path==='/api/auth/start'&&req.method==='POST'){const r=await beginOtp(req,env);return send(r.data,r.status)}
