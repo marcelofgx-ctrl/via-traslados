@@ -35,4 +35,14 @@ jobs:
             echo 'ERROR: ruta admin expuesta a QA';exit 1
           fi
           echo "ADMIN_ORIGIN_RESTRICTED HTTP $code"
+          # Comprobar respuesta real a POST con token inválido (sin generar OTP ni enviar emails)
+          code=$(curl -sS -X POST -H 'Origin: https://visual-premium-qa.via-traslados-pasajeros.pages.dev' \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"qa@example.invalid","turnstileToken":"invalid-token"}' \
+            -D /tmp/via-post-headers.txt -o /tmp/via-post-body.json -w '%{http_code}' \
+            "$BASE/api/auth/start")
+          test "$code" = 403
+          grep -iFq 'access-control-allow-origin: https://visual-premium-qa.via-traslados-pasajeros.pages.dev' /tmp/via-post-headers.txt
+          grep -q 'Completá la comprobación de seguridad' /tmp/via-post-body.json
+          echo 'POST_QA_REACHES_BACKEND_AND_REJECTS_INVALID_CAPTCHA_WITH_JSON'
           echo 'LIVE_CORS_VERIFIED: 3 allowed, unknown blocked, admin protected; no emails, no reservations'
