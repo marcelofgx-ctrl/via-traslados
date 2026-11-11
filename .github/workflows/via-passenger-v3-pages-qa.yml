@@ -80,6 +80,8 @@ jobs:
               if(path==='/api/public/route-preview'){status=200;result={distanceKm:18.5,durationMinutes:26,estimate:true,trafficIncluded:false}}
               if(path==='/api/customer/phone/identify'){status=200;result={registered,grant:'qa-signed-grant',hasPin:registered,hasPasskey:registered,maskedEmail:'te•••@example.invalid'}}
               if(path==='/api/customer/pin/login'){status=200;result={sessionToken:'a'.repeat(64),expiresAt:4102444800,profile:mockProfile,passkeys:0}}
+              if(path==='/api/customer/login/start'){status=200;result={sent:true,recognized:true,maskedEmail:'te•••@example.invalid'}}
+              if(path==='/api/customer/login/verify'){status=200;result={sessionToken:'a'.repeat(64),expiresAt:4102444800,profile:mockProfile,passkeys:0}}
               if(path==='/api/customer/me'){status=200;result={profile:mockProfile,passkeys:0,expiresAt:4102444800}}
               if(path==='/api/auth/start'){status=200;result={email:mockProfile.email,maskedEmail:'te•••@example.invalid'}}
               if(path==='/api/auth/verify'){status=200;result={email:mockProfile.email,verificationToken:'b'.repeat(64)}}
@@ -131,6 +133,17 @@ jobs:
             if(!(await p.locator('#new-account').isVisible()))throw Error('Registration not offered');
             if(await p.locator('#return-form').isVisible())throw Error('Known account shown to new user');
             await p.screenshot({path:'via-v3-new.png'});
+            await p.locator('#name').fill('Ana QA');
+            await p.locator('#email').fill('test@example.invalid');
+            await p.locator('#privacy-consent').check();
+            await p.waitForTimeout(150);
+            await p.locator('#send-code').click();
+            if(!(await p.locator('#pin-create-group').isVisible()))throw Error('New account PIN setup missing');
+            await p.locator('#otp-code').fill('837251');
+            await p.locator('#new-pin').fill('739251');
+            await p.locator('#verify-and-book').click();
+            await p.waitForURL(/reserva\.html\?id=VIA-QA-000/, {timeout:12000});
+            console.log('V3_FIRST_REGISTRATION_MOCK_PASS');
             await p.close();
             const status=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
             await status.addInitScript(()=>localStorage.setItem('via-traslados-solo-demo-access-v3',JSON.stringify({'VIA-QA-000':'preview-only-token'})));
