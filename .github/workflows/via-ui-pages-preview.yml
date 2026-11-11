@@ -1,0 +1,135 @@
+name: Via Traslados - publicar prototipo visual aislado y probar mobile
+on:
+  push:
+    branches: [via-premium-flow-qa]
+    paths: [".github/workflows/via-ui-pages-preview.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qa_visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar una copia exacta de la web principal y agregar SOLO CSS y JS visual
+        run: |
+          python3 - <<'PY'
+          import pathlib,re,shutil,urllib.request,urllib.error
+          src=pathlib.Path('ui-prod')
+          dest=pathlib.Path('via-ui-preview')
+          dest.mkdir(exist_ok=True)
+          for name in ['index.html','styles.css','premium.css','reference.css','address-autocomplete.css','app.js','reference.js','map.js','store.js','address-autocomplete.js','config.js','flow-premium.css','flow-premium.js']:
+            f=src/name
+            assert f.exists(),name
+            shutil.copy2(f,dest/name)
+          html=(dest/'index.html').read_text('utf-8')
+          html=html.replace('</head>','<link rel="stylesheet" href="./flow-premium.css?v=1"></head>',1)
+          html=html.replace('</body>','<script src="./flow-premium.js?v=1"></script></body>',1)
+          assert html.count('flow-premium.css')==1 and html.count('flow-premium.js')==1
+          (dest/'index.html').write_text(html,'utf-8')
+          names=['rambla-skyline-v09.webp','rambla-atmosfera.webp','manifest.webmanifest','icon.svg','sw.js','reserva.html','mis-reservas.html','conductor.html','admin.html','customer-access.css']
+          for name in names:
+            try:
+              req=urllib.request.Request('https://viatraslados.com/'+name,headers={'User-Agent':'ViaUIQA/1.0'})
+              with urllib.request.urlopen(req,timeout=23) as response:
+                assert response.status==200
+                data=response.read(5000000)
+              (dest/name).write_bytes(data)
+              print('PUBLIC_ASSET',name,len(data))
+            except urllib.error.HTTPError as error:
+              print('PUBLIC_ASSET_NOT_AVAILABLE',name,error.code)
+          assert (dest/'rambla-skyline-v09.webp').exists() and (dest/'sw.js').exists()
+          print('STATIC_UI_PREPARED; no forms submitted, no data changed')
+          PY
+          git fetch origin pages-release --depth=1
+          git show origin/pages-release:pages/_worker.js > via-ui-preview/_worker.js
+          git show origin/pages-release:pages/_routes.json > via-ui-preview/_routes.json
+          node --check ui-prod/flow-premium.js
+          node --check via-ui-preview/_worker.js
+      - name: Crear y publicar únicamente proyecto de vista previa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.VIA_PAGES_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages project create via-traslados-visual-qa --production-branch main || true
+          npx --yes wrangler@4 pages deploy via-ui-preview --project-name via-traslados-visual-qa --branch main
+      - name: Confirmar recursos en Cloudflare Pages
+        run: |
+          python3 - <<'PY'
+          import urllib.request,time
+          root='https://via-traslados-visual-qa.pages.dev'
+          def fetch(s):
+            with urllib.request.urlopen(urllib.request.Request(root+s,headers={'User-Agent':'ViaUIQA'}),timeout=20) as r:
+              assert r.status==200
+              return r.read().decode('utf8','replace')
+          for i in range(8):
+            try:
+              html=fetch('/')
+              if 'flow-premium.css?v=1' in html:break
+            except Exception:pass
+            time.sleep(3)
+          else:raise AssertionError('La web QA no muestra la nueva interfaz')
+          assert 'body.premium-page.in-booking' in fetch('/flow-premium.css')
+          assert 'Confirmá tu recorrido' in fetch('/flow-premium.js')
+          print('QA_CLOUDFLARE_PAGES_URL',root)
+          print('QA_FILES_VALIDATED')
+          PY
+      - name: Preparar navegador para verificar visualmente
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verificar diseño, direcciones y pasos sin enviar solicitudes reales
+        run: |
+          cat > /tmp/via-preview-check.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+            for (const [width,height] of [[390,844],[360,740],[320,640],[1280,820]]) {
+              const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:width<700,hasTouch:width<700});
+              await page.goto('https://via-traslados-visual-qa.pages.dev/',{waitUntil:'domcontentloaded',timeout:40000});
+              await page.locator('#home-origin').fill('Avenida Italia 5785, Montevideo');
+              await page.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
+              await page.locator('#home-destination').blur();
+              await page.locator('#start-booking').click({timeout:12000});
+              await page.waitForTimeout(400);
+              const a=await page.evaluate(()=>{
+                const rect=s=>document.querySelector(s)?.getBoundingClientRect();
+                const v=document.querySelector('#origin').closest('.field-wrap').querySelector('.via-address-view');
+                return {mode:document.body.classList.contains('in-booking'),map:getComputedStyle(document.querySelector('.map-stage')).display,
+                  header:document.querySelector('#booking-heading').textContent,
+                  address:v.textContent,scrollW:document.documentElement.scrollWidth,
+                  windowW:innerWidth,ctaBottom:rect('#to-contact').bottom,
+                  notesCollapsed:!document.querySelector('.via-notes').open};
+              });
+              console.log('MOBILE_LAYOUT',width,height,JSON.stringify(a));
+              if(!a.mode||a.map!=='none'||a.header!=='Confirmá tu recorrido'||a.scrollW>width+2||!a.address.includes('Avenida Italia')||!a.notesCollapsed)throw Error('Disposición incorrecta '+width);
+              if(a.ctaBottom>height+5)throw Error('Botón oculto '+width+'x'+height);
+              if(width===390){
+                await page.locator('.via-address-view').first().click();
+                await page.locator('#origin').fill('Bulevar Artigas 1000, Montevideo');
+                await page.locator('#origin').blur();
+                await page.waitForTimeout(200);
+                if(!(await page.locator('.via-address-view').first().textContent()).includes('Bulevar Artigas'))throw Error('Error al editar dirección');
+                await page.locator('#to-contact').click();
+                if(!(await page.locator('.wizard-step[data-step="2"]').isVisible()))throw Error('No abre contacto');
+                await page.locator('#wizard-back').click();
+                if(!(await page.locator('.wizard-step[data-step="1"]').isVisible()))throw Error('No vuelve al viaje');
+              }
+              await page.screenshot({path:'via-ui-'+width+'.png',fullPage:false});
+              await page.close();
+            }
+            await browser.close();
+            console.log('VISUAL_QA_PASSED: no se envió ningún correo ni se creó ninguna reserva');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/via-preview-check.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-traslados-mobile-premium-qa
+          path: via-ui-*.png
+          retention-days: 14
