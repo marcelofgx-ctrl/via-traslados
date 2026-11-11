@@ -52,7 +52,11 @@ jobs:
           assert module,'No se halló el módulo del Worker'
           assert 'env.ASSETS.fetch(request)' in module
           assert 'correctKnownPortal' in module or 'Shangrilá' in module
-          if 'worker_default as default' in module:
+          if 'const VIA_BOOKING_CSS = ' in module:
+            source=module.split('const VIA_BOOKING_CSS = ',1)[0]
+            assert 'function directions' in source and 'function isClosed' in source and 'env.ASSETS.fetch(request)' in module
+            base_fetch='const response = (isPublicPage(request,path) && await isClosed()) ? maintenance() : (path === "/api/direcciones" ? await directions(request) : await env.ASSETS.fetch(request));'
+          elif 'worker_default as default' in module:
             pos=module.rfind('export {')
             source=module[:pos]
             base_fetch='const response = await worker_default.fetch(request,env,ctx);'
