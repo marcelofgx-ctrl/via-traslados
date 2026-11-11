@@ -67,3 +67,16 @@ La verificación posterior comprobó que la portada incorpora los estilos, que `
 La portada se verificó en navegadores simulados de 320×640, 360×740 y 390×844, con ampliación QA adicional a 1280px; se comprobó ausencia de desplazamiento horizontal. «Tu traslado» conserva las direcciones completas y compacta la tarjeta para usar la menor altura posible. En alturas muy reducidas puede haber desplazamiento vertical en vez de ocultar información.
 
 **Precaución al actualizar:** el Worker de producción y Pages son despliegues independientes. No asumir que subir cambios a Pages modifica automáticamente la portada principal. Publicar nuevos activos visuales solamente a través de un paquete completo construido desde el Worker activo y conservar la última versión para revertir. Nunca modificar el backend, la D1 ni dominios de otros proyectos por un cambio exclusivamente visual.
+
+## Acceso pasajeros V3 y motor de rutas (11/11/2026)
+
+Backend API desplegado por el flujo [GitHub Actions / habilitar control administrativo API](https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/43094086737), probado sin nuevas reservas. Sólo se actualizaron el Worker `via-traslados-api` y la D1 exclusiva `via-traslados-db`.
+
+- `POST /api/customer/phone/identify`: reconoce si un celular pertenece a una cuenta previa, tras Turnstile y límites por teléfono/IP. No crea sesión y devuelve comprobante HMAC efímero (5 min) para la siguiente acción.
+- `POST /api/customer/pin/set`: crea o recupera PIN de seis cifras sólo para sesiones verificadas. Almacena sal y HMAC en `customer_pins`, nunca PIN ni huella en claro.
+- `POST /api/customer/pin/login`: firma telefónica válida + PIN, límites, bloqueo; no autentica sólo por conocer el celular.
+- Recuperación del PIN: correo con OTP existente y sesión autenticada, seguida de nueva definición; huella/PIN de Android mediante passkey WebAuthn existente, no almacenamiento de biometría en el servidor.
+- `POST /api/public/route-preview`: distancia y minutos reales por carretera (Geoapify+IDE), con cupo y caché HMAC de 6 h en `route_preview_cache`, sin guardar direcciones en el caché, sin estimaciones inventadas.
+- `GET /api/requests/:id` incluye ruta almacenada cuando esté disponible, sólo para su titular/su token de reserva. No divulga datos del resto.
+
+Las pruebas en memoria, QA de rutas y controles de seguridad fueron aprobadas. La vista pública V3 se desarrolló en la rama `via-passenger-v3-pages` del repositorio, partiendo de `pages-release`, y se probó en el alias `visual-premium-qa.via-traslados-pasajeros.pages.dev`. Su publicación en el Worker público `via-traslados-web-prod` es un despliegue **independiente** y no debe confundirse con activar Pages ni con actualizar el backend.
