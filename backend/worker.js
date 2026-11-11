@@ -77,7 +77,7 @@ const getBooking=async(req,env,id)=>{
  // Compatibilidad con reservas anteriores al sistema de cuentas: enlace con token.
  const token=req.headers.get('X-Booking-Token')||'';
  if(!token||token.length>200)return null;
- const row=await env.DB.prepare(`SELECT ${FIELDS},access_token_hash,${routeSelect('bookings')} FROM bookings WHERE id=?`).bind(id).first();
+ const row=await env.DB.prepare(`SELECT ${FIELDS},${routeSelect('bookings')},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
  return row&&equal(await hash(token),row.access_token_hash)?row:null;
 };
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
