@@ -103,6 +103,15 @@ jobs:
             print('WORKER_INSPECT',name,'status',status,'len',len(source))
             if status==200:
               print('WORKER_PREFIX',repr(source[:300]))
+              delim='name="_worker.js"\r\n\r\n'
+              if delim in source:
+                js=source.split(delim,1)[1].split('\r\n--',1)[0]
+                li=js.splitlines()
+                print('WORKER_JS_COUNT',len(li))
+                for j in range(max(0,len(li)-43),len(li)):
+                  safe=li[j][:600]
+                  if re.search(r'(?i)(api[_-]?key|secret|token|password|bearer|pepper)\s*[:=]',safe):safe='[sensitive line omitted]'
+                  print('WORKER_TAIL',j+1,repr(safe))
               if "Content-Type: application/javascript+module" in source:
                 component=source.split("Content-Type: application/javascript+module",1)[1]
                 component=component.split("\r\n\r\n",1)[1].split("\r\n--",1)[0]
