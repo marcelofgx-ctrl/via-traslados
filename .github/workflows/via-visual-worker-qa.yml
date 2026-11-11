@@ -153,3 +153,93 @@ jobs:
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
           node /tmp/via-qa-worker-ui.cjs
+
+      - name: Publicar en sitio principal solo si QA pasó, con rollback automático
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          python3 - <<'PY'
+          import os,json,pathlib,urllib.request,urllib.parse,urllib.error,subprocess,time,hashlib
+          folder=pathlib.Path('via-prod-package')
+          expected=(folder/'original-version.txt').read_text().strip()
+          account=os.environ['CLOUDFLARE_ACCOUNT_ID'];token=os.environ['CLOUDFLARE_API_TOKEN']
+          base=f'https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/via-traslados-web-prod'
+          root='https://viatraslados.com'
+          def cf(url,data=None):
+            headers={'Authorization':'Bearer '+token,'Accept':'application/json'}
+            if data is None:method='GET';body=None
+            else:method='POST';body=json.dumps(data).encode('utf-8');headers['Content-Type']='application/json'
+            req=urllib.request.Request(url,headers=headers,method=method,data=body)
+            with urllib.request.urlopen(req,timeout=35) as r:
+              x=json.load(r)
+            assert x.get('success') is True,x.get('errors')
+            return x.get('result') or {}
+          def version():
+            rows=cf(base+'/deployments')['deployments']
+            assert rows and len(rows[0]['versions'])==1
+            entry=rows[0]['versions'][0]
+            assert int(entry['percentage'])==100
+            return entry['version_id']
+          def public(path):
+            req=urllib.request.Request(root+path,headers={'User-Agent':'ViaVisualPostDeploy/2','Cache-Control':'no-cache'})
+            with urllib.request.urlopen(req,timeout=20) as r:
+              assert r.status==200
+              return r.read()
+          assert version()==expected,'Production version changed, refusing automatic deployment'
+          old=public('/')
+          assert b'via-refinement.css' not in old,'A new release is already active; refuse to overwrite'
+          backend=json.loads(urllib.request.urlopen('https://via-traslados-api.marcelof-gx.workers.dev/api/health',timeout=20).read())
+          assert backend.get('ok') is True and backend.get('otpAvailable') is True,'Backend unavailable; refusing'
+          config=json.loads((folder/'wrangler.jsonc').read_text())
+          assert config['name']=='via-traslados-web-premium-qa'
+          assert config['assets']['directory']=='./assets'
+          config['name']='via-traslados-web-prod'
+          config['workers_dev']=True
+          (folder/'wrangler.prod.jsonc').write_text(json.dumps(config,indent=2))
+          print('PRE_DEPLOY_OK',expected,'assets',len(list((folder/'assets').iterdir())))
+          def rollback():
+            print('RESTORE_PREVIOUS_VERSION',expected)
+            cf(base+'/deployments',{'strategy':'percentage','versions':[{'percentage':100,'version_id':expected}],
+              'annotations':{'workers/message':'Automatic rollback: visual publication verification failed'}})
+            for i in range(4):
+              try:
+                time.sleep(3)
+                if b'via-refinement.css' not in public('/'):
+                  print('ROLLBACK_VERIFIED');break
+              except Exception:pass
+          deployed=False
+          try:
+            cmd=['npx','--yes','wrangler@4','deploy','--config',str(folder/'wrangler.prod.jsonc')]
+            result=subprocess.run(cmd,encoding='utf-8',capture_output=True,timeout=180)
+            print('WRANGLER_DEPLOY_EXIT',result.returncode)
+            print('WRANGLER_REPORT',result.stdout[-1600:])
+            if result.returncode!=0:
+              print('WRANGLER_ERROR',result.stderr[-1000:]);raise RuntimeError('Cloudflare deployment was rejected')
+            deployed=True
+            found=False
+            for i in range(9):
+              time.sleep(3)
+              page=public('/').decode('utf-8','replace')
+              if 'via-refinement.css?v=2' in page and 'flow-premium.js?v=2' in page:
+                found=True;break
+            assert found,'Home of public domain did not pick up new assets'
+            assert 'via-refinement.css?v=2' in public('/reserva.html').decode('utf-8','replace')
+            assert 'body[data-page="booking"] .status-card' in public('/via-refinement.css').decode('utf-8','replace')
+            assert 'Confirmá tu recorrido' in public('/flow-premium.js').decode('utf-8','replace')
+            for file in ['app.js','store.js','reference.js','address-autocomplete.js','styles.css','premium.css','reference.css']:
+              live=public('/'+file)
+              assert live==(folder/'assets'/file).read_bytes(),'Unexpected mutation of '+file
+            query='/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
+            data=json.loads(public(query))
+            assert data.get('results') and 'shangril' in str(data['results'][0].get('city','')).lower()
+            assert version()!=expected,'Cloudflare active Worker version did not change'
+            after=json.loads(urllib.request.urlopen('https://via-traslados-api.marcelof-gx.workers.dev/api/health',timeout=20).read())
+            assert after.get('ok') and after.get('otpAvailable')
+            print('PRODUCTION_VISUAL_PUBLISHED_AND_VERIFIED','Worker',version(),'domain',root)
+            print('BACKEND_D1_DNS_OTHER_PROJECTS_UNCHANGED')
+          except Exception as e:
+            print('DEPLOY_OR_POSTCHECK_FAILED',type(e).__name__,str(e)[:400])
+            if deployed:rollback()
+            raise
+          PY
