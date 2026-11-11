@@ -159,5 +159,17 @@ jobs:
                 parsed=json.loads(body)
                 print('VERSION_RESULT',json.dumps([{k:v.get(k) for k in ('label','city','department','accuracy')} for v in parsed.get('results',[])[:5]],ensure_ascii=False))
               except:pass
+          import difflib
+          for route in ['/','/app.js','/address-autocomplete.js','/store.js','/reference.js','/sw.js','/config.js','/premium.css']:
+            prod='https://viatraslados.com'+route
+            stage=preview+route
+            a_status,a_body,_=fetch(prod)
+            b_status,b_body,_=fetch(stage)
+            print('ASSET_COMPARE',route,'prod',a_status,len(a_body),digest(a_body),'stage',b_status,len(b_body),digest(b_body),'equal',a_body==b_body)
+            if route=='/' and a_status==b_status==200 and a_body!=b_body:
+              a_lines=a_body.replace('><','>\n<').splitlines()
+              b_lines=b_body.replace('><','>\n<').splitlines()
+              chunks=list(difflib.unified_diff(a_lines,b_lines,fromfile='production',tofile='preview',n=1))[:40]
+              print('DIFF_SAMPLE','\n'.join(c[:250] for c in chunks))
           print('READ_ONLY_AUDIT_COMPLETE: no database queries, no mutations, no emails, no bookings')
           PY
