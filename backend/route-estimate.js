@@ -153,8 +153,41 @@ export async function precalculateBookingRoute(env,booking,scope='system'){
  return{status:200,data:toOutput({distance_m:result.distance,duration_s:result.time},false)};
 }
 
+// Cotización orientativa de km/min para el pasajero ANTES de reservar.
+// Se consulta Geoapify únicamente si el geocodificador confirma portales/lugares.
+const previewKey=async(env,origin,destination)=>{
+ const payload='via-route-preview:'+fold(origin)+'|'+fold(destination);
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(String(env.OTP_PEPPER)),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const sig=new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(payload)));
+ return Array.from(sig,v=>v.toString(16).padStart(2,'0')).join('');
+};
+async function publicPreview(req,env,respond){
+ if(Number(req.headers.get('Content-Length')||0)>1200)return respond({error:'Consulta demasiado grande'},413);
+ let body;try{const text=await req.text();if(text.length>1200)throw Error();body=JSON.parse(text)}catch{return respond({error:'Direcciones inválidas'},400)}
+ const origin=trim(body?.origin),destination=trim(body?.destination);
+ if(origin.length<5||destination.length<5||fold(origin)===fold(destination))return respond({error:'Seleccioná dos direcciones diferentes'},422);
+ const source=req.headers.get('Origin')||'';
+ if(!source.startsWith('https://'))return respond({error:'Origen no autorizado'},403);
+ const ip=req.headers.get('CF-Connecting-IP')||'unknown';
+ if(!await limit(env,'preview-ip:'+ip,8,3600))return respond({error:'Alcanzaste el límite de consultas de rutas. Probá más tarde.'},429);
+ const hash=await previewKey(env,origin,destination);
+ const cached=await env.DB.prepare('SELECT distance_m,duration_s,updated_at FROM route_preview_cache WHERE route_hash=? AND updated_at>unixepoch()-21600').bind(hash).first();
+ if(cached)return respond(toOutput(cached,true));
+ const key=env.VIA_GEOAPIFY_API_KEY;
+ if(typeof key!=='string'||key.length<10)return respond({error:'Distancia temporalmente no disponible'},503);
+ if(!await limit(env,'free-budget',250,86400))return respond({error:'Servicio de rutas temporalmente sin disponibilidad'},429);
+ const [o,d]=await Promise.all([locate(origin,key),locate(destination,key)]);
+ if(!o||!d)return respond({error:'No pudimos calcular una ruta confiable. Revisá que las direcciones sean exactas.'},422);
+ const route=await drivingRoute(o,d,key);
+ if(route.error)return respond({error:route.error},route.status);
+ await env.DB.prepare('INSERT INTO route_preview_cache(route_hash,distance_m,duration_s,updated_at) VALUES (?,?,?,unixepoch()) ON CONFLICT(route_hash) DO UPDATE SET distance_m=excluded.distance_m,duration_s=excluded.duration_s,updated_at=excluded.updated_at')
+  .bind(hash,route.distance,route.time).run();
+ return respond(toOutput({distance_m:route.distance,duration_s:route.time},false));
+}
+
 export async function routeEstimateRoutes(req,env,path,send){
  const respond=send||json;
+ if(path==='/api/public/route-preview' && req.method==='POST')return publicPreview(req,env,respond);
  const route=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]{5,64})\/route$/);
  if(!route||req.method!=='GET')return null;
  const actor=await identity(req,env);
