@@ -36,11 +36,14 @@ jobs:
       - name: Diagnóstico CORS previo sin correos ni reservas
         run: |
           python3 - <<'PY'
-          import urllib.request
+          import urllib.request,urllib.error
           api='https://via-traslados-api.marcelof-gx.workers.dev/api/auth/start'
           for origin in ['https://viatraslados.com','https://via-traslados-pasajeros.pages.dev','https://visual-premium-qa.via-traslados-pasajeros.pages.dev','https://evil.example']:
             r=urllib.request.Request(api,method='OPTIONS',headers={'Origin':origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type'})
-            with urllib.request.urlopen(r,timeout=20) as res:
-              print('PREFLIGHT_BEFORE_DEPLOY',origin,'status',res.status,'allow_origin',res.headers.get('Access-Control-Allow-Origin'))
+            try:
+              with urllib.request.urlopen(r,timeout=20) as res:
+                print('PREFLIGHT_BEFORE_DEPLOY',origin,'status',res.status,'allow_origin',res.headers.get('Access-Control-Allow-Origin'))
+            except urllib.error.HTTPError as error:
+              print('PREFLIGHT_BEFORE_DEPLOY',origin,'status',error.code,'allow_origin',error.headers.get('Access-Control-Allow-Origin'),'body',error.read(130).decode('utf8','replace'))
           print('NO_EMAILS_SENT_NO_BOOKINGS_CREATED')
           PY
