@@ -177,3 +177,12 @@ CREATE TABLE IF NOT EXISTS customer_pins (
  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- Caché de trayectos públicos: solo HMAC irreversible de direcciones; 6 h de validez.
+CREATE TABLE IF NOT EXISTS route_preview_cache (
+ route_hash TEXT PRIMARY KEY CHECK(length(route_hash)=64),
+ distance_m INTEGER NOT NULL CHECK(distance_m BETWEEN 100 AND 2000000),
+ duration_s INTEGER NOT NULL CHECK(duration_s BETWEEN 1 AND 432000),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS route_preview_recent ON route_preview_cache(updated_at);
