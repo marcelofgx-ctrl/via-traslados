@@ -1,0 +1,106 @@
+name: Via Traslados - sincronizar geocodificador en web principal con rollback
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/via-geocode-deploy.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-traslados-web-prod-geocode
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Validar staging y publicar SOLO via-traslados-web-prod, con rollback automático
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,json,re,time,hashlib,urllib.request,urllib.error
+          ACCOUNT=os.environ['CF_ACCOUNT_ID'];TOKEN=os.environ['CF_TOKEN']
+          assert re.fullmatch(r'[a-f0-9]{32}',ACCOUNT,re.I)
+          DEPLOY_URL=f'https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/scripts/via-traslados-web-prod/deployments'
+          STAGED='37bf21a4-37f2-42be-a473-4f0091319984'
+          LIVE='https://viatraslados.com'
+          PREVIEW='https://37bf21a4-via-traslados-web-prod.marcelof-gx.workers.dev'
+          API='https://via-traslados-api.marcelof-gx.workers.dev/api/health'
+          def get(url, token=None):
+            head={'User-Agent':'ViaProdSafeGeoDeploy/2026-11-11','Accept-Encoding':'identity'}
+            if token:head['Authorization']='Bearer '+token
+            with urllib.request.urlopen(urllib.request.Request(url,headers=head),timeout=22) as r:
+              return r.status,r.read()
+          def post(url,data):
+            body=json.dumps(data).encode()
+            req=urllib.request.Request(url,data=body,method='POST',headers={'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'})
+            try:
+              with urllib.request.urlopen(req,timeout=28) as r:result=json.load(r)
+            except urllib.error.HTTPError as e:
+              print('DEPLOY_API_REJECTED',e.code,e.read().decode('utf-8','replace')[:430]);raise
+            assert result.get('success') is True,result.get('errors')
+            return result.get('result') or {}
+          def cleaned_html(s):
+            t=s.decode('utf-8','replace')
+            t=re.sub(r'<script\b[^>]*\bsrc="https://static\.cloudflareinsights\.com/beacon[^"]*"[^>]*>\s*</script>','',t,flags=re.I|re.S)
+            return re.sub(r'\s+',' ',t).strip()
+          def geocode(url):
+            status,body=get(url)
+            if status!=200:return False
+            obj=json.loads(body)
+            first=(obj.get('results') or [{}])[0]
+            return 'shangril' in str(first.get('city','')).lower() and 'canelones' in str(first.get('department','')).lower()
+          _,health=get(API)
+          assert json.loads(health).get('otpAvailable') is True,'Backend OTP no responde como antes'
+          _,history=get(DEPLOY_URL,TOKEN)
+          obj=json.loads(history)
+          assert obj.get('success') is True,obj.get('errors')
+          result=obj.get('result') or {}
+          records=result.get('deployments') if isinstance(result,dict) else result
+          assert isinstance(records,list) and records,'No se puede localizar la versión activa'
+          active=records[0]['versions']
+          assert len(active)==1 and float(active[0]['percentage'])==100,'Hay un despliegue dividido; abortar'
+          PREVIOUS=active[0]['version_id']
+          print('CURRENT_VERSION',PREVIOUS)
+          assert PREVIOUS.startswith('1cbe867f'),'Producción cambió desde la auditoría; abortar'
+          def rollback():
+            print('RESTORING_PREVIOUS_VERSION',PREVIOUS)
+            return post(DEPLOY_URL,{'strategy':'percentage','versions':[{'percentage':100,'version_id':PREVIOUS}],'annotations':{'workers/message':'Rollback automático: prueba de geocodificación'}})
+          live_root=get(LIVE+'/')[1]
+          staged_root=get(PREVIEW+'/')[1]
+          assert cleaned_html(live_root)==cleaned_html(staged_root),'La portada de staging no coincide con producción sin analytics'
+          for route in ['app.js','address-autocomplete.js','store.js','reference.js','sw.js','config.js','premium.css']:
+            old=get(LIVE+'/'+route)[1];new=get(PREVIEW+'/'+route)[1]
+            assert old==new,f'El asset {route} difiere: abortar sin publicar'
+          print('ASSETS_IDENTICAL, UI_PRESERVED')
+          import urllib.parse
+          url=PREVIEW+'/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
+          assert geocode(url),'Geocoder de staging incorrecto'
+          print('PREVIEW_GEOCODE_VERIFIED')
+          deployment=post(DEPLOY_URL,{'strategy':'percentage','versions':[{'percentage':100,'version_id':STAGED}],'annotations':{'workers/message':'Unificar geocodificador aprobado sin cambiar UI, reservas, DB ni rutas'}})
+          print('NEW_DEPLOYMENT',deployment.get('id'))
+          try:
+            # Se prueba el dominio REAL luego de activar el nuevo Worker
+            ok=False
+            for n in range(7):
+              time.sleep(2)
+              _,nowroot=get(LIVE+'/')
+              url=LIVE+'/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
+              if cleaned_html(nowroot)==cleaned_html(live_root) and geocode(url):
+                ok=True;break
+            assert ok,'El dominio principal no devolvió la respuesta esperada'
+            for route in ['app.js','address-autocomplete.js','store.js','config.js']:
+              _,old=get(PREVIEW+'/'+route)
+              _,current=get(LIVE+'/'+route)
+              assert current==old,'Cambió el contenido público de '+route
+            _,after=get(API)
+            assert json.loads(after).get('otpAvailable') is True
+            print('PRODUCTION_VERIFIED: same web app, updated geocoding, API unaffected')
+          except Exception as e:
+            print('VERIFICATION_FAILED',type(e).__name__,str(e)[:250])
+            rollback()
+            raise
+          print('SUCCESS: via-traslados-web-prod only, 100% traffic; no other Worker, Page, database or DNS changed')
+          PY
