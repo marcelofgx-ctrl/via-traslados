@@ -1,0 +1,52 @@
+name: Via Traslados - validar PIN y kilometraje v3 (sin producción)
+on:
+  push:
+    branches: [via-passenger-v3-phone-pin-route]
+    paths:
+      - "backend/**"
+      - "tests/passenger-v3.test.mjs"
+      - ".github/workflows/via-passenger-v3-ci.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - name: Probar seguridad y regresión en memoria
+        run: |
+          npm test
+          npm run check
+          node --check backend/route-estimate.js
+          node --check backend/customer-auth.js
+      - name: Comprobar migración D1 local e idempotente, sin tocar registros reales
+        run: |
+          python3 - <<'PY'
+          import sqlite3,pathlib
+          sql=pathlib.Path('backend/schema.sql').read_text()
+          db=sqlite3.connect(':memory:')
+          db.executescript(sql)
+          db.executescript(sql)
+          actual={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          assert {'bookings','customer_sessions','customer_pins','route_preview_cache'}<=actual,actual
+          print('D1_SCHEMA_V3_VERIFIED_IN_MEMORY')
+          PY
+      - name: Dry-run compilación aislada de API para Workers, sin publicar
+        run: |
+          cat > wrangler-v3-dryrun.toml <<'EOF'
+          name = "via-traslados-api-v3-dryrun"
+          main = "backend/worker.js"
+          compatibility_date = "2026-11-04"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "via-traslados-db"
+          database_id = "00000000-0000-4000-8000-000000000000"
+          EOF
+          npx --yes wrangler@4 deploy --dry-run --config wrangler-v3-dryrun.toml --outdir /tmp/via-v3-compiled
+          echo 'WORKER_COMPILE_OK; PRODUCTION_NOT_MODIFIED'
