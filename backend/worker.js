@@ -4,6 +4,7 @@ import {staffPhoneRoutes} from './staff-phone.js';
 import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js';
 import {customerSession,customerRoutes} from './customer-auth.js';
 import {customerPasskeyRoutes} from './customer-passkeys.js';
+import {allowedOriginsFor} from './origins.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
 const OP_FIELDS=FIELDS+',customer_name,phone,email';
@@ -79,7 +80,7 @@ const getBooking=async(req,env,id)=>{
 async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
 export default {async fetch(req,env,ctx){
  const url=new URL(req.url),origin=req.headers.get('Origin');
- const allowed=[env.PUBLIC_ORIGIN,env.OPERATOR_ORIGIN].filter(Boolean).map(value=>{try{return new URL(value).origin}catch{return String(value).replace(/\/+$/,'')}});
+  const allowed=allowedOriginsFor(env,url.pathname);
  const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization','Vary':'Origin'};
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
  if(origin&&!allowed.includes(origin))return reply({error:'Origen no autorizado'},403,cors);

@@ -1,3 +1,4 @@
+import {expectedChallengeHostname} from './origins.js';
 const enc=new TextEncoder();
 const sha=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(s)))).map(b=>b.toString(16).padStart(2,'0')).join('');
 const random=()=>Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -8,7 +9,14 @@ async function read(req){if(Number(req.headers.get('Content-Length')||0)>3000)th
 async function rate(env,key,limit,seconds){const k=await sha(key);const r=await env.DB.prepare('INSERT INTO otp_rate_limits (rate_key,window_started,attempts) VALUES (?,unixepoch(),1) ON CONFLICT(rate_key) DO UPDATE SET window_started=CASE WHEN unixepoch()-window_started>=? THEN unixepoch() ELSE window_started END,attempts=CASE WHEN unixepoch()-window_started>=? THEN 1 ELSE attempts+1 END RETURNING attempts').bind(k,seconds,seconds).first();return Number(r?.attempts||0)<=limit}
 async function digest(pepper,email,code){const key=await crypto.subtle.importKey('raw',enc.encode(pepper),{name:'HMAC',hash:'SHA-256'},false,['sign']);return Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,enc.encode(email+':'+code)))).map(x=>x.toString(16).padStart(2,'0')).join('')}
 function code(){const b=new Uint32Array(1);crypto.getRandomValues(b);return String(100000+(b[0]%900000))}
-export async function challenge(req,env,token){if(typeof token!=='string'||token.length<4||token.length>2048)return false;const r=await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify',{method:'POST',body:new URLSearchParams({secret:env.TURNSTILE_SECRET_KEY,response:token,remoteip:req.headers.get('CF-Connecting-IP')||''})});if(!r.ok)return false;const j=await r.json();return j.success===true&&j.action==='otp'&&j.hostname===new URL(env.PUBLIC_ORIGIN).hostname}
+export async function challenge(req,env,token){
+ const hostname=expectedChallengeHostname(req,env);
+ if(!hostname||typeof token!=='string'||token.length<4||token.length>2048)return false;
+ const r=await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify',{method:'POST',body:new URLSearchParams({secret:env.TURNSTILE_SECRET_KEY,response:token,remoteip:req.headers.get('CF-Connecting-IP')||''})});
+ if(!r.ok)return false;
+ const j=await r.json();
+ return j.success===true&&j.action==='otp'&&j.hostname===hostname;
+}
 const result=(data,status=200)=>({data,status});
 export async function beginOtp(req,env,{captchaVerified=false}={}){
  if(!emailOtpAvailable(env))return result({error:'Verificación no habilitada'},503);
