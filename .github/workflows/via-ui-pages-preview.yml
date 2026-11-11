@@ -50,18 +50,17 @@ jobs:
           git show origin/pages-release:pages/_routes.json > via-ui-preview/_routes.json
           node --check ui-prod/flow-premium.js
           node --check via-ui-preview/_worker.js
-      - name: Crear y publicar únicamente proyecto de vista previa
+      - name: Publicar solo una rama preview del Pages existente, sin alterar main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.VIA_PAGES_DEPLOY_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx --yes wrangler@4 pages project create via-traslados-visual-qa --production-branch main || true
-          npx --yes wrangler@4 pages deploy via-ui-preview --project-name via-traslados-visual-qa --branch main
+          npx --yes wrangler@4 pages deploy via-ui-preview --project-name via-traslados-pasajeros --branch visual-premium-qa
       - name: Confirmar recursos en Cloudflare Pages
         run: |
           python3 - <<'PY'
           import urllib.request,time
-          root='https://via-traslados-visual-qa.pages.dev'
+          root='https://visual-premium-qa.via-traslados-pasajeros.pages.dev'
           def fetch(s):
             with urllib.request.urlopen(urllib.request.Request(root+s,headers={'User-Agent':'ViaUIQA'}),timeout=20) as r:
               assert r.status==200
@@ -90,7 +89,7 @@ jobs:
             const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
             for (const [width,height] of [[390,844],[360,740],[320,640],[1280,820]]) {
               const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:width<700,hasTouch:width<700});
-              await page.goto('https://via-traslados-visual-qa.pages.dev/',{waitUntil:'domcontentloaded',timeout:40000});
+              await page.goto('https://visual-premium-qa.via-traslados-pasajeros.pages.dev/',{waitUntil:'domcontentloaded',timeout:40000});
               await page.locator('#home-origin').fill('Avenida Italia 5785, Montevideo');
               await page.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
               await page.locator('#home-destination').blur();
