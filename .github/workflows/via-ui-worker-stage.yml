@@ -30,7 +30,7 @@ jobs:
           assert len(latest["versions"])==1 and latest["versions"][0]["percentage"]==100
           vid=latest["versions"][0]["version_id"]
           print("CURRENT_DEPLOYED_VERSION",vid)
-          with urllib.request.urlopen(urllib.request.Request(base+"/versions/"+vid+"/content",headers={"Authorization":"Bearer "+token}),timeout=30) as res:
+          with urllib.request.urlopen(urllib.request.Request(base+"/content/v2",headers={"Authorization":"Bearer "+token}),timeout=30) as res:
             data=res.read();content_type=res.headers.get("Content-Type","")
           if "multipart/" in content_type:
             m=re.search("boundary=[\\\"]?([^;\\\"]+)",content_type);assert m
