@@ -41,13 +41,21 @@ jobs:
           parts=raw.split(b'--'+boundary.group(1).encode())
           module=None
           for part in parts:
-            if b'name="_worker.js"' in part:module=part.split(b'\r\n\r\n',1)[1].rstrip(b'\r\n').decode('utf-8');break
-          assert module
-          assert 'worker_default as default' in module and 'env.ASSETS.fetch(request)' in module
+            if b'Content-Type: application/javascript+module' in part or b'name="_worker.js"' in part:
+              module=part.split(b'\r\n\r\n',1)[1].rstrip(b'\r\n').decode('utf-8');break
+          assert module,'No se halló el módulo del Worker'
+          assert 'env.ASSETS.fetch(request)' in module
           assert 'correctKnownPortal' in module or 'Shangrilá' in module
-          pos=module.rfind('export {')
-          assert pos>0 and module[pos:].count('worker_default as default')==1
-          source=module[:pos]
+          if 'worker_default as default' in module:
+            pos=module.rfind('export {')
+            source=module[:pos]
+            base_fetch='const response = await worker_default.fetch(request,env,ctx);'
+          else:
+            assert 'export default' in module and 'isPublicPage' in module and 'isClosed' in module and 'function directions' in module
+            pos=module.rfind('export default')
+            source=module[:pos]
+            base_fetch='const response = (isPublicPage(request,path) && await isClosed()) ? maintenance() : (path === "/api/direcciones" ? await directions(request) : await env.ASSETS.fetch(request));'
+
           css=pathlib.Path('ui-prod/flow-premium.css').read_text()
           js=pathlib.Path('ui-prod/flow-premium.js').read_text()
           shell="""
@@ -63,7 +71,7 @@ jobs:
               const path = new URL(request.url).pathname;
               if(path === "/__via/booking-premium.css") return new Response(VIA_BOOKING_CSS,{headers:viaUIHeaders("text/css; charset=utf-8")});
               if(path === "/__via/booking-premium.js") return new Response(VIA_BOOKING_JS,{headers:viaUIHeaders("application/javascript; charset=utf-8")});
-              const response = await worker_default.fetch(request,env,ctx);
+              __BASE_FETCH__
               if((path !== "/" && path !== "/index.html") || response.status !== 200 || request.method !== "GET")return response;
               if(!String(response.headers.get("content-type")||"").includes("text/html"))return response;
               return new HTMLRewriter()
@@ -73,7 +81,7 @@ jobs:
             }
           };
           """
-          shell=shell.replace('__CSS__',json.dumps(css,ensure_ascii=False)).replace('__JS__',json.dumps(js,ensure_ascii=False))
+          shell=shell.replace('__CSS__',json.dumps(css,ensure_ascii=False)).replace('__JS__',json.dumps(js,ensure_ascii=False)).replace('__BASE_FETCH__',base_fetch)
           combined=source+'\n'+shell
           pathlib.Path('/tmp/via-premium-stage.mjs').write_text(combined)
           print('SOURCE_SHA',hashlib.sha256(module.encode()).hexdigest()[:16],'UI_CSS_LENGTH',len(css),'UI_JS_LENGTH',len(js))
