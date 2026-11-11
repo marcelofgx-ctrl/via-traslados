@@ -1,0 +1,38 @@
+name: Via Traslados - comprobar CORS QA en backend publicado
+on:
+  push:
+    branches: [via-qa-otp-cors-20261111]
+    paths: [".github/workflows/via-qa-live-cors-check.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirmar dominio principal y Pages QA, rechazar origen desconocido
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://via-traslados-api.marcelof-gx.workers.dev
+          for origin in             https://viatraslados.com             https://via-traslados-pasajeros.pages.dev             https://visual-premium-qa.via-traslados-pasajeros.pages.dev
+          do
+            echo "CHECK $origin"
+            code=$(curl -sS --retry 2 --connect-timeout 12 --max-time 22 -X OPTIONS                 -H "Origin: $origin"                 -H "Access-Control-Request-Method: POST"                 -H "Access-Control-Request-Headers: Content-Type"                 -D /tmp/via-cors-headers.txt -o /dev/null -w '%{http_code}'                 "$BASE/api/auth/start")
+            echo "STATUS: $code"
+            grep -i '^access-control-allow-origin:' /tmp/via-cors-headers.txt || true
+            test "$code" = 204
+            grep -iFq "access-control-allow-origin: $origin" /tmp/via-cors-headers.txt
+          done
+          origin=https://evil.example
+          code=$(curl -sS --connect-timeout 12 --max-time 22 -X OPTIONS               -H "Origin: $origin"               -H "Access-Control-Request-Method: POST"               -H "Access-Control-Request-Headers: Content-Type"               -D /tmp/via-cors-headers.txt -o /dev/null -w '%{http_code}'               "$BASE/api/auth/start")
+          if grep -iFq "access-control-allow-origin: $origin" /tmp/via-cors-headers.txt; then
+            echo 'ERROR: origen desconocido autorizado';exit 1
+          fi
+          echo "UNTRUSTED_ORIGIN_BLOCKED HTTP $code"
+          code=$(curl -sS -X OPTIONS -H 'Origin: https://visual-premium-qa.via-traslados-pasajeros.pages.dev'             -D /tmp/via-cors-admin.txt -o /dev/null -w '%{http_code}'             "$BASE/api/admin/drivers")
+          if grep -iFq 'access-control-allow-origin: https://visual-premium-qa.via-traslados-pasajeros.pages.dev' /tmp/via-cors-admin.txt; then
+            echo 'ERROR: ruta admin expuesta a QA';exit 1
+          fi
+          echo "ADMIN_ORIGIN_RESTRICTED HTTP $code"
+          echo 'LIVE_CORS_VERIFIED: 3 allowed, unknown blocked, admin protected; no emails, no reservations'
