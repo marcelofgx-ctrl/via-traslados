@@ -68,7 +68,7 @@ async function phoneStart(req,env,p){
  let phone;try{phone=normalizePhone(p.phone)}catch{return error('Ingresá un celular válido');}
  const ip=req.headers.get('CF-Connecting-IP')||'unknown';
  if(!await limited(env,'login-phone:'+phone,4,900)||!await limited(env,'login-ip:'+ip,12,900))return error('Demasiados intentos. Probá más tarde.',429);
- if(!await challenge(req,env,p.turnstileToken))return error('Completá la comprobación de seguridad',403);
+ if(!await validPhoneGrant(env,phone,p.grant)&&!await challenge(req,env,p.turnstileToken))return error('Completá la comprobación de seguridad',403);
  const user=await accountByPhone(env,phone);
  if(!user)return ok({sent:false,recognized:false,message:'Si es tu primera visita, registrate con tu correo.'});
  const synthetic=new Request(req.url,{method:'POST',headers:req.headers,body:JSON.stringify({email:user.email,turnstileToken:p.turnstileToken})});
@@ -90,6 +90,87 @@ async function phoneFinish(req,env,p){
  const session=await createCustomerSession(env,user.email);
  return ok(identityResult({name:user.name,phone:user.phone,email:user.email},session));
 }
+// La comprobación por celular NO crea sesión: Turnstile + cupos + comprobante efímero.
+const encode64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+const decode64=value=>Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-value.length%4)%4)),c=>c.charCodeAt(0));
+async function signHmac(env,data){
+ if(!env.OTP_PEPPER||String(env.OTP_PEPPER).length<16)throw Error('Autenticación temporalmente no disponible');
+ const key=await crypto.subtle.importKey('raw',encoder.encode(env.OTP_PEPPER),{name:'HMAC',hash:'SHA-256'},false,['sign','verify']);
+ return new Uint8Array(await crypto.subtle.sign('HMAC',key,encoder.encode(data)));
+}
+async function phoneGrant(env,phone){
+ const bytes=encoder.encode(JSON.stringify({phone,exp:now()+300,nonce:random().slice(0,16),v:1}));
+ const part=encode64(bytes);
+ return part+'.'+encode64(await signHmac(env,'via-phone-check:'+part));
+}
+async function validPhoneGrant(env,phone,grant){
+ if(typeof grant!=='string'||grant.length>900||!/^[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+$/.test(grant))return false;
+ try{
+  const [part,sig]=grant.split('.');
+  const j=JSON.parse(new TextDecoder().decode(decode64(part)));
+  if(j.v!==1||j.phone!==phone||!Number.isInteger(j.exp)||j.exp<now()||j.exp>now()+300)return false;
+  const a=await signHmac(env,'via-phone-check:'+part),b=decode64(sig);
+  if(a.length!==b.length)return false;
+  let delta=0;for(let i=0;i<a.length;i++)delta|=a[i]^b[i];
+  return delta===0;
+ }catch{return false}
+}
+async function identifyPhone(req,env,p){
+ let phone;try{phone=normalizePhone(p.phone)}catch{return error('Ingresá un celular válido')}
+ const ip=req.headers.get('CF-Connecting-IP')||'unknown';
+ if(!await limited(env,'check-phone:'+phone,8,900)||!await limited(env,'check-ip:'+ip,20,900))
+  return error('Demasiadas consultas. Probá nuevamente más tarde.',429);
+ if(!await challenge(req,env,p.turnstileToken))return error('Completá la comprobación de seguridad',403);
+ const user=await accountByPhone(env,phone);
+ if(!user)return ok({registered:false,grant:await phoneGrant(env,phone)});
+ const configured=await env.DB.prepare('SELECT email FROM customer_pins WHERE email=?').bind(user.email).first();
+ const passkey=await env.DB.prepare('SELECT COUNT(*) AS n FROM customer_passkeys WHERE email=?').bind(user.email).first();
+ return ok({registered:true,maskedEmail:maskEmail(user.email),hasPin:!!configured,
+  hasPasskey:Number(passkey?.n||0)>0,grant:await phoneGrant(env,phone)});
+}
+const pinValid=p=>/^\\d{6}$/.test(String(p||''))&&!/^(\\d)\\1{5}$/.test(p)&&
+ !['123456','654321','012345','111111','000000','121212','112233','123123','999999'].includes(String(p));
+const pinDigest=(env,email,salt,pin)=>signHmac(env,'via-customer-pin-v1:'+email+':'+salt+':'+pin);
+const hex=bytes=>Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('');
+async function pinSet(req,env,p){
+ const session=await customerSession(req,env);
+ if(!session)return error('Ingresá a tu cuenta antes de configurar un PIN',401);
+ if(!pinValid(p.pin))return error('Elegí seis cifras que no sean repetidas ni una secuencia',400);
+ const ip=req.headers.get('CF-Connecting-IP')||'unknown';
+ if(!await limited(env,'pin-set:'+session.email,8,86400)||!await limited(env,'pin-set-ip:'+ip,20,86400))
+  return error('Demasiados cambios. Probá mañana.',429);
+ const salt=random().slice(0,32),digest=hex(await pinDigest(env,session.email,salt,p.pin));
+ await env.DB.prepare('INSERT INTO customer_pins(email,salt,pin_hash,failed_attempts,locked_until,updated_at) VALUES (?,?,?,0,0,unixepoch()) ON CONFLICT(email) DO UPDATE SET salt=excluded.salt,pin_hash=excluded.pin_hash,failed_attempts=0,locked_until=0,updated_at=excluded.updated_at')
+  .bind(session.email,salt,digest).run();
+ return ok({configured:true});
+}
+async function pinLogin(req,env,p){
+ let phone;try{phone=normalizePhone(p.phone)}catch{return error('Credenciales incorrectas',401)}
+ if(!/^\\d{6}$/.test(String(p.pin||'')))return error('Credenciales incorrectas',401);
+ if(!await validPhoneGrant(env,phone,p.grant))return error('Volvé a validar tu teléfono para continuar.',403);
+ const ip=req.headers.get('CF-Connecting-IP')||'unknown';
+ if(!await limited(env,'pin-login-phone:'+phone,5,900)||!await limited(env,'pin-login-ip:'+ip,25,900))
+  return error('Demasiados intentos. Recuperá el PIN por correo o intentá más tarde.',429);
+ const user=await accountByPhone(env,phone);
+ if(!user)return error('Credenciales incorrectas',401);
+ const row=await env.DB.prepare('SELECT salt,pin_hash,failed_attempts,locked_until FROM customer_pins WHERE email=?').bind(user.email).first();
+ if(!row)return error('Todavía no hay un PIN configurado. Entrá con el código por correo.',401);
+ if(Number(row.locked_until)>now())return error('PIN temporalmente bloqueado. Podés recuperarlo por correo.',429);
+ const trial=hex(await pinDigest(env,user.email,row.salt,p.pin));
+ let delta=0;const a=encoder.encode(trial),b=encoder.encode(String(row.pin_hash));
+ if(a.length!==b.length)delta=1;
+ for(let i=0;i<Math.max(a.length,b.length);i++)delta|=(a[i]||0)^(b[i]||0);
+ if(delta!==0){
+  await env.DB.prepare('UPDATE customer_pins SET failed_attempts=CASE WHEN locked_until>0 AND locked_until<=unixepoch() THEN 1 ELSE failed_attempts+1 END, locked_until=CASE WHEN locked_until>0 AND locked_until<=unixepoch() THEN 0 WHEN failed_attempts+1>=5 THEN unixepoch()+900 ELSE locked_until END WHERE email=?')
+   .bind(user.email).run();
+  return error('Credenciales incorrectas',401);
+ }
+ await env.DB.prepare('UPDATE customer_pins SET failed_attempts=0,locked_until=0 WHERE email=?').bind(user.email).run();
+ const session=await createCustomerSession(env,user.email);
+ const passkeys=await env.DB.prepare('SELECT COUNT(*) AS n FROM customer_passkeys WHERE email=?').bind(user.email).first();
+ return ok(identityResult({name:user.name,phone:user.phone,email:user.email},session,Number(passkeys?.n||0)));
+}
+
 async function enroll(req,env,p){
  let profile;try{profile=validProfile(p)}catch(e){return error(e.message)}
  const verifier=p.verificationToken;
@@ -124,6 +205,15 @@ export async function customerRoutes(req,env,path,send){
  let p;try{p=await parse(req)}catch{return reply({error:'Datos incorrectos'},400)}
  if(path==='/api/customer/session'){
   const r=await enroll(req,env,p);return reply(r.data,r.status);
+ }
+ if(path==='/api/customer/phone/identify'){
+  const r=await identifyPhone(req,env,p);return reply(r.data,r.status);
+ }
+ if(path==='/api/customer/pin/set'){
+  const r=await pinSet(req,env,p);return reply(r.data,r.status);
+ }
+ if(path==='/api/customer/pin/login'){
+  const r=await pinLogin(req,env,p);return reply(r.data,r.status);
  }
  if(path==='/api/customer/login/start'){
   const r=await phoneStart(req,env,p);return reply(r.data,r.status);
