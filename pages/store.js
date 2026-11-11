@@ -91,7 +91,7 @@ async function resume(){
   return live.profile;
  }catch(e){if(e.status===401||e.status===403)localStorage.removeItem(ACCOUNT);return null}
 }
-async function startPhoneLogin(phone,turnstileToken){
+async function startPhoneLogin(phone,turnstileToken,grant){
  if(isDemo()){
   let profile;try{profile=JSON.parse(localStorage.getItem(DEMO_PROFILE)||'null')}catch{}
   const numbers=value=>String(value||'').replace(/\D/g,'').replace(/^598/,'0');
@@ -101,7 +101,7 @@ async function startPhoneLogin(phone,turnstileToken){
   return{sent:true,recognized:true,maskedEmail:profile.email.replace(/(^.{1,2})[^@]*(?=@)/,'$1•••'),
    message:'DEMO: ingresá 123456. No se envía correo.'};
  }
- return request('/api/customer/login/start',{method:'POST',body:JSON.stringify({phone,turnstileToken})});
+ return request('/api/customer/login/start',{method:'POST',body:JSON.stringify({phone,turnstileToken,grant})});
 }
 async function finishPhoneLogin(phone,code){
  if(isDemo()){
@@ -114,6 +114,37 @@ async function finishPhoneLogin(phone,code){
  }
  const result=await request('/api/customer/login/verify',{method:'POST',body:JSON.stringify({phone,code})});
  setCustomer(result);return result;
+}
+async function identifyPhone(phone,turnstileToken){
+ if(isDemo()){
+  let profile;try{profile=JSON.parse(localStorage.getItem(DEMO_PROFILE)||'null')}catch{}
+  const norm=v=>String(v||'').replace(/\D/g,'').replace(/^598/,'0');
+  const registered=!!profile&&norm(profile.phone)===norm(phone);
+  return{registered,hasPin:registered&&!!localStorage.getItem('via-demo-pin-v1'),
+    hasPasskey:false,maskedEmail:registered?profile.email.replace(/(^.{1,2})[^@]*(?=@)/,'$1•••'):'',
+    grant:'demo-phone-grant'};
+ }
+ return request('/api/customer/phone/identify',{method:'POST',body:JSON.stringify({phone,turnstileToken})});
+}
+async function pinLogin(phone,pin,grant){
+ if(isDemo()){
+  let profile;try{profile=JSON.parse(localStorage.getItem(DEMO_PROFILE)||'null')}catch{}
+  const norm=v=>String(v||'').replace(/\D/g,'').replace(/^598/,'0');
+  if(!profile||norm(phone)!==norm(profile.phone)||pin!==localStorage.getItem('via-demo-pin-v1'))throw Error('PIN incorrecto');
+  const info={sessionToken:'demo-only',expiresAt:Math.floor(Date.now()/1000)+30*86400,profile};
+  setCustomer(info);return info;
+ }
+ const data=await request('/api/customer/pin/login',{method:'POST',body:JSON.stringify({phone,pin,grant})});
+ setCustomer(data);return data;
+}
+async function setPin(pin){
+ if(!/^\d{6}$/.test(String(pin)))throw Error('El PIN debe tener seis cifras');
+ if(isDemo()){localStorage.setItem('via-demo-pin-v1',pin);return{configured:true}}
+ return request('/api/customer/pin/set',{method:'POST',headers:customerHeader(),body:JSON.stringify({pin})});
+}
+async function estimateRoute(origin,destination){
+ if(isDemo())return null; // No inventar kilómetros en demostración.
+ return request('/api/public/route-preview',{method:'POST',body:JSON.stringify({origin,destination})});
 }
 async function logout(){
  const c=customer();
@@ -181,5 +212,5 @@ async function passkeyRequest(path,payload){
  return request('/api/customer/passkeys/'+path,{method:'POST',headers:customerHeader(),body:JSON.stringify(payload||{})});
 }
 global.ViaStore={isDemo,startVerification,verifyCode,create,get,mine,list,operatorUpdate,
- accept,cancel,resume,customer,saveCustomer:setCustomer,customerHeader,startPhoneLogin,finishPhoneLogin,logout,passkeyRequest};
+ accept,cancel,resume,customer,saveCustomer:setCustomer,customerHeader,startPhoneLogin,finishPhoneLogin,identifyPhone,pinLogin,setPin,estimateRoute,logout,passkeyRequest};
 })(window);
