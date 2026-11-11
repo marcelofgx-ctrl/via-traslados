@@ -1,0 +1,50 @@
+name: Via Traslados - auditoria read-only de Worker y activos
+on:
+  push:
+    branches: [via-premium-flow-qa]
+    paths: [".github/workflows/via-ui-worker-inventory.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Auditar configuracion del Worker y archivos existentes sin cambios
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,hashlib
+          a=os.environ['CF_ACCOUNT_ID']; token=os.environ['CF_TOKEN']
+          base=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-web-prod'
+          def call(url):
+            try:
+              q=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              with urllib.request.urlopen(q,timeout=30) as res:
+                return json.load(res)
+            except urllib.error.HTTPError as e:
+              print('API_STATUS',url.rsplit('/',1)[-1],e.code)
+              return {}
+          for path in ['/deployments','/settings','/versions']:
+            d=call(base+path);data=d.get('result')
+            print('API_PATH',path,'result_fields',list(data.keys()) if isinstance(data,dict) else type(data).__name__)
+            if path=='/deployments':
+              deployments=(data or {}).get('deployments',[]) if isinstance(data,dict) else (data or [])
+              for d in deployments[:2]:
+                print('DEPLOYMENT',d.get('id'),d.get('created_on'),'versions',[(v.get('version_id'),v.get('percentage')) for v in d.get('versions',[])])
+            if path=='/settings':
+              s=(data or {})
+              print('SETTINGS_FLAGS',{k:s.get(k) for k in ['compatibility_date','workers_dev','placement','logpush','usage_model'] if k in s})
+              print('BINDING_NAMES',[(x.get('type'),x.get('name')) for x in s.get('bindings',[])])
+          origin='https://viatraslados.com/'
+          names=['','index.html','styles.css','premium.css','reference.css','address-autocomplete.css','address-autocomplete.js','app.js','config.js','map.js','reference.js','store.js','sw.js','manifest.webmanifest','rambla-skyline-v09.webp','rambla-skyline.webp','rambla-atmosfera.webp','icon.svg','reserva.html','mis-reservas.html','conductor.html','customer-access.css','wizard-ux.css','wizard-ux.js','passkeys.js']
+          for name in names:
+            try:
+              with urllib.request.urlopen(urllib.request.Request(origin+name,headers={'User-Agent':'ViaAssetInventory/1.0'}),timeout=15) as res:
+                content=res.read(1500000)
+                print('ASSET',name or '/',res.status,len(content),hashlib.sha256(content).hexdigest()[:12],res.headers.get('Content-Type'))
+            except urllib.error.HTTPError as e:print('MISSING',name,e.code)
+          print('READ_ONLY_COMPLETE')
+          PY
