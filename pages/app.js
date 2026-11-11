@@ -7,151 +7,284 @@ function fmtDate(s){try{return new Date(s+'T12:00:00').toLocaleDateString('es-UY
 function errorPlace(id,msg){const el=$(id);if(!el)return;el.className='notice error';el.textContent=msg;el.classList.remove('hidden')}
 function initPassenger(){
  const form=$('booking-form'),date=$('date'),hero=$('inicio'),wizard=$('solicitar');
+ if(!form||!wizard)return;
  const localDate=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
  date.min=localDate;date.value=localDate;
- let step=1,verificationEmail='',lastPayload=null,turnstileToken='';
- const known=$('known-customer'),login=$('return-form'),feedback=$('return-feedback');
- const shownName=profile=>String(profile.name||'').trim().split(/\s+/)[0]||'';
- function showAccount(){
-  const user=S.customer()?.profile;
-  if(known)known.classList.toggle('hidden',!user);
-  if(user){
-   $('name').value=user.name||'';
-   $('phone').value=user.phone||'';
-   $('email').value=user.email||'';
-   $('known-customer-title').textContent='Hola, '+shownName(user)+'. Ya te reconocimos.';
-   $('identity-description').textContent='Solo confirmá tus datos y enviá la solicitud. No necesitás otro código.';
-   $('send-code').innerHTML='Confirmar solicitud <span>→</span>';
-   $('return-toggle').classList.add('hidden');
-   login?.classList.add('hidden');
-  }else{
-   $('identity-description').textContent='Verificá tu correo una vez; después te reconoceremos en este dispositivo.';
-   $('send-code').innerHTML=S.isDemo()?'Continuar con código de prueba <span>→</span>':'Recibir código de verificación <span>→</span>';
-   $('return-toggle').classList.remove('hidden');
-  }
+ let step=1,turnstileToken='',widgetId=null,grant='',selectedPhone='',verifiedEmail='',signupPayload=null;
+ let registered=false,hasPin=false,needsPinReset=false,enrolled=false,tripLast='',routePending=0;
+ const current=S.customer,hasSession=()=>!!current()?.profile;
+ const hidden=(id,yes)=>$(id)?.classList.toggle('hidden',yes);
+ const profile=()=>current()?.profile;
+ const error=message=>{const node=$('form-result');node.textContent=message;node.className='notice error';node.scrollIntoView({block:'nearest',behavior:'smooth'})};
+ const clearError=()=>hidden('form-result',true);
+ function onBusy(id,busy,label){
+  const button=$(id);if(!button)return;
+  if(!button.dataset.originalText)button.dataset.originalText=button.textContent;
+  button.disabled=busy;button.setAttribute('aria-busy',busy?'true':'false');
+  if(label)button.textContent=busy?label:button.dataset.originalText;
  }
- if(S.isDemo()){
-  const thumb=$('return-passkey');
-  if(thumb)thumb.hidden=true;
-  const row=document.querySelector('.return-actions');
-  if(row)row.style.gridTemplateColumns='1fr';
+ function feedback(message,bad=false){
+  const node=$('return-feedback');if(!node)return;
+  node.textContent=message||'';node.classList.toggle('error',!!bad);node.classList.toggle('hidden',!message);
  }
- showAccount();S.resume().then(showAccount).catch(()=>{});
- $('forget-customer')?.addEventListener('click',async()=>{
-  await S.logout();$('name').value='';$('phone').value='';$('email').value='';
-  showAccount();
- });
- function loginInfo(message,isError=false){
-  if(!feedback)return;
-  feedback.textContent=message;
-  feedback.classList.toggle('error',isError);
-  feedback.classList.toggle('hidden',!message);
+ function routeFeedback(title,detail,retry=false){
+  $('via-route-distance').textContent=title;
+  $('via-route-eta').textContent=detail;
+  hidden('via-route-retry',!retry);
  }
- $('return-toggle')?.addEventListener('click',()=>{
-  login?.classList.toggle('hidden');
-  $('return-phone').value=$('phone').value||'';
-  if(!login?.classList.contains('hidden'))$('return-phone').focus();
- });
- $('return-passkey')?.addEventListener('click',async()=>{
-  const button=$('return-passkey');
-  button.disabled=true;loginInfo('Abriendo acceso seguro del teléfono…');
-  try{
-   const result=await window.ViaPasskeys.signIn($('return-phone').value);
-   showAccount();loginInfo('');
-   if(result.profile) $('identity-heading').textContent='¡Bienvenido de nuevo!';
-  }catch(e){loginInfo(e.message||'No fue posible utilizar la huella. Podés recibir un código por correo.',true)}
-  finally{button.disabled=false}
- });
- $('return-send-code')?.addEventListener('click',async()=>{
-  const button=$('return-send-code');
-  if(!S.isDemo()&&!turnstileToken){loginInfo('Completá la comprobación de seguridad que aparece más abajo.',true);return}
-  button.disabled=true;loginInfo('Enviando código al correo asociado…');
-  try{
-   const result=await S.startPhoneLogin($('return-phone').value,turnstileToken);
-   if(!result.sent){loginInfo(result.message||'No encontramos la cuenta. Completá tu nombre, celular y correo.',true);return}
-   $('return-otp').classList.remove('hidden');
-   $('return-otp-info').textContent=S.isDemo()?'DEMO: usá 123456. No se envía correo.':
-    'Enviamos un código a '+(result.maskedEmail||'tu correo registrado')+'.';
-   if(S.isDemo())$('return-code').value='123456';
-   loginInfo('');turnstileToken='';
-  }catch(e){loginInfo(e.message||'No se pudo enviar el código.',true)}
-  finally{button.disabled=false}
- });
- $('return-verify')?.addEventListener('click',async()=>{
-  const code=$('return-code').value.trim();
-  if(!/^\d{6}$/.test(code)){loginInfo('Ingresá las seis cifras del correo.',true);return}
-  const button=$('return-verify');button.disabled=true;
-  try{
-   await S.finishPhoneLogin($('return-phone').value,code);
-   showAccount();loginInfo('');
-   $('identity-heading').textContent='¡Bienvenido de nuevo!';
-  }catch(e){loginInfo(e.message||'El código es incorrecto o venció.',true)}
-  finally{button.disabled=false}
- });
- const showError=msg=>{errorPlace('form-result',msg);$('form-result').scrollIntoView({behavior:'smooth',block:'nearest'})};
- const clearError=()=>{$('form-result').classList.add('hidden')};
- const changeStep=n=>{
-  clearError();step=n;document.body.classList.toggle('in-booking',true);document.body.classList.toggle('in-identity',n>1);document.querySelectorAll('.wizard-step').forEach(el=>el.classList.toggle('hidden',Number(el.dataset.step)!==n));
-  $('wizard-progress-label').textContent=`PASO ${n} DE 3`;$('progress-bar').style.width=(n/3*100)+'%';
-  wizard.scrollIntoView({behavior:'smooth',block:'start'});
- };
- $('start-booking').addEventListener('click',()=>{hero.classList.add('hidden');wizard.classList.remove('hidden');changeStep(1)});
- $('wizard-back').addEventListener('click',()=>{if(step===1){wizard.classList.add('hidden');hero.classList.remove('hidden');document.body.classList.remove('in-booking','in-identity');hero.scrollIntoView({behavior:'smooth'})}else changeStep(step-1)});
- function tripPayload(){const d=new FormData(form);const p=Object.fromEntries(d.entries());
+ function trip(){
+  const d=new FormData(form),p=Object.fromEntries(d.entries());
   for(const k of ['origin','destination','name','phone','email','notes'])p[k]=String(p[k]||'').trim();
   p.passengers=Number(p.passengers);p.bags=Number(p.bags);
-  p.originLocation=window.ViaAddress?.get('origin')||null;p.destinationLocation=window.ViaAddress?.get('destination')||null;return p;
+  p.originLocation=window.ViaAddress?.get('origin')||null;
+  p.destinationLocation=window.ViaAddress?.get('destination')||null;
+  if(profile()){p.name=profile().name;p.phone=profile().phone;p.email=profile().email}
+  return p;
  }
- function validateTrip(p){if(p.origin.length<4||p.destination.length<4||p.origin.toLocaleLowerCase('es')===p.destination.toLocaleLowerCase('es'))return 'Ingresá un origen y un destino diferentes.';
-  if(!p.date||p.date<localDate||!p.time)return 'Revisá la fecha y hora de recogida.';
-  if(!Number.isInteger(p.passengers)||p.passengers<1||p.passengers>8)return 'Cantidad de pasajeros incorrecta.';
-  return ''}
- $('to-contact').addEventListener('click',()=>{const e=validateTrip(tripPayload());if(e)return showError(e);changeStep(2)});
- async function loadTurnstile(){if(S.isDemo()||S.customer())return;if(!window.VIA_CONFIG?.turnstileSiteKey){showError('La verificación anti-bots aún no está configurada. No se pueden enviar solicitudes reales.');return}
-  const box=$('turnstile-box');box.classList.remove('hidden');
-  if(window.turnstile)return;
-  const script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.defer=true;
-  script.onload=()=>window.turnstile?.render('#turnstile-box',{sitekey:window.VIA_CONFIG.turnstileSiteKey,action:'otp',callback:token=>{turnstileToken=token},'expired-callback':()=>{turnstileToken=''}});
-  document.head.appendChild(script);
+ function validTrip(p){
+  if(p.origin.length<4||p.destination.length<4||p.origin.toLocaleLowerCase('es-UY')===p.destination.toLocaleLowerCase('es-UY'))return 'Elegí dos direcciones distintas.';
+  if(!p.date||p.date<localDate||!p.time)return 'Revisá la fecha y la hora de recogida.';
+  if(!Number.isInteger(p.passengers)||p.passengers<1||p.passengers>8)return 'Revisá la cantidad de pasajeros.';
+  return '';
  }
- $('to-contact').addEventListener('click',loadTurnstile);
- async function sendCode(){
-  const p=tripPayload();const digits=p.phone.replace(/\D/g,'');
-  if(p.name.length<2||digits.length<8||digits.length>15)return showError('Completá nombre y un número de celular válido.');
-  if(!(p.email.length<=200&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)))return showError('Ingresá un correo electrónico válido.');
-  if(!$('privacy-consent').checked)return showError('Necesitamos tu consentimiento para gestionar la solicitud.');
-  const remembered=S.customer()?.profile;
-  const sessionMatches=!!remembered&&remembered.email.toLowerCase()===p.email.toLowerCase();
-  if(!S.isDemo()&&!turnstileToken&&!sessionMatches)return showError('Completá la verificación anti-bots antes de continuar.');
-  const button=$('send-code');button.disabled=true;
-  button.textContent=sessionMatches?'Confirmando solicitud…':'Solicitando código…';
+ async function previewRoute(force=false){
+  const p=trip(),key=p.origin+'|'+p.destination;
+  if(p.origin.length<5||p.destination.length<5||p.origin===p.destination){
+   routeFeedback('Elegí origen y destino','Mostraremos los kilómetros por carretera.');return;
+  }
+  if(!force&&tripLast===key)return;
+  tripLast=key;
+  const pending=++routePending;
+  routeFeedback('Calculando recorrido…','Buscando ruta por carretera, sin tráfico en vivo.');
   try{
-   if(sessionMatches){
-    const result=await S.create(p);
-    location.href='./reserva.html?id='+encodeURIComponent(result.id);
-    return;
+   const res=await S.estimateRoute(p.origin,p.destination);
+   if(pending!==routePending)return;
+   if(!res){routeFeedback('Distancia no disponible','No hay un cálculo verificable para esta ruta.',true);return}
+   const distance=Number(res.distanceKm),minutes=Number(res.durationMinutes);
+   if(!(distance>0&&minutes>0))throw Error('Ruta no disponible');
+   routeFeedback(distance.toLocaleString('es-UY',{maximumFractionDigits:1})+' km · '+minutes+' min aprox.',
+     'Ruta estimada · Sin tránsito en vivo · © OpenStreetMap / Geoapify');
+  }catch(ex){
+   if(pending!==routePending)return;
+   tripLast='';
+   routeFeedback('Distancia no disponible',ex?.message||'Podés continuar sin kilometraje.',true);
+  }
+ }
+ const reroute=()=>{tripLast='';previewRoute(true)};
+ $('via-route-retry')?.addEventListener('click',reroute);
+ for(const id of ['origin','destination']){
+  const el=$(id);if(!el)continue;
+  el.addEventListener('via:address',()=>setTimeout(reroute,220));
+  el.addEventListener('change',()=>setTimeout(reroute,250));
+ }
+ function changeStep(n){
+  clearError();step=n;document.body.classList.add('in-booking');
+  document.body.classList.toggle('in-identity',n>1);
+  document.querySelectorAll('.wizard-step').forEach(el=>el.classList.toggle('hidden',Number(el.dataset.step)!==n));
+  $('wizard-progress-label').textContent='PASO '+n+' DE 3';
+  $('progress-bar').style.width=(n/3*100)+'%';
+  wizard.scrollIntoView({behavior:'smooth',block:'start'});
+ }
+ function remembered(){
+  const person=profile();
+  hidden('known-customer',!person);
+  if(person){
+   $('name').value=person.name||'';$('phone').value=person.phone||'';$('email').value=person.email||'';
+   $('known-customer-title').textContent='Hola, '+String(person.name||'').trim().split(/\s+/)[0]+'. Ya reconocimos tu cuenta.';
+   hidden('phone-first',true);hidden('return-form',true);hidden('new-account',true);hidden('turnstile-box',true);
+   $('identity-heading').textContent='Bienvenido de nuevo';
+   $('identity-description').textContent='Tu cuenta sigue verificada en este dispositivo. No tenés que volver a ingresar tus datos.';
+   if(!$('known-next')){
+    const button=document.createElement('button');button.type='button';button.id='known-next';
+    button.className='primary-btn wizard-next';button.textContent='Revisar y confirmar solicitud →';
+    $('known-customer').appendChild(button);
+    button.addEventListener('click',()=>openConfirmation(false));
    }
-   const result=await S.startVerification(p.email,turnstileToken);
-   verificationEmail=result.email;lastPayload={...p,email:result.email};
-   $('verification-description').textContent=S.isDemo()?'Código de demostración. No se envía ningún correo.':'Enviamos un código al correo '+result.maskedEmail+'.';
-   $('otp-guidance').textContent=S.isDemo()?'DEMO: utilizá 123456. No se envía un correo.':'El código vence en 10 minutos. No lo compartas con nadie.';
-   if(S.isDemo())$('otp-code').value='123456';
-   changeStep(3);if(!S.isDemo())$('otp-code').focus();turnstileToken='';
-  }catch(e){showError(e.message||'No fue posible enviar el código')}finally{button.disabled=false;showAccount()}
+  }else{
+   hidden('known-customer',true);hidden('phone-first',false);
+   hidden('return-form',true);hidden('new-account',true);hidden('turnstile-box',false);
+   $('identity-heading').textContent='Tu celular, tu cuenta';
+   $('identity-description').textContent='Primero identificamos tu número. Si ya tenés cuenta, no volvés a registrarte.';
+  }
  }
- $('send-code').addEventListener('click',sendCode);
- $('resend-code').addEventListener('click',async()=>{changeStep(2);$('email').focus();showError('Revisá el correo y solicitá un código nuevo.')});
- form.addEventListener('submit',async e=>{e.preventDefault();if(step!==3)return;
-  const code=$('otp-code').value.trim();if(!/^\d{4,10}$/.test(code))return showError('Ingresá el código numérico recibido.');
-  const button=$('verify-and-book');button.disabled=true;button.textContent='Comprobando…';
+ function openConfirmation(reset){
+  needsPinReset=!!reset;
+  hidden('verification-group',true);hidden('booking-confirm',false);
+  hidden('pin-create-group',!needsPinReset);
+  $('verification-heading').textContent=needsPinReset?'Recuperá tu PIN':'Confirmá tu traslado';
+  $('verification-description').textContent=needsPinReset?
+   'Ya verificaste tu correo. Elegí un PIN nuevo y confirmá tu viaje.':
+   'Tu cuenta está verificada. Solo falta confirmar la solicitud.';
+  $('verify-and-book').textContent=needsPinReset?'Guardar PIN y solicitar traslado →':'Confirmar solicitud →';
+  hidden('resend-code',true);
+  changeStep(3);
+ }
+ function resetCaptcha(){
+  turnstileToken='';
+  try{if(window.turnstile&&widgetId!==null)window.turnstile.reset(widgetId)}catch{}
+ }
+ function loadCaptcha(){
+  if(S.isDemo()||hasSession()||!window.VIA_CONFIG?.turnstileSiteKey)return;
+  hidden('turnstile-box',false);
+  const render=()=>{
+   if(widgetId!==null||!window.turnstile)return;
+   widgetId=window.turnstile.render('#turnstile-box',{
+    sitekey:window.VIA_CONFIG.turnstileSiteKey,action:'otp',
+    callback:t=>{turnstileToken=t;},'expired-callback':()=>{turnstileToken='';},
+    'error-callback':()=>{turnstileToken='';}
+   });
+  };
+  if(window.turnstile){render();return}
+  if(document.getElementById('via-turnstile-lib'))return;
+  const sc=document.createElement('script');sc.id='via-turnstile-lib';
+  sc.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+  sc.async=true;sc.onload=render;document.head.appendChild(sc);
+ }
+ function beginSignup(){
+  registered=false;
+  hidden('phone-first',true);hidden('return-form',true);hidden('new-account',false);
+  $('phone').value=selectedPhone;
+  $('identity-heading').textContent='Te damos la bienvenida';
+  $('identity-description').textContent='Completá tu registro una sola vez y validá el correo.';
+  resetCaptcha();loadCaptcha();
+ }
+ function beginReturning(data){
+  registered=true;hasPin=!!data.hasPin;
+  hidden('phone-first',true);hidden('new-account',true);hidden('return-form',false);
+  hidden('pin-login',!hasPin);hidden('return-otp',true);
+  $('recognized-email').textContent=data.maskedEmail?'Correo vinculado: '+data.maskedEmail:
+   'Elegí cómo querés ingresar.';
+  $('identity-heading').textContent='Ya conocemos tu cuenta';
+  $('identity-description').textContent='Podés entrar con PIN, huella o código por correo. No repetís el registro.';
+  hidden('return-passkey',!window.ViaPasskeys?.available());
+  hidden('forgot-pin',!hasPin);
+  hidden('turnstile-box',true);feedback('');
+ }
+ $('start-booking').addEventListener('click',()=>{
+  hero.classList.add('hidden');wizard.classList.remove('hidden');changeStep(1);
+  setTimeout(()=>previewRoute(),180);
+ });
+ $('wizard-back').addEventListener('click',()=>{
+  if(step===1){
+   ++routePending;wizard.classList.add('hidden');hero.classList.remove('hidden');
+   document.body.classList.remove('in-booking','in-identity');
+   hero.scrollIntoView({block:'start',behavior:'smooth'});
+  }else changeStep(step-1);
+ });
+ $('to-contact').addEventListener('click',()=>{
+  const p=trip(),v=validTrip(p);if(v)return error(v);
+  remembered();changeStep(2);loadCaptcha();
+ });
+ S.resume().then(()=>{if(step===2)remembered()}).catch(()=>{});
+ $('forget-customer')?.addEventListener('click',async()=>{
+  await S.logout();selectedPhone='';grant='';$('account-phone').value='';
+  remembered();loadCaptcha();
+ });
+ $('change-phone')?.addEventListener('click',()=>{grant='';hidden('return-form',true);hidden('phone-first',false);hidden('turnstile-box',false);loadCaptcha()});
+ $('registration-change-phone')?.addEventListener('click',()=>{grant='';hidden('new-account',true);hidden('phone-first',false);resetCaptcha()});
+ $('phone-lookup').addEventListener('click',async()=>{
+  const phone=$('account-phone').value.trim();
+  const digits=phone.replace(/\D/g,'');
+  if(digits.length<8||digits.length>15)return error('Ingresá un número de celular válido.');
+  if(!S.isDemo()&&!turnstileToken)return error('Completá la verificación de seguridad.');
+  onBusy('phone-lookup',true,'Buscando tu cuenta…');
   try{
-   await S.verifyCode(verificationEmail,code,{name:lastPayload?.name,phone:lastPayload?.phone});
-   if(!lastPayload)throw new Error('Volvé a cargar los datos del viaje.');
-   const result=await S.create(lastPayload);
+   const data=await S.identifyPhone(phone,turnstileToken);
+   selectedPhone=phone;grant=data.grant;resetCaptcha();
+   if(data.registered)beginReturning(data);else beginSignup();
+  }catch(ex){error(ex.message||'No se pudo verificar el número');resetCaptcha()}
+  finally{onBusy('phone-lookup',false)}
+ });
+ $('return-pin-submit')?.addEventListener('click',async()=>{
+  const pin=$('return-pin').value.trim();
+  if(!/^\d{6}$/.test(pin))return feedback('Ingresá tu PIN de seis cifras.',true);
+  onBusy('return-pin-submit',true,'Comprobando PIN…');
+  try{
+   await S.pinLogin(selectedPhone,pin,grant);remembered();
+   openConfirmation(false);
+  }catch(ex){feedback(ex.message||'PIN incorrecto. También podés ingresar por correo.',true)}
+  finally{onBusy('return-pin-submit',false)}
+ });
+ $('return-passkey')?.addEventListener('click',async()=>{
+  onBusy('return-passkey',true,'Verificando dispositivo…');
+  try{await window.ViaPasskeys.signIn(selectedPhone);remembered();openConfirmation(false)}
+  catch(ex){feedback(ex.message||'No se pudo usar la huella. Probá con correo.',true)}
+  finally{onBusy('return-passkey',false)}
+ });
+ async function emailForReturning(reset){
+  needsPinReset=!!reset;
+  onBusy('return-send-code',true,'Enviando código…');
+  try{
+   const res=await S.startPhoneLogin(selectedPhone,turnstileToken,grant);
+   if(!res.sent){feedback('No encontramos una cuenta asociada. Podés registrarte con tu correo.',true);return}
+   $('return-otp-info').textContent=S.isDemo()?'DEMO: utilizá 123456.':
+    'Código enviado a '+(res.maskedEmail||'tu correo registrado')+'.';
+   hidden('return-otp',false);
+   if(S.isDemo())$('return-code').value='123456';
+   feedback('');resetCaptcha();
+  }catch(ex){feedback(ex.message||'No pudimos enviar el código.',true)}
+  finally{onBusy('return-send-code',false)}
+ }
+ $('return-send-code')?.addEventListener('click',()=>emailForReturning(false));
+ $('forgot-pin')?.addEventListener('click',()=>emailForReturning(true));
+ $('return-verify')?.addEventListener('click',async()=>{
+  const code=$('return-code').value.trim();
+  if(!/^\d{6}$/.test(code))return feedback('Ingresá las seis cifras del correo.',true);
+  onBusy('return-verify',true,'Validando código…');
+  try{await S.finishPhoneLogin(selectedPhone,code);remembered();openConfirmation(needsPinReset)}
+  catch(ex){feedback(ex.message||'El código es incorrecto o venció.',true)}
+  finally{onBusy('return-verify',false)}
+ });
+ $('send-code').addEventListener('click',async()=>{
+  const p=trip(),email=p.email;
+  if(p.name.length<2||!email||email.length>200||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+   return error('Completá nombre y correo electrónico válido.');
+  if(!$('privacy-consent').checked)return error('Necesitamos tu consentimiento para gestionar la solicitud.');
+  if(!S.isDemo()&&!turnstileToken)return error('Completá la verificación de seguridad.');
+  onBusy('send-code',true,'Enviando verificación…');
+  try{
+   const result=await S.startVerification(email,turnstileToken);
+   verifiedEmail=result.email;signupPayload={...p,email:result.email};enrolled=false;
+   $('verification-heading').textContent='Validá tu correo';
+   $('verification-description').textContent='Enviamos un código a '+result.maskedEmail+'.';
+   $('otp-guidance').textContent=S.isDemo()?'DEMO: ingresá 123456.':'El código vence en diez minutos y es personal.';
+   if(S.isDemo())$('otp-code').value='123456';
+   hidden('verification-group',false);hidden('pin-create-group',false);
+   hidden('booking-confirm',true);hidden('resend-code',false);
+   $('verify-and-book').textContent='Crear cuenta y solicitar traslado →';
+   resetCaptcha();changeStep(3);
+  }catch(ex){error(ex.message||'No se pudo enviar el correo');resetCaptcha()}
+  finally{onBusy('send-code',false)}
+ });
+ $('resend-code')?.addEventListener('click',()=>{changeStep(2);resetCaptcha();loadCaptcha()});
+ form.addEventListener('submit',async event=>{
+  event.preventDefault();if(step!==3)return;
+  const p=trip(),v=validTrip(p);if(v)return error(v);
+  const button=$('verify-and-book');
+  onBusy('verify-and-book',true,'Confirmando solicitud…');
+  try{
+   if(!hasSession()&&!enrolled){
+    const code=$('otp-code').value.trim(),pin=$('new-pin').value.trim();
+    if(!/^\d{6}$/.test(code))throw Error('Ingresá las seis cifras del correo.');
+    if(!/^\d{6}$/.test(pin))throw Error('Elegí un PIN de seis cifras para tu cuenta.');
+    if(!signupPayload)throw Error('Revisá tu registro y pedí un código nuevo.');
+    await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});
+    enrolled=true;
+   }
+   if(!hasSession())throw Error('Necesitamos verificar tu identidad antes de reservar.');
+   if(enrolled||needsPinReset){
+    const pin=$('new-pin').value.trim();
+    if(!/^\d{6}$/.test(pin))throw Error('Ingresá un PIN nuevo de seis cifras.');
+    await S.setPin(pin);
+    needsPinReset=false;enrolled=false;
+   }
+   const result=await S.create(trip());
    location.href='./reserva.html?id='+encodeURIComponent(result.id);
-  }catch(err){showError(err.message||'No se pudo verificar y registrar la solicitud');button.disabled=false;button.innerHTML='Verificar y enviar solicitud <span>→</span>'}
+  }catch(ex){error(ex.message||'No fue posible confirmar el viaje')}
+  finally{onBusy('verify-and-book',false)}
  });
 }
+
 let lastRender='';
 function statusHTML(b){const status=labels[b.status]||b.status;let statusCopy={requested:'El conductor revisará tu solicitud y te enviará una propuesta.',quoted:'Tu conductor envió una cotización. Revisala y confirmá si estás de acuerdo.',accepted:'Aceptaste la propuesta. El conductor confirmará la coordinación.',confirmed:'Todo listo. Tu traslado está confirmado.',en_route:'Tu conductor está en camino al punto de recogida.',arrived:'El conductor llegó al lugar acordado.',in_progress:'Tu traslado está en curso.',completed:'Tu viaje finalizó. ¡Gracias por elegirnos!',cancelled:'Esta solicitud está cancelada.'}[b.status]||'Estamos actualizando tu reserva.';
 const price=b.price!=null?`<div class="status-box"><div class="field-label">IMPORTE PROPUESTO</div><div class="quote-value">$ ${Number(b.price).toLocaleString('es-UY')} UYU</div><p>Precio sujeto a las condiciones acordadas con el conductor.</p></div>`:'';
