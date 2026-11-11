@@ -44,3 +44,9 @@ La web principal ejecutaba un motor geocodificador anterior. En el ejemplo `Roqu
 ## Seguridad
 
 No guardar tokens, secretos de OTP, credenciales Resend, claves de operador ni datos personales en el repositorio. Los cambios operativos de Worker se ejecutan desde secretos de GitHub y deben permitir rollback.
+
+## Auditoría de aislamiento D1
+
+El 11/11/2026 se consultó por API únicamente el esquema de `via-traslados-db` (nombres de tablas, sin leer datos de usuarios). Se encontraron `bookings`, `customers`, `booking_events`, `booking_routes`, tablas de sesiones, conductores, OTP y administración. No se detectaron tablas con nombres de Quick Trip, Fila Digital ni otros proyectos. La prueba terminó correctamente. El Worker público principal no tiene binding D1; el backend `via-traslados-api` sí tiene binding `DB`.
+
+Los workflows efímeros utilizados para preparar el hotfix, desplegarlo y auditar D1 se retiraron una vez validados. Los resultados permanecen en el historial de GitHub Actions; el control diario de regresión sigue disponible.
