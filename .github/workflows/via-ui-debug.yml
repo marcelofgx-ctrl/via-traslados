@@ -16,7 +16,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import os,json,urllib.request,urllib.error
-          id='9b5369c0-f469-4b77-a6c8-1fd605809104'
+          id='4ffe0510-3067-441b-9a64-554c687e99b4'
           root=f'https://api.cloudflare.com/client/v4/accounts/{os.environ["CF_ACCOUNT_ID"]}/workers/scripts/via-traslados-web-prod/versions/{id}'
           req=urllib.request.Request(root,headers={'Authorization':'Bearer '+os.environ['CF_TOKEN']})
           with urllib.request.urlopen(req,timeout=20) as r:obj=json.load(r)
@@ -26,8 +26,8 @@ jobs:
           v=(value.get('resources') or {})
           print('SCRIPT_RUNTIME',json.dumps(v.get('script_runtime',{}))[:1000])
           print('VERSION_ASSETS',json.dumps(value.get('assets',{}))[:900])
-          preview='https://9b5369c0-via-traslados-web-prod.marcelof-gx.workers.dev'
-          for path in ['/','/index.html','/__via/booking-premium.css','/__via/booking-premium.js','/api/direcciones?q=Roque%20Saenz%20Pena%201711']:
+          preview='https://4ffe0510-via-traslados-web-prod.marcelof-gx.workers.dev'
+          for path in ['/','/index.html','/__via/booking-premium.css','/__via/booking-premium.js','/__via/booking-preview.js','/api/direcciones?q=Roque%20Saenz%20Pena%201711']:
             req=urllib.request.Request(preview+path,headers={'User-Agent':'ViaPreviewDebug/1.0'})
             try:
               with urllib.request.urlopen(req,timeout=25) as r:
