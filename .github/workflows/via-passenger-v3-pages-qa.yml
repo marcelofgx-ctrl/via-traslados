@@ -145,7 +145,8 @@ jobs:
               email:document.querySelector('#email')?.value,
               phone:document.querySelector('#phone')?.value}));
             console.log('V3_SIGNUP_STATE',JSON.stringify(newState));
-            if(!(await p.locator('#pin-create-group').isVisible()))throw Error('New account PIN setup missing');
+            await p.locator('#pin-create-group').waitFor({state:'visible',timeout:10000});
+            console.log('V3_PIN_SETUP_VISIBLE');
             await p.locator('#otp-code').fill('837251');
             await p.locator('#new-pin').fill('739251');
             await p.locator('#verify-and-book').click();
