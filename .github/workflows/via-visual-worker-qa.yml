@@ -50,8 +50,8 @@ jobs:
           folder=pathlib.Path('via-prod-package');assets=folder/'assets';assets.mkdir(parents=True,exist_ok=True)
           (folder/'worker.mjs').write_text(script)
           (folder/'original-version.txt').write_text(version)
-          required=['index.html','reserva.html','mis-reservas.html','conductor.html','app.js','store.js','reference.js','address-autocomplete.js','address-autocomplete.css','map.js','config.js','styles.css','premium.css','reference.css','sw.js','manifest.webmanifest','icon.svg','rambla-skyline-v09.webp','rambla-skyline.webp','rambla-atmosfera.webp','customer-access.css','passkeys.js']
-          optional=['wizard-ux.js','wizard-ux.css','admin.html']
+          required=['index.html','reserva.html','mis-reservas.html','conductor.html','app.js','store.js','reference.js','address-autocomplete.js','address-autocomplete.css','map.js','config.js','styles.css','premium.css','reference.css','sw.js','manifest.webmanifest','icon.svg','rambla-skyline-v09.webp','rambla-skyline.webp','rambla-atmosfera.webp']
+          optional=['wizard-ux.js','wizard-ux.css','admin.html','customer-access.css','passkeys.js']
           for name in required+optional:
             req=urllib.request.Request('https://viatraslados.com/'+name,headers={'User-Agent':'ViaBackupBeforeVisualRelease/1.0','Accept-Encoding':'identity'})
             try:
