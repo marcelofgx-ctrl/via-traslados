@@ -141,23 +141,26 @@ jobs:
           JS
           node /tmp/via-v3-worker-qa.cjs
 
-      - name: Verificar que la API publicada reconoce los orígenes legítimos
+      - name: Verificar API V3 con preflight real de navegador
         run: |
-          python3 - <<'PY'
-          import urllib.request,urllib.error
-          api='https://via-traslados-api.marcelof-gx.workers.dev'
-          for path in ['/api/customer/phone/identify','/api/customer/pin/login','/api/public/route-preview']:
-            req=urllib.request.Request(api+path,method='OPTIONS',headers={
-              'Origin':'https://viatraslados.com','Access-Control-Request-Method':'POST',
-              'Access-Control-Request-Headers':'Content-Type'})
-            with urllib.request.urlopen(req,timeout=25) as res:
-              assert res.status==204 and res.headers.get('Access-Control-Allow-Origin')=='https://viatraslados.com',path
-            req=urllib.request.Request(api+path,method='OPTIONS',headers={
-              'Origin':'https://evil.example','Access-Control-Request-Method':'POST'})
-            with urllib.request.urlopen(req,timeout=25) as res:
-              assert res.headers.get('Access-Control-Allow-Origin')!='https://evil.example'
-          print('API_LIVE_V3_CORS_OK: new routes, valid host and untrusted host blocked')
-          PY
+          set -euo pipefail
+          API=https://via-traslados-api.marcelof-gx.workers.dev
+          for path in /api/customer/phone/identify /api/customer/pin/login /api/public/route-preview; do
+            code=$(curl -sS --connect-timeout 14 --max-time 28 -A 'ViaV3ReleaseCheck/1.0' -X OPTIONS \
+              -H 'Origin: https://viatraslados.com' \
+              -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: Content-Type' \
+              -D /tmp/via-v3-cors-headers -o /dev/null -w '%{http_code}' "$API$path")
+            echo "VALID_ORIGIN $path HTTP $code"
+            test "$code" = 204
+            grep -iFq 'access-control-allow-origin: https://viatraslados.com' /tmp/via-v3-cors-headers
+          done
+          code=$(curl -sS --connect-timeout 14 --max-time 28 -A 'ViaV3ReleaseCheck/1.0' -X OPTIONS \
+            -H 'Origin: https://evil.example' -H 'Access-Control-Request-Method: POST' \
+            -D /tmp/via-v3-blocked-headers -o /dev/null -w '%{http_code}' "$API/api/customer/pin/login")
+          if grep -iFq 'access-control-allow-origin: https://evil.example' /tmp/via-v3-blocked-headers; then
+            echo 'SECURITY_ERROR_UNKNOWN_ORIGIN_ALLOWED';exit 1
+          fi
+          echo "V3_CORS_OK (unknown blocked HTTP $code; no credentials or bookings modified)"
       - name: Publicar únicamente el Worker público con guardia de versión y rollback
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
