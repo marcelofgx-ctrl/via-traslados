@@ -39,6 +39,10 @@ jobs:
             boundary=re.search(r'boundary="?([^";]+)',response.headers.get('Content-Type',''))
           assert boundary,'El Worker debe enviarse en multipart'
           parts=raw.split(b'--'+boundary.group(1).encode())
+          print('CLOUDFLARE_SCRIPT_PARTS',len(parts),'CT',response.headers.get('Content-Type',''))
+          for ix,part in enumerate(parts):
+            head=part.split(b'\\r\\n\\r\\n',1)[0]
+            print('CF_PART',ix,repr(head[:250]),'LEN',len(part))
           module=None
           for part in parts:
             if b'Content-Type: application/javascript+module' in part or b'name="_worker.js"' in part:
