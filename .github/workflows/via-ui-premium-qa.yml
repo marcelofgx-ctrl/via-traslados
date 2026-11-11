@@ -45,8 +45,10 @@ jobs:
             print('CF_PART',ix,repr(head[:250]),'LEN',len(part))
           module=None
           for part in parts:
-            if b'Content-Type: application/javascript+module' in part or b'name="_worker.js"' in part:
-              module=part.split(b'\r\n\r\n',1)[1].rstrip(b'\r\n').decode('utf-8');break
+            if b'Content-Disposition: form-data; name=' in part and b'\r\n\r\n' in part:
+              header,part_body=part.split(b'\r\n\r\n',1)
+              if b'.mjs"' in header or b'.js"' in header or b'name="_worker.js"' in header:
+                module=part_body.rstrip(b'\r\n').decode('utf-8');break
           assert module,'No se halló el módulo del Worker'
           assert 'env.ASSETS.fetch(request)' in module
           assert 'correctKnownPortal' in module or 'Shangrilá' in module
