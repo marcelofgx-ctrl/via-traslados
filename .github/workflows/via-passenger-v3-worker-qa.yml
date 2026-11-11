@@ -1,0 +1,142 @@
+name: Vía Traslados V3 - Worker real aislado con frontend nuevo
+on:
+  push:
+    branches: [via-passenger-v3-pages]
+    paths: [".github/workflows/via-passenger-v3-worker-qa.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  worker_qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Recuperar Worker activo y empaquetar frontend V3 sin tocar producción
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,re,json,hashlib,urllib.request,urllib.error,pathlib,shutil
+          account=os.environ['CF_ACCOUNT_ID']; token=os.environ['CF_TOKEN']
+          base=f'https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/via-traslados-web-prod'
+          def private(url):
+            req=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept-Encoding':'identity'})
+            with urllib.request.urlopen(req,timeout=35) as r:return r.read(),r.headers
+          info,headers=private(base+'/deployments')
+          active=json.loads(info)['result']['deployments'][0]['versions']
+          assert len(active)==1 and int(active[0]['percentage'])==100
+          prior=active[0]['version_id']
+          raw,headers=private(base)
+          m=re.search(r'boundary="?([^";]+)',headers.get('Content-Type',''))
+          assert m,'Expected multipart Cloudflare Worker source'
+          source=None
+          for item in raw.split(b'--'+m.group(1).encode()):
+            if b'Content-Disposition' not in item or b'\r\n\r\n' not in item:continue
+            head,body=item.split(b'\r\n\r\n',1)
+            if b'.js"' in head or b'.mjs"' in head or b'name="_worker.js"' in head:
+              source=body.rstrip(b'\r\n').decode('utf-8');break
+          assert source and len(source)>4000
+          assert 'correctKnownPortal' in source and 'env.ASSETS.fetch(request)' in source and 'isClosed' in source
+          target=pathlib.Path('via-v3-worker-package')
+          asset=target/'assets';asset.mkdir(parents=True,exist_ok=True)
+          for path in pathlib.Path('pages').iterdir():
+            if path.is_file() and not path.name.startswith('_'):shutil.copy2(path,asset/path.name)
+          for name in ['flow-premium.css','flow-premium.js','via-refinement.css','admin.html']:
+            try:
+              req=urllib.request.Request('https://viatraslados.com/'+name,headers={'User-Agent':'ViaV3CompatAssets/1.0'})
+              with urllib.request.urlopen(req,timeout=20) as r:
+                data=r.read(2500000)
+                ct=r.headers.get('Content-Type','')
+              if ct.startswith('text/html') and not name.endswith('.html'):continue
+              (asset/name).write_bytes(data)
+              print('COMPAT_ASSET',name,len(data))
+            except urllib.error.HTTPError as e:
+              if e.code!=404:raise
+          assert len(list(asset.iterdir()))>=25
+          html=(asset/'index.html').read_text()
+          assert 'via-v3.css?v=1' in html and 'id="phone-lookup"' in html
+          assert 'via-traslados-passenger-pin-route-v19' in (asset/'sw.js').read_text()
+          (target/'worker.mjs').write_text(source)
+          (target/'previous-version.txt').write_text(prior)
+          conf={'name':'via-traslados-web-v3-qa','main':'worker.mjs',
+           'compatibility_date':'2026-11-10','workers_dev':True,
+           'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
+          (target/'wrangler.jsonc').write_text(json.dumps(conf,indent=2))
+          print('WORKER_SOURCE_STABLE',prior)
+          print('V3_ASSETS',len(list(asset.iterdir())))
+          PY
+          node --check via-v3-worker-package/worker.mjs
+          node --check via-v3-worker-package/assets/app.js
+          node --check via-v3-worker-package/assets/store.js
+      - name: Desplegar solo Worker QA separado
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 deploy --config via-v3-worker-package/wrangler.jsonc --dry-run --outdir /tmp/via-v3-worker-compiled
+          npx --yes wrangler@4 deploy --config via-v3-worker-package/wrangler.jsonc
+      - name: Verificar motor y activos reales en QA
+        run: |
+          python3 - <<'PY'
+          import json,time,urllib.request,urllib.parse,urllib.error
+          root='https://via-traslados-web-v3-qa.marcelof-gx.workers.dev'
+          def get(path):
+            req=urllib.request.Request(root+path,headers={'User-Agent':'ViaV3WorkerQA/1.0'})
+            with urllib.request.urlopen(req,timeout=25) as r:
+              assert r.status==200
+              return r.read().decode('utf-8','replace')
+          for i in range(9):
+            try:
+              page=get('/')
+              if 'via-v3.css?v=1' in page:break
+            except Exception:pass
+            time.sleep(3)
+          else:raise AssertionError('Worker QA not serving V3')
+          assert 'id="phone-lookup"' in page
+          assert 'via-route-overview' in get('/via-v3.css')
+          assert 'via-v3.css?v=1' in get('/reserva.html')
+          assert 'async function identifyPhone' in get('/store.js')
+          q='/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
+          data=json.loads(get(q))
+          assert data.get('results') and 'shangril' in str(data['results'][0].get('city','')).lower(),data
+          print('ISOLATED_WORKER_QA_OK',root)
+          print('EXACT_GEOCODER_PRESERVED',data['results'][0].get('city'))
+          PY
+      - name: Chromium en Worker QA para asegurar portada compacta
+        run: |
+          npm install --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+          cat >/tmp/via-v3-worker-qa.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright');
+          (async()=>{
+            const b=await chromium.launch({headless:true,args:['--no-sandbox']});
+            const root='https://via-traslados-web-v3-qa.marcelof-gx.workers.dev';
+            for(const [w,h] of [[320,640],[360,740],[390,844],[1280,820]]){
+              const page=await b.newPage({viewport:{width:w,height:h},isMobile:w<700,hasTouch:w<700});
+              await page.route('https://via-traslados-api.marcelof-gx.workers.dev/**',async r=>{
+                const path=new URL(r.request().url()).pathname;
+                if(path==='/api/public/route-preview')return r.fulfill({status:200,contentType:'application/json',headers:{'Access-Control-Allow-Origin':root},body:JSON.stringify({distanceKm:18.5,durationMinutes:26,estimate:true})});
+                return r.fulfill({status:503,contentType:'application/json',headers:{'Access-Control-Allow-Origin':root},body:'{"error":"Simulated QA only"}'});
+              });
+              await page.goto(root,{waitUntil:'domcontentloaded',timeout:45000});
+              const top=await page.evaluate(()=>({w:document.documentElement.scrollWidth,cta:document.querySelector('#start-booking').getBoundingClientRect().bottom,photo:getComputedStyle(document.querySelector('.premium-shell')).backgroundImage}));
+              if(top.w>w+2||top.cta>h+3||!top.photo.includes('rambla'))throw Error('Home viewport '+w+': '+JSON.stringify(top));
+              await page.locator('#home-origin').fill('Montevideo Shopping, Montevideo');
+              await page.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
+              await page.locator('#start-booking').click();
+              await page.locator('#via-route-distance').getByText(/18,5 km/).waitFor({timeout:6000});
+              const k=await page.evaluate(()=>({w:document.documentElement.scrollWidth,cta:document.querySelector('#to-contact').getBoundingClientRect().bottom,screen:innerHeight}));
+              if(k.w>w+2||k.cta>h+3)throw Error('Booking viewport '+w+': '+JSON.stringify(k));
+              await page.locator('#to-contact').click();
+              if(!(await page.locator('#phone-first').isVisible()))throw Error('Phone-first absent');
+              await page.close();
+              console.log('V3_WORKER_VIEWPORT_OK',w,h);
+            }
+            await b.close();console.log('V3_FULL_WORKER_BROWSER_QA_PASS');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/via-v3-worker-qa.cjs
