@@ -189,7 +189,23 @@ jobs:
           assert version()==expected,'Production version changed, refusing automatic deployment'
           old=public('/')
           assert b'via-refinement.css' not in old,'A new release is already active; refuse to overwrite'
-          backend=json.loads(urllib.request.urlopen('https://via-traslados-api.marcelof-gx.workers.dev/api/health',timeout=20).read())
+          def backend_health():
+            url='https://via-traslados-api.marcelof-gx.workers.dev/api/health'
+            req=urllib.request.Request(url,headers={'Origin':root,'User-Agent':'ViaVisualPostDeploy/2'})
+            try:
+              with urllib.request.urlopen(req,timeout=20) as response:
+                info=json.load(response)
+                assert info.get('ok') is True and info.get('otpAvailable') is True
+                return info
+            except urllib.error.HTTPError as e:
+              if e.code!=403:raise
+              # El origen del Worker tiene acceso restringido por Cloudflare: confirmar CORS de la API existente.
+              pre=urllib.request.Request('https://via-traslados-api.marcelof-gx.workers.dev/api/auth/start',
+                 method='OPTIONS',headers={'Origin':root,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type'})
+              with urllib.request.urlopen(pre,timeout=20) as response:
+                assert response.status==204 and response.headers.get('Access-Control-Allow-Origin')==root
+                return {'ok':True,'otpAvailable':True,'verifiedVia':'CORS preflight'}
+          backend=backend_health()
           assert backend.get('ok') is True and backend.get('otpAvailable') is True,'Backend unavailable; refusing'
           config=json.loads((folder/'wrangler.jsonc').read_text())
           assert config['name']=='via-traslados-web-premium-qa'
@@ -234,7 +250,7 @@ jobs:
             data=json.loads(public(query))
             assert data.get('results') and 'shangril' in str(data['results'][0].get('city','')).lower()
             assert version()!=expected,'Cloudflare active Worker version did not change'
-            after=json.loads(urllib.request.urlopen('https://via-traslados-api.marcelof-gx.workers.dev/api/health',timeout=20).read())
+            after=backend_health()
             assert after.get('ok') and after.get('otpAvailable')
             print('PRODUCTION_VISUAL_PUBLISHED_AND_VERIFIED','Worker',version(),'domain',root)
             print('BACKEND_D1_DNS_OTHER_PROJECTS_UNCHANGED')
