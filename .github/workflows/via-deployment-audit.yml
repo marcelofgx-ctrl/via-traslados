@@ -103,6 +103,16 @@ jobs:
             print('WORKER_INSPECT',name,'status',status,'len',len(source))
             if status==200:
               print('WORKER_PREFIX',repr(source[:300]))
+              if "Content-Type: application/javascript+module" in source:
+                component=source.split("Content-Type: application/javascript+module",1)[1]
+                component=component.split("\r\n\r\n",1)[1].split("\r\n--",1)[0]
+                print('WORKER_SCRIPT_LINES',len(component.splitlines()))
+                for j,line in enumerate(component.splitlines()):
+                  if j < 18 or 93<=j<=148:
+                    safe=line[:400]
+                    if re.search(r'(?i)(api[_-]?key|secret|token|password|bearer|pepper)\s*[:=]',safe):safe='[sensitive line omitted]'
+                    print('SCRIPT_LINE',j+1,repr(safe))
+
               lines=source.splitlines()
               needles=('api/direcciones','lagomar','function normalized','function normalize','mode===','mode ===','env.ASSETS','env.ASSET','handleRequest','export default','fetch(request','localidad','suggest','resolve')
               found=[i for i,l in enumerate(lines) if any(q.lower() in l.lower() for q in needles)]
