@@ -173,6 +173,8 @@ async function pinLogin(req,env,p){
 
 async function enroll(req,env,p){
  let profile;try{profile=validProfile(p)}catch(e){return error(e.message)}
+ const already=await accountByPhone(env,profile.phone);
+ if(already&&already.email!==profile.email)return error('Este celular ya está vinculado a otra cuenta. Ingresá con ese número o recuperá el acceso.',409);
  const verifier=p.verificationToken;
  if(!/^[a-f0-9]{64}$/i.test(String(verifier||'')))return error('Primero verificá tu correo',401);
  const proof=new Request(req.url,{headers:{'X-Verification-Token':verifier}});
