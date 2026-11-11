@@ -34,12 +34,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.VIA_PAGES_DEPLOY_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx --yes wrangler@4 pages deploy pages --project-name via-traslados-pasajeros --branch visual-premium-qa
+          set -o pipefail
+          npx --yes wrangler@4 pages deploy pages --project-name via-traslados-pasajeros --branch visual-premium-qa | tee /tmp/via-v3-deployment.log
+          URL=$(grep -Eo 'https://[a-f0-9]+\.via-traslados-pasajeros\.pages\.dev' /tmp/via-v3-deployment.log | head -n1)
+          test -n "$URL"
+          echo "VIA_V3_PREVIEW=$URL" >> "$GITHUB_ENV"
+          echo "IMMUTABLE_QA_URL=$URL"
       - name: Confirmar Pages QA
         run: |
           python3 - <<'PY'
-          import urllib.request,time
-          root='https://visual-premium-qa.via-traslados-pasajeros.pages.dev'
+          import urllib.request,time,os
+          root=os.environ['VIA_V3_PREVIEW']
           for i in range(24):
             try:
               with urllib.request.urlopen(root,timeout=20) as r:body=r.read().decode('utf-8')
@@ -59,7 +64,7 @@ jobs:
         run: |
           cat > /tmp/via-v3-qa.cjs <<'JS'
           const {chromium}=require(process.cwd()+'/node_modules/playwright');
-          const root='https://visual-premium-qa.via-traslados-pasajeros.pages.dev';
+          const root=process.env.VIA_V3_PREVIEW;
           const api='https://via-traslados-api.marcelof-gx.workers.dev';
           const mockProfile={name:'Ana QA',phone:'094123456',email:'test@example.invalid'};
           async function setup(browser,width,height,registered=false) {
