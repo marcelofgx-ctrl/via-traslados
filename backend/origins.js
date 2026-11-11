@@ -8,6 +8,7 @@ export const QA_PASSENGER_ORIGINS = Object.freeze([
 const publicPassengerPath = path =>
   path === '/api/health' ||
   path === '/api/public/status' ||
+  path === '/api/public/route-preview' ||
   path === '/api/requests' ||
   path.startsWith('/api/requests/') ||
   path.startsWith('/api/auth/') ||
