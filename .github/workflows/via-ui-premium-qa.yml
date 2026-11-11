@@ -81,6 +81,14 @@ jobs:
               const path = new URL(request.url).pathname;
               if(path === "/__via/booking-premium.css") return new Response(VIA_BOOKING_CSS,{headers:viaUIHeaders("text/css; charset=utf-8")});
               if(path === "/__via/booking-premium.js") return new Response(VIA_BOOKING_JS,{headers:viaUIHeaders("application/javascript; charset=utf-8")});
+              if(path === "/__via/booking-preview"){
+                const response = await env.ASSETS.fetch(new Request(new URL("/index.html",request.url),request));
+                if(!response.ok) return response;
+                return new HTMLRewriter()
+                  .on("head",{element(el){el.prepend('<base href="/">',{html:true});el.append('<link rel="stylesheet" href="/__via/booking-premium.css?v=1">',{html:true})}})
+                  .on("body",{element(el){el.append('<script src="/__via/booking-premium.js?v=1"></script>',{html:true})}})
+                  .transform(response);
+              }
               __BASE_FETCH__
               if((path !== "/" && path !== "/index.html") || response.status !== 200 || request.method !== "GET")return response;
               if(!String(response.headers.get("content-type")||"").includes("text/html"))return response;
@@ -129,7 +137,7 @@ jobs:
             with urllib.request.urlopen(req,timeout=22) as response:
               assert response.status==200,(path,response.status)
               return response.read().decode('utf-8','replace')
-          html=get('/')
+          html=get('/__via/booking-preview')
           assert '/__via/booking-premium.css' in html
           assert '/__via/booking-premium.js' in html
           assert '¿A dónde vamos?' in html and 'map-stage' in html and 'solicitar' in html
@@ -158,7 +166,7 @@ jobs:
             for (const [width,height] of [[390,844],[360,740],[320,640],[1280,820]]) {
               const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:width<700,hasTouch:width<700});
               page.on('dialog',d=>d.dismiss());
-              await page.goto(url,{waitUntil:'domcontentloaded',timeout:35000});
+              await page.goto(url+'/__via/booking-preview',{waitUntil:'domcontentloaded',timeout:35000});
               await page.locator('#home-origin').fill('Avenida Italia 5785, Montevideo');
               await page.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
               await page.locator('#start-booking').click();
