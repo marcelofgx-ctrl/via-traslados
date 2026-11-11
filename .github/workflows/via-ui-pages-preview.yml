@@ -2,7 +2,11 @@ name: Via Traslados - publicar prototipo visual aislado y probar mobile
 on:
   push:
     branches: [via-premium-flow-qa]
-    paths: [".github/workflows/via-ui-pages-preview.yml"]
+    paths:
+      - ".github/workflows/via-ui-pages-preview.yml"
+      - "ui-prod/via-refinement.css"
+      - "ui-prod/flow-premium.css"
+      - "ui-prod/flow-premium.js"
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,14 +26,14 @@ jobs:
           src=pathlib.Path('ui-prod')
           dest=pathlib.Path('via-ui-preview')
           dest.mkdir(exist_ok=True)
-          for name in ['index.html','styles.css','premium.css','reference.css','address-autocomplete.css','app.js','reference.js','map.js','store.js','address-autocomplete.js','config.js','flow-premium.css','flow-premium.js']:
+          for name in ['index.html','styles.css','premium.css','reference.css','address-autocomplete.css','app.js','reference.js','map.js','store.js','address-autocomplete.js','config.js','flow-premium.css','flow-premium.js','via-refinement.css']:
             f=src/name
             assert f.exists(),name
             shutil.copy2(f,dest/name)
           html=(dest/'index.html').read_text('utf-8')
-          html=html.replace('</head>','<link rel="stylesheet" href="./flow-premium.css?v=1"></head>',1)
+          html=html.replace('</head>','<link rel="stylesheet" href="./flow-premium.css?v=1"><link rel="stylesheet" href="./via-refinement.css?v=2"></head>',1)
           html=html.replace('</body>','<script src="./flow-premium.js?v=1"></script></body>',1)
-          assert html.count('flow-premium.css')==1 and html.count('flow-premium.js')==1
+          assert html.count('flow-premium.css')==1 and html.count('flow-premium.js')==1 and html.count('via-refinement.css')==1
           (dest/'index.html').write_text(html,'utf-8')
           names=['rambla-skyline-v09.webp','rambla-atmosfera.webp','manifest.webmanifest','icon.svg','sw.js','reserva.html','mis-reservas.html','conductor.html','admin.html','customer-access.css']
           for name in names:
@@ -42,7 +46,15 @@ jobs:
               print('PUBLIC_ASSET',name,len(data))
             except urllib.error.HTTPError as error:
               print('PUBLIC_ASSET_NOT_AVAILABLE',name,error.code)
-          assert (dest/'rambla-skyline-v09.webp').exists() and (dest/'sw.js').exists()
+          assert (dest/'rambla-skyline-v09.webp').exists() and (dest/'sw.js').exists() and (dest/'reserva.html').exists()
+          status=(dest/'reserva.html').read_text('utf-8')
+          status=status.replace('</head>','<link rel="stylesheet" href="./via-refinement.css?v=2"></head>',1)
+          assert status.count('via-refinement.css')==1
+          (dest/'reserva.html').write_text(status,'utf-8')
+          # Bust cache only inside this QA deployment; leave production sw.js unchanged.
+          sw=(dest/'sw.js').read_text('utf-8')
+          sw=re.sub(r"const VERSION\s*=\s*['\"][^'\"]+['\"]", "const VERSION='via-premium-refinement-20261111-v2'", sw, count=1)
+          (dest/'sw.js').write_text(sw,'utf-8')
           print('STATIC_UI_PREPARED; no forms submitted, no data changed')
           PY
           git fetch origin pages-release --depth=1
@@ -73,6 +85,9 @@ jobs:
             time.sleep(3)
           else:raise AssertionError('La web QA no muestra la nueva interfaz')
           assert 'body.premium-page.in-booking' in fetch('/flow-premium.css')
+          assert 'body[data-page="booking"] .status-card' in fetch('/via-refinement.css')
+          assert 'via-refinement.css?v=2' in fetch('/')
+          assert 'via-refinement.css?v=2' in fetch('/reserva.html')
           assert 'Confirmá tu recorrido' in fetch('/flow-premium.js')
           print('QA_CLOUDFLARE_PAGES_URL',root)
           print('QA_FILES_VALIDATED')
@@ -90,6 +105,18 @@ jobs:
             for (const [width,height] of [[390,844],[360,740],[320,640],[1280,820]]) {
               const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:width<700,hasTouch:width<700});
               await page.goto('https://visual-premium-qa.via-traslados-pasajeros.pages.dev/',{waitUntil:'domcontentloaded',timeout:40000});
+              const home=await page.evaluate(()=>{
+                const get=s=>document.querySelector(s),r=s=>get(s)?.getBoundingClientRect();
+                return {bodyW:document.documentElement.scrollWidth,viewport:innerWidth,
+                  shellH:r('.premium-shell')?.height,windowH:innerHeight,
+                  navBottom:r('.reference-tabs')?.bottom,
+                  headingText:get('.home-intro h1')?.textContent,
+                  startVisible:r('#start-booking')?.bottom<=innerHeight+4,
+                  bg:getComputedStyle(get('.premium-shell')).backgroundImage,
+                  cssPresent:[...document.styleSheets].some(x=>x.href?.includes('via-refinement.css'))};
+              });
+              console.log('HOME_LAYOUT',width,height,JSON.stringify(home));
+              if(home.bodyW>width+2||!home.cssPresent||!home.startVisible||!home.bg.includes('rambla-skyline'))throw Error('Portada desbordada o incompleta '+width+'x'+height);
               await page.locator('#home-origin').fill('Avenida Italia 5785, Montevideo');
               await page.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
               await page.locator('#home-destination').blur();
@@ -121,8 +148,35 @@ jobs:
               await page.screenshot({path:'via-ui-'+width+'.png',fullPage:false});
               await page.close();
             }
+            // Ejercitar estado visual con datos ficticios: no se consulta ni escribe D1.
+            for(const [w,h] of [[390,844],[360,740],[320,640],[1280,820]]) {
+              const status=await browser.newPage({viewport:{width:w,height:h},isMobile:w<700,hasTouch:w<700});
+              await status.route('**/api/**',route=>route.abort('failed'));
+              await status.goto('https://visual-premium-qa.via-traslados-pasajeros.pages.dev/reserva.html',{waitUntil:'domcontentloaded',timeout:35000});
+              await status.locator('#status-container').evaluate(el=>{
+                el.innerHTML='<div class="status-box"><div class="status-label">Nueva solicitud</div><p>El conductor revisará tu solicitud y te enviará una propuesta.</p></div>'
+                  +'<div class="summary-row"><span>Código</span><strong>VIA-PRUEBA-123</strong></div>'
+                  +'<div class="summary-row"><span>Origen</span><strong>E. García Etchegoyen de Lorenzo 2030, Montevideo, Montevideo</strong></div>'
+                  +'<div class="summary-row"><span>Destino</span><strong>Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones</strong></div>'
+                  +'<div class="summary-row"><span>Fecha</span><strong>vie, 20 nov. · 10:00</strong></div>'
+                  +'<div class="summary-row"><span>Pasajeros / valijas</span><strong>1 / 1</strong></div>'
+                  +'<div class="status-actions"><button class="secondary-btn">Cancelar solicitud</button></div>'
+                  +'<p class="status-banner">Guardá esta página en este dispositivo para consultar cambios en tu reserva.</p>';
+              });
+              const x=await status.evaluate(()=>{
+                const box=document.querySelector('.status-card').getBoundingClientRect();
+                return {docWidth:document.documentElement.scrollWidth,viewport:innerWidth,cardBottom:box.bottom,winH:innerHeight,
+                  origin:document.querySelectorAll('.summary-row strong')[1].textContent,
+                  style:[...document.styleSheets].some(v=>v.href?.includes('via-refinement.css'))};
+              });
+              console.log('STATUS_LAYOUT',w,h,JSON.stringify(x));
+              if(!x.style||x.docWidth>w+2||!x.origin.includes('Lorenzo 2030'))throw Error('Estado visual fuera de límites '+w);
+              if(w>=360&&h>=740&&x.cardBottom>h+14)throw Error('Estado ocupa más de una pantalla '+w+'x'+h);
+              await status.screenshot({path:'via-status-'+w+'.png'});
+              await status.close();
+            }
             await browser.close();
-            console.log('VISUAL_QA_PASSED: no se envió ningún correo ni se creó ninguna reserva');
+            console.log('VISUAL_QA_PASSED: portada, formulario y estado; sin correos ni reservas');
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
           node /tmp/via-preview-check.cjs
@@ -130,5 +184,7 @@ jobs:
         if: always()
         with:
           name: via-traslados-mobile-premium-qa
-          path: via-ui-*.png
+          path: |
+            via-ui-*.png
+            via-status-*.png
           retention-days: 14
