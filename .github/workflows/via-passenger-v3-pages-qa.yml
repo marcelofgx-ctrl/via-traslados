@@ -150,7 +150,7 @@ jobs:
             await p.locator('#otp-code').fill('837251');
             await p.locator('#new-pin').fill('739251');
             await p.locator('#verify-and-book').click();
-            await p.waitForURL(/reserva\.html\?id=VIA-QA-000/, {timeout:12000});
+            await p.waitForURL(/reserva(?:\.html)?\?id=VIA-QA-000/, {timeout:12000});
             console.log('V3_FIRST_REGISTRATION_MOCK_PASS');
             await p.close();
             const status=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
