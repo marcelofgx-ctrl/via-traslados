@@ -199,5 +199,11 @@ jobs:
                 if isinstance(data,dict):data=data.get('databases',[])
                 print('VIA_D1_NAMES',[x.get('name') for x in data if 'via-' in str(x.get('name',''))])
               except:pass
+          code,script,_=fetch('https://viatraslados.com/sw.js')
+          print('SERVICE_WORKER_CHECK',code,'len',len(script))
+          if code==200:
+            for i,line in enumerate(script.splitlines()):
+              if any(term in line.lower() for term in ['api/','cache','fetch','navigation','version','eventlistener']):
+                print('SERVICE_WORKER_LINE',i+1,repr(line[:210]))
           print('READ_ONLY_AUDIT_COMPLETE: no database queries, no mutations, no emails, no bookings')
           PY
