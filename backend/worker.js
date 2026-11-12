@@ -99,8 +99,9 @@ export default {async fetch(req,env,ctx){
   if((path.startsWith('/api/auth/')||path.startsWith('/api/customer/')||path==='/api/requests'||path.startsWith('/api/requests/'))&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio. Volvé a intentar más tarde.',503);
   if(path==='/api/auth/start'&&req.method==='POST'){const r=await beginOtp(req,env);return send(r.data,r.status)}
   if(path==='/api/auth/verify'&&req.method==='POST'){const r=await checkOtp(req,env);return send(r.data,r.status)}
-  const customerHandled=await customerRoutes(req,env,path,send);if(customerHandled)return customerHandled;
+  // Las peticiones WebAuthn deben despacharse ANTES del parser general de clientes.
   const passkeyHandled=await customerPasskeyRoutes(req,env,path,send);if(passkeyHandled)return passkeyHandled;
+  const customerHandled=await customerRoutes(req,env,path,send);if(customerHandled)return customerHandled;
   if(path==='/api/requests'&&req.method==='POST'){
    if(Number(req.headers.get('Content-Length')||0)>6000)return err('Solicitud demasiado grande',413);
    const raw=await req.text();if(raw.length>6000)return err('Solicitud demasiado grande',413);
