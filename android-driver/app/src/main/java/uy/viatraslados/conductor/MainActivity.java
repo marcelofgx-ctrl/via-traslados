@@ -2,6 +2,9 @@ package uy.viatraslados.conductor;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
+import android.view.Window;
+import android.view.WindowManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -63,10 +66,12 @@ public final class MainActivity extends Activity {
     private String subtab = "nuevas";
     private boolean loading = false;
     private boolean visible = false;
+    private Dialog acceptanceDialog;
+    private String acceptanceDialogId = "";
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (visible && (operatorKey != null || staffToken != null)) fetchBookings(false);
-            if (visible) handler.postDelayed(this, 30000);
+            if (visible) handler.postDelayed(this, 20000);
         }
     };
 
@@ -87,13 +92,14 @@ public final class MainActivity extends Activity {
         super.onResume();
         visible = true;
         handler.removeCallbacks(poll);
-        handler.postDelayed(poll, 30000);
+        handler.postDelayed(poll, 20000);
         if (operatorKey != null || staffToken != null) fetchBookings(false);
     }
 
     @Override protected void onPause() {
         visible = false;
         handler.removeCallbacks(poll);
+        if (acceptanceDialog != null) acceptanceDialog.dismiss();
         super.onPause();
     }
 
@@ -647,6 +653,7 @@ public final class MainActivity extends Activity {
                     } else {
                         requestVisibleRoutes();
                     }
+                    notifyAcceptedProposals(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
                     if (login) loginScreen();
@@ -715,6 +722,20 @@ public final class MainActivity extends Activity {
         refresh.setBackground(ripple(SOFT,0,12));
         refresh.setContentDescription("Actualizar solicitudes");
         header.addView(refresh, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        int acceptedCount=count("accepted");
+        if (acceptedCount>0) {
+            TextView badge=text(acceptedCount+" aceptada"+(acceptedCount==1?"":"s"),10,TEAL_DARK,true);
+            badge.setGravity(Gravity.CENTER);
+            badge.setPadding(dp(8),dp(5),dp(8),dp(5));
+            badge.setBackground(bg(SOFT,10,Color.rgb(187,225,205)));
+            badge.setContentDescription(acceptedCount+" presupuestos aceptados sin confirmar. Abrir Mis viajes.");
+            badge.setClickable(true);
+            badge.setFocusable(true);
+            badge.setOnClickListener(v->{tab="viajes";dashboard();});
+            LinearLayout.LayoutParams badgeParams=new LinearLayout.LayoutParams(-2,dp(34));
+            badgeParams.leftMargin=dp(7);
+            header.addView(badge,badgeParams);
+        }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
 
         ScrollView scroll = new ScrollView(this);
@@ -807,7 +828,7 @@ public final class MainActivity extends Activity {
             appendCard(body,empty,10);
         }
         spacer(body,4);
-        addLine(body,"Solicitudes actualizadas cada 30 s · Distancias calculadas por ruta.",
+        addLine(body,"Solicitudes actualizadas cada 20 s · Distancias calculadas por ruta.",
             11,MUTED,false,0);
     }
 
