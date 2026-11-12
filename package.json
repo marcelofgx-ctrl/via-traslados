@@ -5,7 +5,7 @@
   "version": "0.3.0",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check backend/worker.js && node --check backend/auth.js && node --check backend/customer-auth.js && node --check backend/customer-passkeys.js"
+    "check": "node --check backend/worker.js && node --check backend/auth.js && node --check backend/customer-auth.js && node --check backend/customer-whatsapp.js && node --check backend/customer-passkeys.js && node --check design/via/booking-v23/app.js && node --check design/via/booking-v23/verification-channel.js"
   },
   "dependencies": {
     "@simplewebauthn/server": "14.1.0"
