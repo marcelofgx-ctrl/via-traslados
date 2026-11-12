@@ -245,7 +245,7 @@ jobs:
             assert 'passkeys.js?v=21' in details
             css=public('/via-status-premium.css?v=1').decode('utf-8','replace')
             assert '.via-state--success' in css and '.via-state--waiting' in css and '.via-state--offer' in css
-            assert "background:linear-gradient(125deg,#08735c" in css
+            assert "--state-bg:linear-gradient(125deg,#08735c" in css
             # Una portada nueva puede adelantarse al cambio de asset en la caché del edge.
             # Comprobar el archivo versionado que carga realmente el navegador.
             for asset_try in range(12):
