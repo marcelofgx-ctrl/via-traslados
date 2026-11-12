@@ -269,7 +269,7 @@ body[data-page="driver"] .via-driver-sheet__secondary{
  body[data-page="mine"] .via-booking-card__route{grid-template-columns:minmax(0,1fr) 14px minmax(0,1fr);gap:5px}
  body[data-page="mine"] .via-booking-card__location{font-size:11.5px}
  body.premium-page.in-booking .via-account-card{gap:8px!important}
- body.premium-page.in-booking #known-next{max-width:100%!important}
+ body.premium-page.in-booking #known-next{max-width:min(100%,272px)!important}
  body[data-page="driver"] .via-driver-sheet{padding:8px 13px 13px}
 }
 @media(max-width:345px){
