@@ -116,7 +116,7 @@ async function verify(req,env,p,findAccount,makeSession){
 }
 async function bridgeNext(env){
  await env.DB.prepare("INSERT INTO whatsapp_bridge_health(id,last_seen) VALUES (1,unixepoch()) ON CONFLICT(id) DO UPDATE SET last_seen=unixepoch()").run();
- const row=await env.DB.prepare("UPDATE whatsapp_otp_codes SET delivery_status='leased',lease_until=unixepoch()+90 WHERE delivery_id=(SELECT delivery_id FROM whatsapp_otp_codes WHERE expires_at>unixepoch() AND (delivery_status='queued' OR (delivery_status='leased' AND lease_until<unixepoch())) ORDER BY expires_at ASC LIMIT 1) RETURNING delivery_id,phone,payload").first();
+ const row=await env.DB.prepare("UPDATE whatsapp_otp_codes SET delivery_status='leased',lease_until=unixepoch()+90 WHERE delivery_id=(SELECT delivery_id FROM whatsapp_otp_codes WHERE expires_at>unixepoch() AND ((delivery_status='queued' AND lease_until<unixepoch()) OR (delivery_status='leased' AND lease_until<unixepoch())) ORDER BY expires_at ASC LIMIT 1) RETURNING delivery_id,phone,payload").first();
  if(!row)return {item:null};
  try{
   const recipient=waAddress(row.phone);
