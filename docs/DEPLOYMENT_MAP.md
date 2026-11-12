@@ -106,3 +106,15 @@ Se corrigió la regresión de los botones gigantes mediante `grid`, botones de 4
 - Copia de archivos realmente publicados: `design/via/booking-v24/`
 
 **IMPORTANTE:** v24 sustituye a v23 en producción. No desplegar de nuevo `app.js?v=23` ni `via-status-premium.css?v=1` sobre este Worker. No se cambió la D1, backend, CORS ni los DNS. Las notificaciones push/correo por cambio de estado siguen pendientes de implementación funcional.
+
+## UI de pasajeros y operador V25 · 12/11/2026
+
+Rediseño publicado correctamente en `https://viatraslados.com`: tarjeta de sesión reconocida compacta; listado de reservas con pestañas Activas/Historial, tarjetas legibles, precio y kilómetros autorizados cuando están calculados; aviso blanco inferior de presupuesto `accepted` en el conductor, contador persistente y confirmación explícita. El detalle conserva la UI compacta V24 y los estados diferenciados.
+
+- QA de móvil 320/360/390/1280 y flujo conductor completo con API simulada: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/43201791308
+- Publicación con verificación y rollback: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/43203247919
+- Worker anterior `20606cd4-c5da-4d3d-a020-9ab4ae3ce947` → Worker nuevo `4b218c3b-7f38-4d74-be6c-d792c813484f`
+- Fuentes exactas V25 preservadas en `design/via/booking-v25/`; **no desplegar componentes anteriores por accidente**.
+- APK conductor QA V0.2.0 disponible: https://github.com/marcelofgx-ctrl/via-traslados/releases/tag/via-conductor-qa-v0.2.0; código de Android integrado en `main/android-driver/`.
+- **El push remoto con web o APK cerrada aún no está implementado**; el panel y la APK requieren estar activos para presentar sus avisos. Las reservas existentes y DNS no se modificaron.
+
