@@ -34,7 +34,8 @@ jobs:
           cp /tmp/via-qa-release/SHA256SUMS.txt qa-apk-download/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add qa-apk-download/via-traslados-conductor-qa.apk qa-apk-download/SHA256SUMS.txt
+          git add -f qa-apk-download/via-traslados-conductor-qa.apk
+          git add qa-apk-download/SHA256SUMS.txt
           if ! git diff --cached --quiet; then
             git commit -m "qa(via): stage verified conductor APK v0.2.0 for isolated download"
             git push origin HEAD:via-apk-descarga-qa-20261112
