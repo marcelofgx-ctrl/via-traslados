@@ -313,13 +313,53 @@ function initPassenger(){
 }
 
 let lastRender='';
-function statusHTML(b){const status=labels[b.status]||b.status;let statusCopy={requested:'El conductor revisará tu solicitud y te enviará una propuesta.',quoted:'Tu conductor envió una cotización. Revisala y confirmá si estás de acuerdo.',accepted:'Aceptaste la propuesta. El conductor confirmará la coordinación.',confirmed:'Todo listo. Tu traslado está confirmado.',en_route:'Tu conductor está en camino al punto de recogida.',arrived:'El conductor llegó al lugar acordado.',in_progress:'Tu traslado está en curso.',completed:'Tu viaje finalizó. ¡Gracias por elegirnos!',cancelled:'Esta solicitud está cancelada.'}[b.status]||'Estamos actualizando tu reserva.';
-const routeMetrics=b.route&&Number(b.route.distanceKm)>0&&Number(b.route.durationMinutes)>0?
-  '<div class="via-status-route"><div><small>DISTANCIA ESTIMADA</small><strong>'+esc(Number(b.route.distanceKm).toLocaleString('es-UY',{maximumFractionDigits:1}))+' km</strong></div><div><small>DURACIÓN ORIENTATIVA</small><strong>'+esc(b.route.durationMinutes)+' min</strong></div></div><p class="via-route-disclaimer">Ruta por carretera · Sin tránsito en vivo · © OpenStreetMap / Geoapify</p>':
-  '<p class="via-route-disclaimer">Distancia y duración pendientes de calcular. Se actualizarán cuando haya una ruta confiable.</p>';
-const price=b.price!=null?`<div class="status-box"><div class="field-label">IMPORTE PROPUESTO</div><div class="quote-value">$ ${Number(b.price).toLocaleString('es-UY')} UYU</div><p>Precio sujeto a las condiciones acordadas con el conductor.</p></div>`:'';
-return `<div class="status-box"><div class="status-label">${esc(status)}</div><p>${esc(statusCopy)}</p></div><div class="summary-row"><span>Código</span><strong>${esc(b.id)}</strong></div><div class="summary-row"><span>Origen</span><strong>${esc(b.origin)}</strong></div><div class="summary-row"><span>Destino</span><strong>${esc(b.destination)}</strong></div>${routeMetrics}<div class="summary-row"><span>Fecha</span><strong>${esc(fmtDate(b.date))} · ${esc(b.time)}</strong></div><div class="summary-row"><span>Pasajeros / valijas</span><strong>${esc(b.passengers)} / ${esc(b.bags)}</strong></div>${price}<div class="status-actions">${b.status==='quoted'?'<button class="primary-btn" id="accept-btn">Aceptar cotización <span>→</span></button>':''}${['requested','quoted','accepted'].includes(b.status)?'<button class="secondary-btn" id="cancel-btn">Cancelar solicitud</button>':''}</div><p class="status-banner">Guardá esta página en este dispositivo para consultar cambios en tu reserva.</p>`}
-async function initBooking(){const id=new URLSearchParams(location.search).get('id');if(!id){$('status-container').innerHTML='<p>Falta el código de reserva. Volvé a solicitar un viaje.</p>';return}async function render(){try{const b=await S.get(id);if(!b){$('status-container').innerHTML='<p>No se encontró la reserva en este dispositivo.</p>';return}const signature=JSON.stringify(b);if(signature===lastRender)return;lastRender=signature;$('status-container').innerHTML=statusHTML(b);$('accept-btn')?.addEventListener('click',async()=>{if(!confirm('¿Querés aceptar esta propuesta?'))return;try{await S.accept(id);lastRender='';await render()}catch(err){alert(err.message)}});$('cancel-btn')?.addEventListener('click',async()=>{if(!confirm('¿Querés cancelar esta solicitud?'))return;try{await S.cancel(id);lastRender='';await render()}catch(err){alert(err.message)}})}catch(err){$('status-container').innerHTML='<p class="error-text">'+esc(err.message)+'</p>'}}await render();
+const bookingPresentation={
+ requested:{kind:'waiting',symbol:'clock',flag:'SIN CONFIRMAR',title:'Recibimos tu solicitud',description:'El conductor está revisando los datos de tu viaje.',next:'Todavía no es una reserva confirmada. Volvé a consultar esta página para ver novedades.'},
+ quoted:{kind:'offer',symbol:'document',flag:'ACCIÓN NECESARIA',title:'Tenés una propuesta',description:'El conductor te envió una cotización para este traslado.',next:'Revisá el precio y, si estás de acuerdo, tocá «Aceptar propuesta».'},
+ accepted:{kind:'waiting',symbol:'clock',flag:'FALTA CONFIRMACIÓN',title:'Aceptaste la propuesta',description:'Tu aceptación está registrada. Falta la confirmación definitiva del conductor.',next:'Por ahora no tenés que hacer nada. Podés revisar este enlace para ver cuándo quede confirmado.'},
+ confirmed:{kind:'success',symbol:'check',flag:'CONFIRMADA',title:'¡Tu reserva está confirmada!',description:'El conductor confirmó tu traslado. Ya tenés tu viaje coordinado.',next:'¡Todo listo! Guardá este enlace para revisar los detalles y cualquier cambio.'},
+ en_route:{kind:'moving',symbol:'car',flag:'EN CAMINO',title:'Tu conductor está en camino',description:'El conductor salió hacia el punto de recogida.',next:'Tené tu celular a mano y preparate para el encuentro.'},
+ arrived:{kind:'moving',symbol:'pin',flag:'YA LLEGÓ',title:'Tu conductor llegó',description:'El conductor indicó que llegó al lugar acordado.',next:'Dirigite al punto de encuentro indicado en tu reserva.'},
+ in_progress:{kind:'moving',symbol:'car',flag:'EN CURSO',title:'Tu traslado está en curso',description:'El viaje ya comenzó.',next:'Podés volver a esta pantalla para consultar el estado.'},
+ completed:{kind:'finished',symbol:'check',flag:'FINALIZADO',title:'Tu viaje finalizó',description:'¡Gracias por viajar con Vía Traslados!',next:'Tu traslado está completado. Podés hacer una nueva solicitud cuando quieras.'},
+ cancelled:{kind:'cancelled',symbol:'cross',flag:'CANCELADA',title:'Reserva cancelada',description:'Esta solicitud fue cancelada y ya no está activa.',next:'Si todavía necesitás un traslado, podés solicitar uno nuevo.'}
+};
+const bookingSymbols={
+ check:'<path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>',
+ clock:'<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+ document:'<rect x="5" y="3" width="14" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 9h6M9 13h6M9 17h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+ car:'<path d="M5 11 7 6h10l2 5M4 11h16v7H4zM7 18v2m10-2v2M7.5 14.5h.01m9 0h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+ pin:'<path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/>',
+ cross:'<path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
+};
+function statusHTML(b){
+ const presentation=bookingPresentation[b.status]||bookingPresentation.requested;
+ const symbol='<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" focusable="false">'+bookingSymbols[presentation.symbol]+'</svg>';
+ const route=b.route&&Number(b.route.distanceKm)>0&&Number(b.route.durationMinutes)>0?
+  '<div class="via-status-route" aria-label="Información orientativa del recorrido"><div><small>DISTANCIA ESTIMADA</small><strong>'+esc(Number(b.route.distanceKm).toLocaleString('es-UY',{maximumFractionDigits:1}))+' km</strong></div><div><small>DURACIÓN APROXIMADA</small><strong>'+esc(b.route.durationMinutes)+' min</strong></div></div><p class="via-route-disclaimer">Recorrido por carretera · Sin tránsito en vivo · © OpenStreetMap / Geoapify</p>':
+  '<p class="via-route-disclaimer">Distancia y duración pendientes de calcular.</p>';
+ const amount=b.price!=null&&Number.isFinite(Number(b.price))?
+  '<div class="via-quoted-price"><span>PRECIO PROPUESTO</span><strong>$ '+esc(Number(b.price).toLocaleString('es-UY'))+' UYU</strong><small>Importe propuesto por el conductor.</small></div>':'';
+ const actions=(b.status==='quoted'?'<button type="button" class="primary-btn" id="accept-btn">Aceptar propuesta <span aria-hidden="true">→</span></button>':'')+
+   (['requested','quoted','accepted'].includes(b.status)?'<button type="button" class="secondary-btn via-cancel-action" id="cancel-btn">Cancelar solicitud</button>':'')+
+   '<button type="button" class="secondary-btn via-refresh-action" id="refresh-status">Ver si hay novedades <span aria-hidden="true">↻</span></button>';
+ return '<section class="via-state via-state--'+presentation.kind+'" data-booking-status="'+esc(b.status||'requested')+'" role="status" aria-live="polite" aria-atomic="true">'+
+  '<div class="via-state__hero"><span class="via-state__icon">'+symbol+'</span><div class="via-state__heading"><span class="via-state__eyebrow">ESTADO DE TU VIAJE</span><h2>'+esc(presentation.title)+'</h2><p>'+esc(presentation.description)+'</p></div></div>'+
+  '<div class="via-state__bottom"><span class="via-state__flag">'+esc(presentation.flag)+'</span><p>'+esc(presentation.next)+'</p></div></section>'+
+  '<div class="via-trip-summary" aria-label="Detalles de tu reserva">'+
+  '<div class="via-trip-code"><span>N.º DE RESERVA</span><strong>'+esc(b.id)+'</strong></div>'+
+  '<div class="via-trip-journey">'+
+  '<div class="via-trip-stop via-trip-stop--from"><span class="via-trip-stop__dot" aria-hidden="true"></span><div><small>ORIGEN · TE BUSCAMOS EN</small><strong>'+esc(b.origin)+'</strong></div></div>'+
+  '<div class="via-trip-stop via-trip-stop--to"><span class="via-trip-stop__dot" aria-hidden="true"></span><div><small>DESTINO · TE LLEVAMOS A</small><strong>'+esc(b.destination)+'</strong></div></div>'+
+  '</div>'+route+
+  '<div class="via-trip-facts"><div><small>FECHA Y HORA</small><strong>'+esc(fmtDate(b.date))+' · '+esc(b.time)+'</strong></div>'+
+  '<div><small>PASAJEROS / VALIJAS</small><strong>'+esc(b.passengers)+' / '+esc(b.bags)+'</strong></div></div>'+
+  amount+
+  '<div class="status-actions">'+actions+'</div>'+
+  '<p class="status-banner">Guardá este enlace. La información se actualiza automáticamente mientras la página está abierta.</p></div>';
+}
+
+async function initBooking(){const id=new URLSearchParams(location.search).get('id');if(!id){$('status-container').innerHTML='<p>Falta el código de reserva. Volvé a solicitar un viaje.</p>';return}async function render(){try{const b=await S.get(id);if(!b){$('status-container').innerHTML='<p>No se encontró la reserva en este dispositivo.</p>';return}const signature=JSON.stringify(b);if(signature===lastRender)return;lastRender=signature;document.querySelector('.status-card')?.setAttribute('data-current-status',Object.hasOwn(bookingPresentation,b.status)?b.status:'requested');$('status-container').innerHTML=statusHTML(b);$('refresh-status')?.addEventListener('click',async()=>{lastRender='';await render()});$('accept-btn')?.addEventListener('click',async()=>{if(!confirm('¿Querés aceptar esta propuesta?'))return;try{await S.accept(id);lastRender='';await render()}catch(err){alert(err.message)}});$('cancel-btn')?.addEventListener('click',async()=>{if(!confirm('¿Querés cancelar esta solicitud?'))return;try{await S.cancel(id);lastRender='';await render()}catch(err){alert(err.message)}})}catch(err){$('status-container').innerHTML='<p class="error-text">'+esc(err.message)+'</p>'}}await render();
  const passkeyBox=$('passkey-setup'),passkeyButton=$('enable-passkey'),passkeyStatus=$('passkey-status');
  const session=S.customer();
  if(passkeyBox&&session&&!S.isDemo()&&window.ViaPasskeys?.available()&&!(session.passkeys>0)){
