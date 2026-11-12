@@ -2,6 +2,9 @@ package uy.viatraslados.conductor;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
+import android.view.Window;
+import android.view.WindowManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -63,10 +66,12 @@ public final class MainActivity extends Activity {
     private String subtab = "nuevas";
     private boolean loading = false;
     private boolean visible = false;
+    private Dialog acceptanceDialog;
+    private String acceptanceDialogId = "";
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (visible && (operatorKey != null || staffToken != null)) fetchBookings(false);
-            if (visible) handler.postDelayed(this, 30000);
+            if (visible) handler.postDelayed(this, 20000);
         }
     };
 
@@ -87,13 +92,14 @@ public final class MainActivity extends Activity {
         super.onResume();
         visible = true;
         handler.removeCallbacks(poll);
-        handler.postDelayed(poll, 30000);
+        handler.postDelayed(poll, 20000);
         if (operatorKey != null || staffToken != null) fetchBookings(false);
     }
 
     @Override protected void onPause() {
         visible = false;
         handler.removeCallbacks(poll);
+        if (acceptanceDialog != null) acceptanceDialog.dismiss();
         super.onPause();
     }
 
@@ -647,6 +653,7 @@ public final class MainActivity extends Activity {
                     } else {
                         requestVisibleRoutes();
                     }
+                    notifyAcceptedProposals(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
                     if (login) loginScreen();
@@ -666,6 +673,126 @@ public final class MainActivity extends Activity {
                 if (login) loginScreen();
             }
         });
+    }
+
+    // Aviso visible solamente mientras la APK está abierta. No es push FCM.
+    // Conserva solo el identificador de la aceptación ya anunciada, nunca las credenciales.
+    private void notifyAcceptedProposals(JSONArray rows) {
+        if (!visible || rows==null || (operatorKey==null && staffToken==null)) return;
+        if (acceptanceDialog!=null) {
+            boolean stillPending=false;
+            for (int i=0;i<rows.length();i++) {
+                JSONObject r=rows.optJSONObject(i);
+                if (r!=null && acceptanceDialogId.equals(r.optString("id")) &&
+                    "accepted".equals(r.optString("status"))) { stillPending=true;break; }
+            }
+            if (!stillPending) acceptanceDialog.dismiss();
+        }
+        if (acceptanceDialog!=null) return;
+        android.content.SharedPreferences prefs=getSharedPreferences("via_acceptance_alerts_v25",MODE_PRIVATE);
+        for (int i=0;i<rows.length();i++) {
+            JSONObject r=rows.optJSONObject(i);
+            if (r==null||!"accepted".equals(r.optString("status")))continue;
+            String id=r.optString("id","");
+            if (id.isEmpty()||prefs.getBoolean("seen_"+id,false))continue;
+            prefs.edit().putBoolean("seen_"+id,true).apply();
+            showAcceptedBottomSheet(r);
+            break;
+        }
+    }
+
+    private void showAcceptedBottomSheet(JSONObject booking) {
+        if (!visible||isFinishing())return;
+        Dialog dialog=new Dialog(this);
+        LinearLayout outer=column();
+        outer.setPadding(dp(12),0,dp(12),dp(10));
+        LinearLayout sheet=column();
+        sheet.setPadding(dp(16),dp(10),dp(16),dp(15));
+        sheet.setBackground(bg(Color.WHITE,20,BORDER));
+        outer.addView(sheet,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout handleRow=row();
+        handleRow.setGravity(Gravity.CENTER);
+        View handle=new View(this);
+        handle.setBackground(bg(Color.rgb(226,235,230),5,0));
+        handleRow.addView(handle,new LinearLayout.LayoutParams(dp(38),dp(4)));
+        sheet.addView(handleRow,new LinearLayout.LayoutParams(-1,dp(10)));
+        spacer(sheet,9);
+        LinearLayout header=row();
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView icon=text("✓",22,TEAL,true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(bg(Color.rgb(226,247,237),12,0));
+        header.addView(icon,new LinearLayout.LayoutParams(dp(40),dp(40)));
+        LinearLayout heading=column();
+        LinearLayout.LayoutParams headingParams=new LinearLayout.LayoutParams(0,-2,1);
+        headingParams.leftMargin=dp(11);
+        header.addView(heading,headingParams);
+        addLine(heading,"¡Presupuesto aceptado!",16,INK,true,3);
+        addLine(heading,"El pasajero aceptó tu propuesta.",11,MUTED,false,0);
+        TextView close=actionText("×",MUTED,v->dialog.dismiss());
+        close.setTextSize(24);
+        close.setGravity(Gravity.CENTER);
+        close.setContentDescription("Cerrar aviso");
+        header.addView(close,new LinearLayout.LayoutParams(dp(32),dp(32)));
+        sheet.addView(header);
+        spacer(sheet,12);
+        LinearLayout trip=row();
+        trip.setGravity(Gravity.CENTER_VERTICAL);
+        trip.setPadding(dp(11),dp(10),dp(11),dp(10));
+        trip.setBackground(bg(Color.rgb(241,249,245),11,Color.rgb(223,239,229)));
+        String origin=prettyAddress(booking.optString("origin",""));
+        String destination=prettyAddress(booking.optString("destination",""));
+        if(origin.contains(","))origin=origin.split(",")[0];
+        if(destination.contains(","))destination=destination.split(",")[0];
+        TextView journey=text(origin+"  →  "+destination,12,INK,true);
+        journey.setMaxLines(2);
+        journey.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        trip.addView(journey,new LinearLayout.LayoutParams(0,-2,1));
+        int price=booking.optInt("price",0);
+        if(price>0){
+            TextView amount=text(String.format(new java.util.Locale("es","UY"),"$ %,d",price)+" UYU",
+                14,TEAL_DARK,true);
+            LinearLayout.LayoutParams amountParams=new LinearLayout.LayoutParams(-2,-2);
+            amountParams.leftMargin=dp(7);
+            trip.addView(amount,amountParams);
+        }
+        sheet.addView(trip);
+        spacer(sheet,9);
+        addLine(sheet,"Falta tu confirmación definitiva para asegurar el viaje.",
+            11,MUTED,false,10);
+        LinearLayout actions=row();
+        Button show=button("Ver reserva",true,v->{
+            dialog.dismiss();tab="viajes";dashboard();details(booking);
+        });
+        show.setMinHeight(0);
+        actions.addView(show,new LinearLayout.LayoutParams(0,dp(43),1));
+        Button confirm=button("Ir a confirmar",false,v->{
+            dialog.dismiss();tab="viajes";dashboard();
+            // Abre la confirmación con pregunta explícita; jamás cambia el estado automáticamente.
+            confirmStatus(booking,"confirmed","Confirmar servicio");
+        });
+        confirm.setMinHeight(0);
+        LinearLayout.LayoutParams confirmParams=new LinearLayout.LayoutParams(0,dp(43),1);
+        confirmParams.leftMargin=dp(7);
+        actions.addView(confirm,confirmParams);
+        sheet.addView(actions,new LinearLayout.LayoutParams(-1,dp(43)));
+
+        acceptanceDialog=dialog;
+        acceptanceDialogId=booking.optString("id","");
+        dialog.setOnDismissListener(ignored->{acceptanceDialog=null;acceptanceDialogId="";});
+        dialog.setContentView(outer);
+        dialog.show();
+        Window window=dialog.getWindow();
+        if(window!=null){
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params=window.getAttributes();
+            params.width=WindowManager.LayoutParams.MATCH_PARENT;
+            params.height=WindowManager.LayoutParams.WRAP_CONTENT;
+            params.gravity=Gravity.BOTTOM;
+            params.dimAmount=.18f;
+            window.setAttributes(params);
+        }
     }
 
     private LinearLayout statTile(String value, String label, boolean featured) {
@@ -715,6 +842,20 @@ public final class MainActivity extends Activity {
         refresh.setBackground(ripple(SOFT,0,12));
         refresh.setContentDescription("Actualizar solicitudes");
         header.addView(refresh, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        int acceptedCount=count("accepted");
+        if (acceptedCount>0) {
+            TextView badge=text(acceptedCount+" aceptada"+(acceptedCount==1?"":"s"),10,TEAL_DARK,true);
+            badge.setGravity(Gravity.CENTER);
+            badge.setPadding(dp(8),dp(5),dp(8),dp(5));
+            badge.setBackground(bg(SOFT,10,Color.rgb(187,225,205)));
+            badge.setContentDescription(acceptedCount+" presupuestos aceptados sin confirmar. Abrir Mis viajes.");
+            badge.setClickable(true);
+            badge.setFocusable(true);
+            badge.setOnClickListener(v->{tab="viajes";dashboard();});
+            LinearLayout.LayoutParams badgeParams=new LinearLayout.LayoutParams(-2,dp(34));
+            badgeParams.leftMargin=dp(7);
+            header.addView(badge,badgeParams);
+        }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
 
         ScrollView scroll = new ScrollView(this);
@@ -807,7 +948,7 @@ public final class MainActivity extends Activity {
             appendCard(body,empty,10);
         }
         spacer(body,4);
-        addLine(body,"Solicitudes actualizadas cada 30 s · Distancias calculadas por ruta.",
+        addLine(body,"Solicitudes actualizadas cada 20 s · Distancias calculadas por ruta.",
             11,MUTED,false,0);
     }
 
