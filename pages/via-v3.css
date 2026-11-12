@@ -640,3 +640,22 @@ body[data-page="booking"] .via-route-disclaimer{
 @media(prefers-reduced-motion:reduce){
  body.premium-page.in-booking .wizard-panel .wizard-next{transition:none!important}
 }
+
+/* Métodos de acceso consistentes: huella del dispositivo, PIN de Vía o correo. */
+body.premium-page.in-booking .via-login-methods{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+body.premium-page.in-booking .via-login-methods #return-send-code{grid-column:1/-1}
+body.premium-page.in-booking .via-login-methods #return-passkey[disabled]{
+ opacity:.57;cursor:not-allowed;background:#edf3ef;border-color:#dce7e0;
+ box-shadow:none
+}
+body.premium-page.in-booking .via-login-methods #return-passkey:not([disabled]){
+ background:#eaf7f2;border-color:#b7dfd1;color:#095b50
+}
+body.premium-page.in-booking .via-login-methods .via-method-note{
+ grid-column:1/-1;margin:0;padding:1px 3px 2px;
+ font-size:11px;line-height:1.48;color:#59786f
+}
+body.premium-page.in-booking .via-login-methods .return-secondary:focus-visible,
+body.premium-page.in-booking .via-login-methods .text-button:focus-visible{
+ outline:3px solid #5ab6a4;outline-offset:3px
+}
