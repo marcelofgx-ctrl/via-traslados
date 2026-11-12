@@ -11,7 +11,8 @@ function initPassenger(){
  const localDate=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
  date.min=localDate;date.value=localDate;
  let step=1,turnstileToken='',widgetId=null,grant='',selectedPhone='',verifiedEmail='',signupPayload=null;
- let registered=false,hasPin=false,needsPinReset=false,enrolled=false,tripLast='',routePending=0;
+ let registered=false,hasPin=false,hasEmail=true,hasWhatsApp=false,whatsappReady=false;
+ let verificationChannel='email',recoveryChannel='email',needsPinReset=false,enrolled=false,tripLast='',routePending=0;
  const current=S.customer,hasSession=()=>!!current()?.profile;
  const hidden=(id,yes)=>$(id)?.classList.toggle('hidden',yes);
  const profile=()=>current()?.profile;
@@ -113,7 +114,7 @@ function initPassenger(){
   hidden('pin-create-group',!needsPinReset);
   $('verification-heading').textContent=needsPinReset?'Recuperá tu PIN':'Confirmá tu traslado';
   $('verification-description').textContent=needsPinReset?
-   'Ya verificaste tu correo. Elegí un PIN nuevo y confirmá tu viaje.':
+   'Ya verificaste tu identidad. Elegí un PIN nuevo y confirmá tu viaje.':
    'Tu cuenta está verificada. Solo falta confirmar la solicitud.';
   $('verify-and-book').textContent=needsPinReset?'Guardar PIN y solicitar traslado →':'Confirmar solicitud →';
   hidden('resend-code',true);
@@ -145,19 +146,22 @@ function initPassenger(){
   hidden('phone-first',true);hidden('return-form',true);hidden('new-account',false);
   $('phone').value=selectedPhone;
   $('identity-heading').textContent='Te damos la bienvenida';
-  $('identity-description').textContent='Completá tu registro una sola vez y validá el correo.';
+  $('identity-description').textContent='Completá tu registro una sola vez y elegí cómo validar tu cuenta.';
   resetCaptcha();loadCaptcha();
  }
  function beginReturning(data){
-  registered=true;hasPin=!!data.hasPin;
+  registered=true;hasPin=!!data.hasPin;hasEmail=data.hasEmail!==false;hasWhatsApp=!!data.hasWhatsapp;
   hidden('phone-first',true);hidden('new-account',true);hidden('return-form',false);
   // Primero ofrecé los tres métodos. El PIN requiere configuración previa; la huella, una passkey registrada.
-  hidden('pin-login',true);hidden('return-otp',true);
+  hidden('pin-login',true);hidden('return-otp',true);hidden('return-recovery',true);
   $('recognized-email').textContent=data.maskedEmail?'Correo vinculado: '+data.maskedEmail:
    'Elegí cómo querés ingresar.';
   $('identity-heading').textContent='Ya conocemos tu cuenta';
-  $('identity-description').textContent='Elegí entre huella, PIN personal o código por correo. No repetís el registro.';
-  $('return-pin-option').textContent=hasPin?'Ingresar con PIN personal':'Crear mi PIN personal';
+  $('identity-description').textContent='Ingresá con PIN o con la seguridad de tu teléfono. Solo necesitás un código si recuperás el acceso.';
+  $('return-pin-option').textContent=hasPin?'Ingresar con PIN personal':'Configurar PIN por primera vez';
+  hidden('return-send-code',hasPin||!hasEmail);
+  hidden('recovery-email',!hasEmail);
+  hidden('recovery-whatsapp',!hasWhatsApp||!whatsappReady);
   const supported=Boolean(window.ViaPasskeys?.available());
   const passkeyReady=supported&&Boolean(data.hasPasskey);
   const keyButton=$('return-passkey');
@@ -165,10 +169,11 @@ function initPassenger(){
   keyButton.setAttribute('aria-disabled',passkeyReady?'false':'true');
   keyButton.textContent=passkeyReady?'Huella o PIN del teléfono':'Huella: activar después';
   $('passkey-availability').textContent=!supported?
-   (location.origin!=='https://viatraslados.com'?'La huella se activa únicamente en viatraslados.com.':'Este navegador no permite el acceso biométrico. Entrá con correo o PIN.'):
-   (!data.hasPasskey?'Para activar la huella, primero ingresá por correo; te ofreceremos vincular este dispositivo al confirmar el viaje.':
+   (location.origin!=='https://viatraslados.com'?'La huella se activa en el dominio seguro de Vía Traslados.':'Este navegador no permite huella. Usá PIN o recuperá tu acceso.'):
+   (!data.hasPasskey?'Para activar la huella, primero ingresá con tu PIN o recuperá el acceso y vinculá este dispositivo.':
     'Tu dispositivo ya tiene un acceso seguro registrado.');
-  hidden('forgot-pin',!hasPin);
+  hidden('forgot-pin',false);
+  $('forgot-pin').textContent=hasPin?'Olvidé mi PIN':'Recuperar acceso';
   hidden('turnstile-box',true);feedback('');
  }
  $('start-booking').addEventListener('click',()=>{
@@ -214,7 +219,7 @@ function initPassenger(){
    $('return-pin').focus();
   }else{
    hidden('pin-login',true);
-   emailForReturning(true); // Registro seguro del PIN luego de verificar el correo.
+   showRecovery(); // El PIN solo se configura tras verificar un canal previamente asociado.
   }
  });
  $('return-pin-submit')?.addEventListener('click',async()=>{
