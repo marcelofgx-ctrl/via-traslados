@@ -451,7 +451,7 @@ async function initMine(){
   if(row)row.style.gridTemplateColumns='1fr';
  }
  if(!container)return;
- let captchaToken='',turnstileLoaded=false;
+ let captchaToken='',turnstileLoaded=false,captchaWidget=null,selectedPhone='',phoneGrant='',waAvailable=false,verifiedWa=false,recoveryChannel='email',recoveryAuthenticated=false;
  const note=message=>{const el=$('mine-login-feedback');if(el)el.textContent=message||''};
  async function draw(){
   const person=S.customer()?.profile;
@@ -467,16 +467,13 @@ async function initMine(){
     container.innerHTML='<div class="empty"><h3>Todavía no tenés reservas</h3><p>Cuando solicites un traslado, aparecerá aquí. Podrás consultarlo desde tus dispositivos una vez que ingreses a tu cuenta.</p><a href="./index.html">Solicitar un traslado →</a></div>';
     return;
    }
-   container.innerHTML=rows.map(b=>'<a class="mine-item" href="./reserva.html?id='+encodeURIComponent(b.id)+'"><div><strong>'+esc(b.origin)+' → '+esc(b.destination)+'</strong><p>'+esc(fmtDate(b.date))+' · '+esc(b.time)+' · '+esc(labels[b.status]||b.status)+'</p></div><span aria-hidden="true">→</span></a>').join('');
-  }catch(e){container.textContent='No pudimos consultar tus viajes. Revisá tu conexión e intentá entrar nuevamente.'}
- }
- function turnstile(){
+   container.innerHTML=rows.map(b=>'<a class="mine-item" href="./reserva.html?id='+encodeURIComponent(b.id)+'"><div><strong>'+esc(b.origin)+' → '+esc(b.destination)+'</strong><p>'+esc(fmtDate(b.date))+' · '+esc(b.time)+' · '+esc(labels[b.status]||b.status)+'</p></div><span aria-hidden="true">→</span>< function turnstile(){
   if(S.isDemo()||S.customer()||turnstileLoaded||!window.VIA_CONFIG?.turnstileSiteKey)return;
   turnstileLoaded=true;
   const box=$('mine-turnstile');box?.classList.remove('hidden');
   const show=()=>{
    if(!window.turnstile||!box)return;
-   window.turnstile.render('#mine-turnstile',{sitekey:window.VIA_CONFIG.turnstileSiteKey,
+   captchaWidget=window.turnstile.render('#mine-turnstile',{sitekey:window.VIA_CONFIG.turnstileSiteKey,
     action:'otp',callback:value=>{captchaToken=value},'expired-callback':()=>{captchaToken=''}});
   };
   if(window.turnstile){show();return}
@@ -484,31 +481,90 @@ async function initMine(){
   js.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
   js.async=true;js.defer=true;js.onload=show;document.head.appendChild(js);
  }
- $('mine-login-passkey')?.addEventListener('click',async()=>{
-  const button=$('mine-login-passkey');button.disabled=true;note('Abriendo la identificación del teléfono…');
+ const resetCaptcha=()=>{
+  captchaToken='';
+  try{if(window.turnstile&&captchaWidget!==null)window.turnstile.reset(captchaWidget)}catch{}
+ };
+ window.ViaVerification?.availability().then(v=>{waAvailable=v.whatsapp===true;
+  if(verifiedWa)$('mine-login-whatsapp')?.classList.toggle('hidden',!waAvailable);
+ }).catch(()=>{});
+ $('mine-identify')?.addEventListener('click',async()=>{
+  const phone=$('mine-login-phone').value.trim();
+  if(phone.replace(/\D/g,'').length<8){note('Ingresá tu celular.');return}
+  if(!S.isDemo()&&!captchaToken){note('Completá la comprobación de seguridad.');return}
+  const button=$('mine-identify');button.disabled=true;note('Buscando tu cuenta…');
   try{
-   await window.ViaPasskeys.signIn($('mine-login-phone').value);
-   note('');await draw();
-  }catch(e){note(e.message||'No pudimos identificarte con huella. Podés recibir el código por correo.')}
+   const info=await S.identifyPhone(phone,captchaToken);
+   if(!info.registered){note('Este celular aún no está registrado. Solicitá tu primer traslado para crear la cuenta.');return}
+   selectedPhone=phone;phoneGrant=info.grant;verifiedWa=!!info.hasWhatsapp;
+   $('mine-login-options').classList.remove('hidden');
+   $('mine-pin-group').classList.toggle('hidden',!info.hasPin);
+   $('mine-login-pin-submit').classList.toggle('hidden',!info.hasPin);
+   $('mine-login-send').classList.toggle('hidden',info.hasEmail===false);
+   $('mine-login-whatsapp').classList.toggle('hidden',!verifiedWa||!waAvailable);
+   $('mine-recovery-title').textContent=info.hasPin?'¿Olvidaste tu PIN? Recuperalo por un medio ya verificado:':
+    'Para crear tu PIN, primero verificá uno de tus medios registrados:';
+   $('mine-login-passkey').disabled=!info.hasPasskey||!window.ViaPasskeys?.available();
+   note('Tu cuenta está registrada. Elegí PIN, huella o recuperación.');
+   resetCaptcha();
+  }catch(e){note(e.message||'No pudimos identificar tu celular.');resetCaptcha()}
   finally{button.disabled=false}
  });
- $('mine-login-send')?.addEventListener('click',async()=>{
-  if(!S.isDemo()&&!captchaToken){note('Completá la comprobación de seguridad para enviar el correo.');return}
-  const button=$('mine-login-send');button.disabled=true;note('Verificando tu celular…');
+ $('mine-login-passkey')?.addEventListener('click',async()=>{
+  const button=$('mine-login-passkey');button.disabled=true;note('Abriendo la seguridad del teléfono…');
+  try{await window.ViaPasskeys.signIn(selectedPhone||$('mine-login-phone').value);note('');await draw()}
+  catch(e){note(e.message||'No pudimos usar la huella. Podés utilizar tu PIN.')}
+  finally{button.disabled=false}
+ });
+ $('mine-login-pin-submit')?.addEventListener('click',async()=>{
+  const button=$('mine-login-pin-submit');button.disabled=true;
   try{
-   const result=await S.startPhoneLogin($('mine-login-phone').value,captchaToken);
-   if(!result.sent){note(result.message||'Si es tu primera visita, solicitá un traslado y verificá tu correo.');return}
+   await S.pinLogin(selectedPhone,$('mine-login-pin').value,phoneGrant);
+   note('');await draw();
+  }catch(e){note(e.message||'PIN incorrecto. Podés recuperarlo.')}
+  finally{button.disabled=false}
+ });
+ async function startRecovery(method){
+  recoveryChannel=method;recoveryAuthenticated=false;
+  if(method==='whatsapp'&&!S.isDemo()&&!captchaToken){
+   note('Para recuperar por WhatsApp, completá otra vez la comprobación de seguridad.');return;
+  }
+  const button=$(method==='whatsapp'?'mine-login-whatsapp':'mine-login-send');
+  button.disabled=true;note('Preparando código…');
+  try{
+   const res=method==='whatsapp'?
+    await window.ViaVerification.start(selectedPhone,'recovery',captchaToken):
+    await S.startPhoneLogin(selectedPhone,captchaToken,phoneGrant);
+   if(method==='email'&&!res.sent)throw Error('No se pudo enviar el correo de recuperación.');
+   $('mine-code-label').textContent='CÓDIGO DE '+(method==='whatsapp'?'WHATSAPP':'CORREO');
    $('mine-login-verify').classList.remove('hidden');
    if(S.isDemo())$('mine-login-code').value='123456';
-   note(S.isDemo()?'DEMO: usá el código 123456. No se envió ningún correo.':'Código enviado a '+(result.maskedEmail||'tu correo asociado')+'.');
-   captchaToken='';
-  }catch(e){note(e.message||'No pudimos enviar el código.')}
+   note(S.isDemo()?'DEMO: usá 123456.':
+    (method==='whatsapp'?'Código preparado para WhatsApp. Si no llega, recuperá por correo.':
+     'Te enviamos un código al correo verificado.'));
+   resetCaptcha();
+  }catch(e){note(e.message||'No pudimos preparar la recuperación.')}
+  finally{button.disabled=false}
+ }
+ $('mine-login-send')?.addEventListener('click',()=>startRecovery('email'));
+ $('mine-login-whatsapp')?.addEventListener('click',()=>startRecovery('whatsapp'));
+ $('mine-login-confirm')?.addEventListener('click',async()=>{
+  const button=$('mine-login-confirm');button.disabled=true;note('Verificando identidad…');
+  try{
+   if(!recoveryAuthenticated){
+    const code=$('mine-login-code').value.trim();
+    if(!/^\d{6}$/.test(code))throw Error('Ingresá el código de seis cifras.');
+    if(recoveryChannel==='whatsapp')await window.ViaVerification.verify(selectedPhone,code,'recovery');
+    else await S.finishPhoneLogin(selectedPhone,code);
+    recoveryAuthenticated=true;
+   }
+   await S.setPin($('mine-new-pin').value.trim());
+   recoveryAuthenticated=false;note('');await draw();
+  }catch(e){note(e.message||'Código incorrecto o PIN inválido.')}
   finally{button.disabled=false}
  });
- $('mine-login-confirm')?.addEventListener('click',async()=>{
-  const button=$('mine-login-confirm');button.disabled=true;note('Verificando…');
-  try{
-   await S.finishPhoneLogin($('mine-login-phone').value,$('mine-login-code').value.trim());
+
+alue.trim());
    note('');await draw();
   }catch(e){note(e.message||'Código inválido o vencido.')}
   finally{button.disabled=false}
