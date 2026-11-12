@@ -2,7 +2,8 @@ import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,emailOtpAvailabl
 import {staffRoutes,identity,webEnabled} from './staff.js';
 import {staffPhoneRoutes} from './staff-phone.js';
 import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js';
-import {customerSession,customerRoutes} from './customer-auth.js';
+import {customerSession,customerRoutes,accountByPhone,createCustomerSession} from './customer-auth.js';
+import {customerWhatsAppRoutes} from './customer-whatsapp.js';
 import {customerPasskeyRoutes} from './customer-passkeys.js';
 import {allowedOriginsFor} from './origins.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
@@ -99,6 +100,8 @@ export default {async fetch(req,env,ctx){
   if((path.startsWith('/api/auth/')||path.startsWith('/api/customer/')||path==='/api/requests'||path.startsWith('/api/requests/'))&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio. Volvé a intentar más tarde.',503);
   if(path==='/api/auth/start'&&req.method==='POST'){const r=await beginOtp(req,env);return send(r.data,r.status)}
   if(path==='/api/auth/verify'&&req.method==='POST'){const r=await checkOtp(req,env);return send(r.data,r.status)}
+  const waHandled=await customerWhatsAppRoutes(req,env,path,send,accountByPhone,createCustomerSession);
+  if(waHandled)return waHandled;
   // Las peticiones WebAuthn deben despacharse ANTES del parser general de clientes.
   const passkeyHandled=await customerPasskeyRoutes(req,env,path,send);if(passkeyHandled)return passkeyHandled;
   const customerHandled=await customerRoutes(req,env,path,send);if(customerHandled)return customerHandled;

@@ -11,7 +11,8 @@ function initPassenger(){
  const localDate=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
  date.min=localDate;date.value=localDate;
  let step=1,turnstileToken='',widgetId=null,grant='',selectedPhone='',verifiedEmail='',signupPayload=null;
- let registered=false,hasPin=false,needsPinReset=false,enrolled=false,tripLast='',routePending=0;
+ let registered=false,hasPin=false,hasEmail=true,hasWhatsApp=false,whatsappReady=false;
+ let verificationChannel='email',recoveryChannel='email',needsPinReset=false,enrolled=false,tripLast='',routePending=0;
  const current=S.customer,hasSession=()=>!!current()?.profile;
  const hidden=(id,yes)=>$(id)?.classList.toggle('hidden',yes);
  const profile=()=>current()?.profile;
@@ -113,7 +114,7 @@ function initPassenger(){
   hidden('pin-create-group',!needsPinReset);
   $('verification-heading').textContent=needsPinReset?'Recuperá tu PIN':'Confirmá tu traslado';
   $('verification-description').textContent=needsPinReset?
-   'Ya verificaste tu correo. Elegí un PIN nuevo y confirmá tu viaje.':
+   'Ya verificaste tu identidad. Elegí un PIN nuevo y confirmá tu viaje.':
    'Tu cuenta está verificada. Solo falta confirmar la solicitud.';
   $('verify-and-book').textContent=needsPinReset?'Guardar PIN y solicitar traslado →':'Confirmar solicitud →';
   hidden('resend-code',true);
@@ -145,19 +146,22 @@ function initPassenger(){
   hidden('phone-first',true);hidden('return-form',true);hidden('new-account',false);
   $('phone').value=selectedPhone;
   $('identity-heading').textContent='Te damos la bienvenida';
-  $('identity-description').textContent='Completá tu registro una sola vez y validá el correo.';
+  $('identity-description').textContent='Completá tu registro una sola vez y elegí cómo validar tu cuenta.';
   resetCaptcha();loadCaptcha();
  }
  function beginReturning(data){
-  registered=true;hasPin=!!data.hasPin;
+  registered=true;hasPin=!!data.hasPin;hasEmail=data.hasEmail!==false;hasWhatsApp=!!data.hasWhatsapp;
   hidden('phone-first',true);hidden('new-account',true);hidden('return-form',false);
   // Primero ofrecé los tres métodos. El PIN requiere configuración previa; la huella, una passkey registrada.
-  hidden('pin-login',true);hidden('return-otp',true);
+  hidden('pin-login',true);hidden('return-otp',true);hidden('return-recovery',true);
   $('recognized-email').textContent=data.maskedEmail?'Correo vinculado: '+data.maskedEmail:
    'Elegí cómo querés ingresar.';
   $('identity-heading').textContent='Ya conocemos tu cuenta';
-  $('identity-description').textContent='Elegí entre huella, PIN personal o código por correo. No repetís el registro.';
-  $('return-pin-option').textContent=hasPin?'Ingresar con PIN personal':'Crear mi PIN personal';
+  $('identity-description').textContent='Ingresá con PIN o con la seguridad de tu teléfono. Solo necesitás un código si recuperás el acceso.';
+  $('return-pin-option').textContent=hasPin?'Ingresar con PIN personal':'Configurar PIN por primera vez';
+  hidden('return-send-code',hasPin||!hasEmail);
+  hidden('recovery-email',!hasEmail);
+  hidden('recovery-whatsapp',!hasWhatsApp||!whatsappReady);
   const supported=Boolean(window.ViaPasskeys?.available());
   const passkeyReady=supported&&Boolean(data.hasPasskey);
   const keyButton=$('return-passkey');
@@ -165,10 +169,11 @@ function initPassenger(){
   keyButton.setAttribute('aria-disabled',passkeyReady?'false':'true');
   keyButton.textContent=passkeyReady?'Huella o PIN del teléfono':'Huella: activar después';
   $('passkey-availability').textContent=!supported?
-   (location.origin!=='https://viatraslados.com'?'La huella se activa únicamente en viatraslados.com.':'Este navegador no permite el acceso biométrico. Entrá con correo o PIN.'):
-   (!data.hasPasskey?'Para activar la huella, primero ingresá por correo; te ofreceremos vincular este dispositivo al confirmar el viaje.':
+   (location.origin!=='https://viatraslados.com'?'La huella se activa en el dominio seguro de Vía Traslados.':'Este navegador no permite huella. Usá PIN o recuperá tu acceso.'):
+   (!data.hasPasskey?'Para activar la huella, primero ingresá con tu PIN o recuperá el acceso y vinculá este dispositivo.':
     'Tu dispositivo ya tiene un acceso seguro registrado.');
-  hidden('forgot-pin',!hasPin);
+  hidden('forgot-pin',false);
+  $('forgot-pin').textContent=hasPin?'Olvidé mi PIN':'Recuperar acceso';
   hidden('turnstile-box',true);feedback('');
  }
  $('start-booking').addEventListener('click',()=>{
@@ -214,7 +219,7 @@ function initPassenger(){
    $('return-pin').focus();
   }else{
    hidden('pin-login',true);
-   emailForReturning(true); // Registro seguro del PIN luego de verificar el correo.
+   showRecovery(); // El PIN solo se configura tras verificar un canal previamente asociado.
   }
  });
  $('return-pin-submit')?.addEventListener('click',async()=>{
@@ -238,51 +243,101 @@ function initPassenger(){
   }
   finally{onBusy('return-passkey',false)}
  });
- async function emailForReturning(reset){
-  needsPinReset=!!reset;
-  onBusy('return-send-code',true,'Enviando código…');
+ function showRecovery(){
+  needsPinReset=true;
+  hidden('return-otp',true);hidden('return-recovery',false);
+  hidden('pin-login',true);
+  hidden('recovery-email',!hasEmail);
+  hidden('recovery-whatsapp',!hasWhatsApp||!whatsappReady);
+  hidden('turnstile-box',!hasWhatsApp);
+  if(hasWhatsApp)loadCaptcha();
+  if(!hasEmail&&!hasWhatsApp)feedback('No hay un canal de recuperación verificado. Comunicate con Vía Traslados.',true);
+ }
+ async function recoveryStart(channel,reset=true){
+  needsPinReset=!!reset;recoveryChannel=channel;
+  onBusy(channel==='whatsapp'?'recovery-whatsapp':'recovery-email',true,'Preparando código…');
   try{
-   const res=await S.startPhoneLogin(selectedPhone,turnstileToken,grant);
-   if(!res.sent){feedback('No encontramos una cuenta asociada. Podés registrarte con tu correo.',true);return}
+   const res=channel==='whatsapp'?
+    await window.ViaVerification.start(selectedPhone,'recovery',turnstileToken):
+    await S.startPhoneLogin(selectedPhone,turnstileToken,grant);
+   if(channel==='email'&&!res.sent){feedback('No hay un correo vinculado para recuperar esta cuenta.',true);return}
    $('return-otp-info').textContent=S.isDemo()?'DEMO: utilizá 123456.':
+    channel==='whatsapp'?'Te enviaremos el código por WhatsApp. Podés volver y elegir correo si no llega.':
     'Código enviado a '+(res.maskedEmail||'tu correo registrado')+'.';
-   hidden('return-otp',false);
+   hidden('return-otp',false);hidden('return-recovery',true);
+   $('return-code-label').textContent='CÓDIGO DE '+(channel==='whatsapp'?'WHATSAPP':'CORREO');
    if(S.isDemo())$('return-code').value='123456';
    feedback('');resetCaptcha();
   }catch(ex){feedback(ex.message||'No pudimos enviar el código.',true)}
-  finally{onBusy('return-send-code',false)}
+  finally{onBusy(channel==='whatsapp'?'recovery-whatsapp':'recovery-email',false)}
  }
- $('return-send-code')?.addEventListener('click',()=>emailForReturning(false));
- $('forgot-pin')?.addEventListener('click',()=>emailForReturning(true));
+ $('return-send-code')?.addEventListener('click',()=>recoveryStart('email',true));
+ $('forgot-pin')?.addEventListener('click',showRecovery);
+ $('recovery-email')?.addEventListener('click',()=>recoveryStart('email',true));
+ $('recovery-whatsapp')?.addEventListener('click',()=>recoveryStart('whatsapp',true));
  $('return-verify')?.addEventListener('click',async()=>{
   const code=$('return-code').value.trim();
-  if(!/^\d{6}$/.test(code))return feedback('Ingresá las seis cifras del correo.',true);
+  if(!/^\d{6}$/.test(code))return feedback('Ingresá las seis cifras recibidas.',true);
   onBusy('return-verify',true,'Validando código…');
-  try{await S.finishPhoneLogin(selectedPhone,code);remembered();openConfirmation(needsPinReset)}
-  catch(ex){feedback(ex.message||'El código es incorrecto o venció.',true)}
+  try{
+   if(recoveryChannel==='whatsapp')await window.ViaVerification.verify(selectedPhone,code,'recovery');
+   else await S.finishPhoneLogin(selectedPhone,code);
+   remembered();openConfirmation(needsPinReset);
+  }catch(ex){feedback(ex.message||'El código es incorrecto o venció.',true)}
   finally{onBusy('return-verify',false)}
  });
+ function setVerificationChannel(channel){
+  verificationChannel=channel==='whatsapp'&&whatsappReady?'whatsapp':'email';
+  hidden('signup-email-group',verificationChannel==='whatsapp');
+  $('send-code').textContent=verificationChannel==='whatsapp'?'Validar celular por WhatsApp →':'Validar por correo →';
+  $('signup-channel-message').textContent=verificationChannel==='whatsapp'?
+   'Verificaremos tu número una sola vez. Después entrarás con PIN o huella.':
+   'Te enviaremos un código a tu correo. Después entrarás con PIN o huella.';
+ }
+ document.querySelectorAll('input[name="registration-channel"]').forEach(input=>
+  input.addEventListener('change',()=>setVerificationChannel(input.value)));
+ window.ViaVerification?.availability().then(info=>{
+  whatsappReady=info.whatsapp===true;
+  const option=$('signup-whatsapp-option');
+  if(option)option.classList.toggle('hidden',!whatsappReady);
+  if(!whatsappReady){
+   $('signup-wa-unavailable').textContent='WhatsApp estará disponible cuando el celular verificador esté conectado.';
+  }else $('signup-wa-unavailable').textContent='';
+  if(registered)hidden('recovery-whatsapp',!hasWhatsApp||!whatsappReady);
+ }).catch(()=>{});
+
  $('send-code').addEventListener('click',async()=>{
   const p=trip(),email=p.email;
-  if(p.name.length<2||!email||email.length>200||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-   return error('Completá nombre y correo electrónico válido.');
+  if(p.name.length<2)return error('Completá tu nombre y apellido.');
+  if(verificationChannel==='email'&&(!email||email.length>200||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))
+   return error('Completá un correo electrónico válido.');
   if(!$('privacy-consent').checked)return error('Necesitamos tu consentimiento para gestionar la solicitud.');
   if(!S.isDemo()&&!turnstileToken)return error('Completá la verificación de seguridad.');
-  onBusy('send-code',true,'Enviando verificación…');
+  onBusy('send-code',true,'Preparando código…');
   try{
-   const result=await S.startVerification(email,turnstileToken);
-   verifiedEmail=result.email;signupPayload={...p,email:result.email};enrolled=false;
-   $('verification-heading').textContent='Validá tu correo';
-   $('verification-description').textContent='Enviamos un código a '+result.maskedEmail+'.';
-   $('otp-guidance').textContent=S.isDemo()?'DEMO: ingresá 123456.':'El código vence en diez minutos y es personal.';
+   signupPayload={...p};enrolled=false;
+   if(verificationChannel==='whatsapp'){
+    if(!whatsappReady)throw Error('WhatsApp no está disponible. Elegí correo.');
+    await window.ViaVerification.start(selectedPhone,'registration',turnstileToken);
+    $('verification-heading').textContent='Validá tu celular';
+    $('verification-description').textContent='Solicitamos el código para tu WhatsApp '+selectedPhone+'.';
+   }else{
+    const result=await S.startVerification(email,turnstileToken);
+    verifiedEmail=result.email;signupPayload.email=result.email;
+    $('verification-heading').textContent='Validá tu correo';
+    $('verification-description').textContent='Enviamos un código a '+result.maskedEmail+'.';
+   }
+   $('otp-guidance').textContent=S.isDemo()?'DEMO: ingresá 123456.':
+    'El código vence en diez minutos y solo sirve una vez.';
    if(S.isDemo())$('otp-code').value='123456';
    hidden('verification-group',false);hidden('pin-create-group',false);
    hidden('booking-confirm',true);hidden('resend-code',false);
    $('verify-and-book').textContent='Crear cuenta y solicitar traslado →';
    resetCaptcha();changeStep(3);
-  }catch(ex){error(ex.message||'No se pudo enviar el correo');resetCaptcha()}
+  }catch(ex){error(ex.message||'No pudimos preparar el código');resetCaptcha()}
   finally{onBusy('send-code',false)}
  });
+
  $('resend-code')?.addEventListener('click',()=>{changeStep(2);resetCaptcha();loadCaptcha()});
  form.addEventListener('submit',async event=>{
   event.preventDefault();if(step!==3)return;
@@ -292,10 +347,13 @@ function initPassenger(){
   try{
    if(!hasSession()&&!enrolled){
     const code=$('otp-code').value.trim(),pin=$('new-pin').value.trim();
-    if(!/^\d{6}$/.test(code))throw Error('Ingresá las seis cifras del correo.');
+    if(!/^\d{6}$/.test(code))throw Error('Ingresá las seis cifras recibidas.');
     if(!/^\d{6}$/.test(pin))throw Error('Elegí un PIN de seis cifras para tu cuenta.');
     if(!signupPayload)throw Error('Revisá tu registro y pedí un código nuevo.');
-    await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});
+    if(verificationChannel==='whatsapp'){
+     const session=await window.ViaVerification.verify(selectedPhone,code,'registration',{name:signupPayload.name});
+     $('email').value=session.profile.email; // identidad interna, correo no verificado
+    }else await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});
     enrolled=true;
    }
    if(!hasSession())throw Error('Necesitamos verificar tu identidad antes de reservar.');
@@ -393,7 +451,7 @@ async function initMine(){
   if(row)row.style.gridTemplateColumns='1fr';
  }
  if(!container)return;
- let captchaToken='',turnstileLoaded=false;
+ let captchaToken='',turnstileLoaded=false,captchaWidget=null,selectedPhone='',phoneGrant='',waAvailable=false,verifiedWa=false,recoveryChannel='email',recoveryAuthenticated=false;
  const note=message=>{const el=$('mine-login-feedback');if(el)el.textContent=message||''};
  async function draw(){
   const person=S.customer()?.profile;
@@ -418,7 +476,7 @@ async function initMine(){
   const box=$('mine-turnstile');box?.classList.remove('hidden');
   const show=()=>{
    if(!window.turnstile||!box)return;
-   window.turnstile.render('#mine-turnstile',{sitekey:window.VIA_CONFIG.turnstileSiteKey,
+   captchaWidget=window.turnstile.render('#mine-turnstile',{sitekey:window.VIA_CONFIG.turnstileSiteKey,
     action:'otp',callback:value=>{captchaToken=value},'expired-callback':()=>{captchaToken=''}});
   };
   if(window.turnstile){show();return}
@@ -426,33 +484,86 @@ async function initMine(){
   js.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
   js.async=true;js.defer=true;js.onload=show;document.head.appendChild(js);
  }
- $('mine-login-passkey')?.addEventListener('click',async()=>{
-  const button=$('mine-login-passkey');button.disabled=true;note('Abriendo la identificación del teléfono…');
+ const resetCaptcha=()=>{
+  captchaToken='';
+  try{if(window.turnstile&&captchaWidget!==null)window.turnstile.reset(captchaWidget)}catch{}
+ };
+ window.ViaVerification?.availability().then(v=>{waAvailable=v.whatsapp===true;
+  if(verifiedWa)$('mine-login-whatsapp')?.classList.toggle('hidden',!waAvailable);
+ }).catch(()=>{});
+ $('mine-identify')?.addEventListener('click',async()=>{
+  const phone=$('mine-login-phone').value.trim();
+  if(phone.replace(/\D/g,'').length<8){note('Ingresá tu celular.');return}
+  if(!S.isDemo()&&!captchaToken){note('Completá la comprobación de seguridad.');return}
+  const button=$('mine-identify');button.disabled=true;note('Buscando tu cuenta…');
   try{
-   await window.ViaPasskeys.signIn($('mine-login-phone').value);
-   note('');await draw();
-  }catch(e){note(e.message||'No pudimos identificarte con huella. Podés recibir el código por correo.')}
+   const info=await S.identifyPhone(phone,captchaToken);
+   if(!info.registered){note('Este celular aún no está registrado. Solicitá tu primer traslado para crear la cuenta.');return}
+   selectedPhone=phone;phoneGrant=info.grant;verifiedWa=!!info.hasWhatsapp;
+   $('mine-login-options').classList.remove('hidden');
+   $('mine-pin-group').classList.toggle('hidden',!info.hasPin);
+   $('mine-login-pin-submit').classList.toggle('hidden',!info.hasPin);
+   $('mine-login-send').classList.toggle('hidden',info.hasEmail===false);
+   $('mine-login-whatsapp').classList.toggle('hidden',!verifiedWa||!waAvailable);
+   $('mine-recovery-title').textContent=info.hasPin?'¿Olvidaste tu PIN? Recuperalo por un medio ya verificado:':
+    'Para crear tu PIN, primero verificá uno de tus medios registrados:';
+   $('mine-login-passkey').disabled=!info.hasPasskey||!window.ViaPasskeys?.available();
+   note('Tu cuenta está registrada. Elegí PIN, huella o recuperación.');
+   resetCaptcha();
+  }catch(e){note(e.message||'No pudimos identificar tu celular.');resetCaptcha()}
   finally{button.disabled=false}
  });
- $('mine-login-send')?.addEventListener('click',async()=>{
-  if(!S.isDemo()&&!captchaToken){note('Completá la comprobación de seguridad para enviar el correo.');return}
-  const button=$('mine-login-send');button.disabled=true;note('Verificando tu celular…');
+ $('mine-login-passkey')?.addEventListener('click',async()=>{
+  const button=$('mine-login-passkey');button.disabled=true;note('Abriendo la seguridad del teléfono…');
+  try{await window.ViaPasskeys.signIn(selectedPhone||$('mine-login-phone').value);note('');await draw()}
+  catch(e){note(e.message||'No pudimos usar la huella. Podés utilizar tu PIN.')}
+  finally{button.disabled=false}
+ });
+ $('mine-login-pin-submit')?.addEventListener('click',async()=>{
+  const button=$('mine-login-pin-submit');button.disabled=true;
   try{
-   const result=await S.startPhoneLogin($('mine-login-phone').value,captchaToken);
-   if(!result.sent){note(result.message||'Si es tu primera visita, solicitá un traslado y verificá tu correo.');return}
+   await S.pinLogin(selectedPhone,$('mine-login-pin').value,phoneGrant);
+   note('');await draw();
+  }catch(e){note(e.message||'PIN incorrecto. Podés recuperarlo.')}
+  finally{button.disabled=false}
+ });
+ async function startRecovery(method){
+  recoveryChannel=method;recoveryAuthenticated=false;
+  if(method==='whatsapp'&&!S.isDemo()&&!captchaToken){
+   note('Para recuperar por WhatsApp, completá otra vez la comprobación de seguridad.');return;
+  }
+  const button=$(method==='whatsapp'?'mine-login-whatsapp':'mine-login-send');
+  button.disabled=true;note('Preparando código…');
+  try{
+   const res=method==='whatsapp'?
+    await window.ViaVerification.start(selectedPhone,'recovery',captchaToken):
+    await S.startPhoneLogin(selectedPhone,captchaToken,phoneGrant);
+   if(method==='email'&&!res.sent)throw Error('No se pudo enviar el correo de recuperación.');
+   $('mine-code-label').textContent='CÓDIGO DE '+(method==='whatsapp'?'WHATSAPP':'CORREO');
    $('mine-login-verify').classList.remove('hidden');
    if(S.isDemo())$('mine-login-code').value='123456';
-   note(S.isDemo()?'DEMO: usá el código 123456. No se envió ningún correo.':'Código enviado a '+(result.maskedEmail||'tu correo asociado')+'.');
-   captchaToken='';
-  }catch(e){note(e.message||'No pudimos enviar el código.')}
+   note(S.isDemo()?'DEMO: usá 123456.':
+    (method==='whatsapp'?'Código preparado para WhatsApp. Si no llega, recuperá por correo.':
+     'Te enviamos un código al correo verificado.'));
+   resetCaptcha();
+  }catch(e){note(e.message||'No pudimos preparar la recuperación.')}
   finally{button.disabled=false}
- });
+ }
+ $('mine-login-send')?.addEventListener('click',()=>startRecovery('email'));
+ $('mine-login-whatsapp')?.addEventListener('click',()=>startRecovery('whatsapp'));
  $('mine-login-confirm')?.addEventListener('click',async()=>{
-  const button=$('mine-login-confirm');button.disabled=true;note('Verificando…');
+  const button=$('mine-login-confirm');button.disabled=true;note('Verificando identidad…');
   try{
-   await S.finishPhoneLogin($('mine-login-phone').value,$('mine-login-code').value.trim());
-   note('');await draw();
-  }catch(e){note(e.message||'Código inválido o vencido.')}
+   if(!recoveryAuthenticated){
+    const code=$('mine-login-code').value.trim();
+    if(!/^\d{6}$/.test(code))throw Error('Ingresá el código de seis cifras.');
+    if(recoveryChannel==='whatsapp')await window.ViaVerification.verify(selectedPhone,code,'recovery');
+    else await S.finishPhoneLogin(selectedPhone,code);
+    recoveryAuthenticated=true;
+   }
+   await S.setPin($('mine-new-pin').value.trim());
+   recoveryAuthenticated=false;note('');await draw();
+  }catch(e){note(e.message||'Código incorrecto o PIN inválido.')}
   finally{button.disabled=false}
  });
  $('mine-logout')?.addEventListener('click',async()=>{

@@ -1,6 +1,7 @@
 // Vía Traslados: identidad de pasajeros, sin contraseña ni SMS de pago.
 // Nunca autenticar por conocer solamente el teléfono: correo OTP o passkey válida.
 import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,maskEmail,challenge} from './auth.js';
+import {consumeWhatsAppProof} from './customer-whatsapp.js';
 
 const encoder=new TextEncoder();
 const sha=async str=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(str)))).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -70,7 +71,9 @@ async function phoneStart(req,env,p){
  if(!await limited(env,'login-phone:'+phone,4,900)||!await limited(env,'login-ip:'+ip,12,900))return error('Demasiados intentos. Probá más tarde.',429);
  if(!await validPhoneGrant(env,phone,p.grant)&&!await challenge(req,env,p.turnstileToken))return error('Completá la comprobación de seguridad',403);
  const user=await accountByPhone(env,phone);
- if(!user)return ok({sent:false,recognized:false,message:'Si es tu primera visita, registrate con tu correo.'});
+ if(!user)return ok({sent:false,recognized:false,message:'Si es tu primera visita, registrate con correo o WhatsApp.'});
+ const channels=await env.DB.prepare('SELECT email_verified_at FROM customer_verified_channels WHERE email=?').bind(user.email).first();
+ if(channels&&!channels.email_verified_at)return error('Esta cuenta se verificó con WhatsApp. Usá PIN, huella o recuperá por WhatsApp.',403);
  const synthetic=new Request(req.url,{method:'POST',headers:req.headers,body:JSON.stringify({email:user.email,turnstileToken:p.turnstileToken})});
  const started=await beginOtp(synthetic,env,{captchaVerified:true});
  if(started.status!==200)return started;
@@ -125,7 +128,10 @@ async function identifyPhone(req,env,p){
  if(!user)return ok({registered:false,grant:await phoneGrant(env,phone)});
  const configured=await env.DB.prepare('SELECT email FROM customer_pins WHERE email=?').bind(user.email).first();
  const passkey=await env.DB.prepare('SELECT COUNT(*) AS n FROM customer_passkeys WHERE email=?').bind(user.email).first();
- return ok({registered:true,maskedEmail:maskEmail(user.email),hasPin:!!configured,
+ const channel=await env.DB.prepare('SELECT verified_phone,phone_verified_at,email_verified_at FROM customer_verified_channels WHERE email=?').bind(user.email).first();
+ const hasWhatsapp=Boolean(channel?.phone_verified_at&&channel.verified_phone===phone);
+ const hasEmail=channel?Boolean(channel.email_verified_at):true; // compatibilidad con cuentas anteriores
+ return ok({registered:true,maskedEmail:hasEmail?maskEmail(user.email):'',hasEmail,hasWhatsapp,hasPin:!!configured,
   hasPasskey:Number(passkey?.n||0)>0,grant:await phoneGrant(env,phone)});
 }
 const pinValid=p=>/^\d{6}$/.test(String(p||''))&&!/^(\d)\1{5}$/.test(p)&&
@@ -172,6 +178,22 @@ async function pinLogin(req,env,p){
 }
 
 async function enroll(req,env,p){
+ if(p.channel==='whatsapp'){
+  // Verificar SOLO la propiedad del celular; nunca asociar un correo sin verificar.
+  const name=clean(p.name,100);
+  let phone;try{phone=normalizePhone(p.phone)}catch{return error('Ingresá un celular válido')}
+  if(name.length<2)return error('Ingresá nombre y apellido');
+  if(await accountByPhone(env,phone))return error('Este celular ya tiene una cuenta. Usá PIN o huella.',409);
+  if(!await consumeWhatsAppProof(env,phone,'registration',p.verificationToken))
+   return error('Primero verificá el código enviado por WhatsApp',401);
+  // Identidad interna: evita que un tercero registre el correo de otra persona
+  // y después permita recuperar esa cuenta desde un buzón que no verificó.
+  const email='wa-'+crypto.randomUUID().replace(/-/g,'')+'@identidad.viatraslados.invalid';
+  await env.DB.prepare('INSERT INTO customers(email,name,phone) VALUES (?,?,?)').bind(email,name,phone).run();
+  await env.DB.prepare('INSERT INTO customer_verified_channels(email,verified_phone,phone_verified_at) VALUES (?,?,unixepoch())').bind(email,phone).run();
+  const session=await createCustomerSession(env,email);
+  return ok(identityResult({email,name,phone},session),201);
+ }
  let profile;try{profile=validProfile(p)}catch(e){return error(e.message)}
  const verifier=p.verificationToken;
  if(!/^[a-f0-9]{64}$/i.test(String(verifier||'')))return error('Primero verificá tu correo',401);
@@ -180,9 +202,11 @@ async function enroll(req,env,p){
  const already=await accountByPhone(env,profile.phone);
  if(already&&already.email!==profile.email)return error('Este celular ya está vinculado a otra cuenta. Ingresá con ese número o recuperá el acceso.',409);
  await env.DB.prepare("INSERT INTO customers(email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,phone=excluded.phone,updated_at=datetime('now')").bind(profile.email,profile.name,profile.phone).run();
+ await env.DB.prepare('INSERT INTO customer_verified_channels(email,email_verified_at) VALUES (?,unixepoch()) ON CONFLICT(email) DO UPDATE SET email_verified_at=unixepoch()').bind(profile.email).run();
  const session=await createCustomerSession(env,profile.email);
  return ok(identityResult(profile,session),201);
 }
+
 export async function customerRoutes(req,env,path,send){
  if(!path.startsWith('/api/customer/'))return null;
  const reply=(data,status=200)=>send(data,status);
