@@ -204,6 +204,9 @@ export async function customerRoutes(req,env,path,send){
   return reply({signedOut:true});
  }
  if(req.method!=='POST')return null;
+ // No consumir el cuerpo de rutas ajenas, en especial WebAuthn/passkeys.
+ if(!new Set(['/api/customer/session','/api/customer/phone/identify','/api/customer/pin/set',
+   '/api/customer/pin/login','/api/customer/login/start','/api/customer/login/verify']).has(path))return null;
  let p;try{p=await parse(req)}catch{return reply({error:'Datos incorrectos'},400)}
  if(path==='/api/customer/session'){
   const r=await enroll(req,env,p);return reply(r.data,r.status);
