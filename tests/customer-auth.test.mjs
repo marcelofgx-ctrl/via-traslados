@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
-import {normalizePhone,customerRoutes,customerSession} from '../backend/customer-auth.js';
+import {normalizePhone,customerRoutes,customerSession,createCustomerSession} from '../backend/customer-auth.js';
 import {customerPasskeyRoutes} from '../backend/customer-passkeys.js';
 import worker from '../backend/worker.js';
 const sha=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))))
@@ -47,8 +47,10 @@ function db(){
   },async all(){
    if(sql.startsWith('SELECT email,name,phone FROM customers WHERE length(phone)'))
     return{results:Array.from(customers.values())};
-   if(sql.startsWith('SELECT id,origin,destination,trip_date AS date'))
-    return{results:[]};
+   if(sql.startsWith('SELECT id,origin,destination,trip_date AS date')){
+    assert.match(sql,/WHERE email=\?/,'El listado debe estar aislado por cuenta');
+    return{results:DB.bookingResults||[]};
+   }
    if(sql.startsWith('SELECT credential_id,transports FROM customer_passkeys'))
     return{results:passkeys};
    return{results:[]};
@@ -198,4 +200,31 @@ test('REGRESIÓN: passkey de teléfono sin registrar devuelve ayuda para correo 
  assert.equal(response.status,404);
  assert.match(data.error,/activaste la huella/);
  assert.notEqual(data.error,'Datos incorrectos');
+});
+
+test('mis reservas incluye km reales del trayecto sin mostrar campos SQL ni inventar distancia',async()=>{
+ const DB=db(),e=env(DB);
+ DB.bookingResults=[{
+  id:'VIA-QA-123',origin:'Roque Saenz Peña 1711, Shangrilá',
+  destination:'Aeropuerto Internacional de Carrasco',
+  date:'2026-11-20',time:'10:00',passengers:1,bags:1,
+  notes:'',status:'accepted',price:2750,created_at:'2026-11-12',updated_at:'2026-11-12',
+  route_distance_m:2940,route_duration_s:360
+ },{
+  id:'VIA-QA-124',origin:'Shangrilá',destination:'Montevideo',
+  date:'2026-11-21',time:'11:00',passengers:1,bags:0,
+  status:'quoted',price:null,route_distance_m:null,route_duration_s:null
+ }];
+ const verified=await createCustomerSession(e,fake.email);
+ const response=await customerRoutes(get('/api/customer/bookings',
+  {Authorization:'Bearer '+verified.token}),e,'/api/customer/bookings',send);
+ assert.equal(response.status,200);
+ const data=await response.json();
+ assert.equal(data.length,2);
+ assert.deepEqual(data[0].route,{distanceKm:2.9,durationMinutes:6,estimate:true,trafficIncluded:false});
+ assert.equal(data[0].price,2750);
+ assert.equal(data[1].route,null,'No inventar km si la ruta todavía no está calculada');
+ assert.equal(Object.hasOwn(data[0],'route_distance_m'),false,'Los campos SQL auxiliares no son públicos');
+ const anonymous=await customerRoutes(get('/api/customer/bookings'),e,'/api/customer/bookings',send);
+ assert.equal(anonymous.status,401);
 });

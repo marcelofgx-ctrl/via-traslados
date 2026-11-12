@@ -195,8 +195,19 @@ export async function customerRoutes(req,env,path,send){
  if(path==='/api/customer/bookings'&&req.method==='GET'){
   const session=await customerSession(req,env);
   if(!session)return reply({error:'Acceso no autorizado'},401);
-  const rows=await env.DB.prepare('SELECT id,origin,destination,trip_date AS date,trip_time AS time,passengers,bags,notes,status,price_uyu AS price,created_at,updated_at FROM bookings WHERE email=? ORDER BY created_at DESC LIMIT 100').bind(session.email).all();
-  return reply(rows.results||[]);
+  // Las rutas pertenecen a la reserva; dos subconsultas indexadas evitan N peticiones HTTP
+  // y nunca exponen un recorrido de una cuenta ajena.
+  const rows=await env.DB.prepare("SELECT id,origin,destination,trip_date AS date,trip_time AS time,passengers,bags,notes,status,price_uyu AS price,created_at,updated_at,"+
+   "(SELECT distance_m FROM booking_routes WHERE booking_id=bookings.id AND provider='geoapify') AS route_distance_m,"+
+   "(SELECT duration_s FROM booking_routes WHERE booking_id=bookings.id AND provider='geoapify') AS route_duration_s "+
+   "FROM bookings WHERE email=? ORDER BY created_at DESC LIMIT 100").bind(session.email).all();
+  return reply((rows.results||[]).map(row=>{
+   const {route_distance_m,route_duration_s,...booking}=row;
+   return {...booking,route:Number(route_distance_m)>0&&Number(route_duration_s)>0?
+    {distanceKm:Math.round(Number(route_distance_m)/100)/10,
+     durationMinutes:Math.ceil(Number(route_duration_s)/60),
+     estimate:true,trafficIncluded:false}:null};
+  }));
  }
  if(path==='/api/customer/logout'&&req.method==='POST'){
   const token=(req.headers.get('Authorization')||'').match(/^Bearer ([a-f0-9]{64})$/i)?.[1];
