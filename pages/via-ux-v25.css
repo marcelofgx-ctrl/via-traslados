@@ -1,0 +1,282 @@
+/* VÍA TRASLADOS · V25 REFINAMIENTO DE IDENTIDAD, RESERVAS Y OPERADOR
+   Evita estilos globales: todos los cambios quedan circunscritos por pantalla. */
+body.premium-page.in-booking .known-customer.via-account-card{
+ display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;
+ align-items:center!important;gap:10px 12px!important;
+ padding:14px!important;margin:8px 0 8px!important;
+ background:linear-gradient(137deg,#f0f9f3 0%,#f7fcf9 100%)!important;
+ border:1px solid #d6eade!important;border-radius:17px!important;
+ box-shadow:inset 0 1px #fff,0 6px 18px rgba(25,85,66,.055)!important;
+}
+body.premium-page.in-booking .via-account-identity{display:flex;align-items:center;gap:10px;min-width:0}
+body.premium-page.in-booking .via-account-identity>div{min-width:0;display:grid;gap:3px}
+body.premium-page.in-booking .via-account-identity #known-customer-title{
+ font-size:15px;line-height:1.25;font-weight:820;letter-spacing:-.4px;color:#1d5546
+}
+body.premium-page.in-booking .via-account-verified-icon{
+ width:33px;height:33px;min-width:33px;border-radius:11px;display:grid;place-items:center;
+ background:#e0f3e8;color:#08735e;font-size:17px;font-weight:900;
+ box-shadow:inset 0 1px #fff;
+}
+body.premium-page.in-booking .via-account-identity .known-customer-badge{
+ font-size:10px;font-weight:660;color:#638676;line-height:1.3
+}
+body.premium-page.in-booking .via-account-change{
+ padding:5px 1px!important;min-height:32px!important;font-size:10px!important;
+ font-weight:680!important;text-decoration:underline;text-underline-offset:3px;
+ color:#5d8072!important;white-space:nowrap;
+}
+body.premium-page.in-booking #known-next{
+ grid-column:1/-1!important;justify-self:start!important;
+ max-width:272px!important;width:100%!important;height:44px!important;min-height:44px!important;
+ border:0;border-radius:12px!important;padding:0 16px!important;
+ background:linear-gradient(109deg,#168c7b,#066f61)!important;
+ font-size:12px!important;font-weight:800!important;letter-spacing:0!important;
+ box-shadow:0 5px 13px rgba(14,103,79,.12)!important;
+ justify-content:center!important;text-align:center!important;
+ white-space:normal;line-height:1.3;
+}
+body.premium-page.in-booking .wizard-step[data-step="2"] #identity-heading{
+ letter-spacing:-.75px
+}
+/* Mis reservas — menú simple, tarjetas cortas, estado y jerarquía. */
+body[data-page="mine"]{
+ background:radial-gradient(circle at 92% 2%,rgba(160,215,188,.1),transparent 44%),#f8faf8;
+}
+body[data-page="mine"] .topbar{height:64px}
+body[data-page="mine"] .booking-status-main{max-width:710px;padding:10px 0 38px}
+body[data-page="mine"] .status-card.via-mine-main{
+ margin:0!important;padding:18px 20px 18px!important;border-radius:20px;
+ border:1px solid #e4eee7;
+ background:linear-gradient(160deg,#fff 0%,#fdfffd 100%);
+ box-shadow:0 12px 34px rgba(21,73,58,.045);
+}
+body[data-page="mine"] .via-mine-main .section-eyebrow{font-size:10px;letter-spacing:1.2px}
+body[data-page="mine"] .via-mine-main h1{
+ color:#1c4037;font-size:clamp(23px,6vw,29px);margin:5px 0 4px;letter-spacing:-.85px
+}
+body[data-page="mine"] .via-mine-subtitle{
+ font-size:12px;line-height:1.35;color:#71897c;
+ margin:0 0 11px
+}
+body[data-page="mine"] .via-mine-account.known-customer{
+ display:flex!important;align-items:center!important;gap:9px!important;
+ padding:9px 11px!important;margin:7px 0 12px!important;
+ background:linear-gradient(120deg,#edf8f2,#f8fcf9)!important;
+ border:1px solid #d7eadf;border-radius:12px!important;
+ box-shadow:none!important
+}
+body[data-page="mine"] .via-mine-account__avatar{
+ width:34px;height:34px;min-width:34px;border-radius:11px;
+ background:#d8f0e4;color:#0c765f;display:grid;place-items:center;
+ font-size:17px;font-weight:850
+}
+body[data-page="mine"] .via-mine-account__copy{
+ display:flex;min-width:0;flex:1;gap:2px;flex-direction:column
+}
+body[data-page="mine"] .via-mine-account__copy strong{font-size:12px;line-height:1.25;color:#24594a}
+body[data-page="mine"] .via-mine-account__copy span{font-size:10px;color:#718b7d}
+body[data-page="mine"] .via-mine-account #mine-logout{
+ flex:0 0 auto;min-height:34px!important;padding:5px 8px!important;
+ border:0!important;background:transparent!important;box-shadow:none!important;
+ font-size:10px!important;color:#618176!important;text-decoration:underline;
+ text-underline-offset:3px
+}
+body[data-page="mine"] .via-mine-tabs{
+ display:grid;grid-template-columns:1fr 1fr;gap:3px;
+ padding:4px;background:#f0f5f2;border:1px solid #e5eee8;
+ border-radius:12px;margin:10px 0 9px
+}
+body[data-page="mine"] .via-mine-tab{
+ min-width:0;min-height:37px;padding:7px 10px;
+ display:flex;align-items:center;justify-content:center;gap:8px;
+ color:#627a70;background:transparent;border:1px solid transparent;
+ border-radius:9px;font-size:12px;font-weight:780;
+}
+body[data-page="mine"] .via-mine-tab.is-active{
+ background:#fff;border-color:#e0ebe4;
+ color:#146b58;box-shadow:0 2px 8px rgba(18,67,52,.05)
+}
+body[data-page="mine"] .via-mine-tab>span{
+ font-size:10px;color:#7a9385;
+ padding:2px 6px;border-radius:10px;
+ background:#edf4ef;min-width:20px
+}
+body[data-page="mine"] .via-mine-list{display:grid;gap:7px}
+body[data-page="mine"] a.via-booking-card{
+ display:block;color:#253d36;background:#fff;
+ border:1px solid #e0ebe4;
+ border-radius:13px;padding:11px 12px;
+ min-width:0;
+ box-shadow:0 2px 9px rgba(23,74,57,.027);
+ transition:border-color .18s,box-shadow .18s
+}
+body[data-page="mine"] a.via-booking-card:focus-visible{
+ outline:3px solid #77bda8;outline-offset:2px
+}
+body[data-page="mine"] a.via-booking-card:hover{
+ border-color:#b6dacc;box-shadow:0 5px 14px rgba(22,71,57,.06)
+}
+body[data-page="mine"] .via-booking-card--history{
+ background:#fcfdfb;opacity:.86
+}
+body[data-page="mine"] .via-booking-card__top,
+body[data-page="mine"] .via-booking-card__bottom{
+ display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0
+}
+body[data-page="mine"] .via-status-chip{
+ display:inline-flex;align-items:center;gap:5px;max-width:100%;
+ font-size:10px;line-height:1.2;font-weight:790;white-space:nowrap;
+ color:#7b633a;background:#fff5e4;border:1px solid #f2e4c9;
+ border-radius:7px;padding:4px 7px
+}
+body[data-page="mine"] .via-status-chip::before{
+ content:"";width:5px;height:5px;flex:0 0 5px;border-radius:50%;background:currentColor
+}
+body[data-page="mine"] .via-status-chip--accepted{
+ background:#e8f6f0;border-color:#cde9d9;color:#16745d
+}
+body[data-page="mine"] .via-status-chip--confirmed{
+ background:#def4e8;border-color:#b7e3cd;color:#075d4c
+}
+body[data-page="mine"] .via-status-chip--moving{
+ background:#e8f4f6;border-color:#d2e7ea;color:#236879
+}
+body[data-page="mine"] .via-status-chip--finished,
+body[data-page="mine"] .via-status-chip--cancelled{
+ background:#f2f4f3;border-color:#e3e8e5;color:#77857d
+}
+body[data-page="mine"] .via-booking-card__arrow{
+ flex:0 0 auto;width:24px;height:24px;border-radius:8px;
+ display:grid;place-items:center;background:#f1f7f2;color:#498672;
+ font-size:14px
+}
+body[data-page="mine"] .via-booking-card__route{
+ display:grid;grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr);
+ align-items:center;gap:8px;margin:9px 0 8px
+}
+body[data-page="mine"] .via-booking-card__location{
+ min-width:0;font-size:12px;line-height:1.4;font-weight:735;
+ color:#253f36;overflow-wrap:anywhere
+}
+body[data-page="mine"] .via-booking-card__route-symbol{
+ text-align:center;font-size:13px;color:#80aa94
+}
+body[data-page="mine"] .via-booking-card__bottom{
+ font-size:10px;color:#72877a;line-height:1.4
+}
+body[data-page="mine"] .via-booking-card__price{
+ color:#1d6753;font-size:12px;font-weight:800;white-space:nowrap;
+ font-variant-numeric:tabular-nums
+}
+body[data-page="mine"] .via-mine-more{
+ margin:10px auto 2px;display:flex;align-items:center;gap:7px;
+ padding:9px 16px;background:#f1f8f3;color:#2d7160;
+ border:1px solid #d4e7dc;border-radius:10px;font-size:11px;font-weight:770
+}
+body[data-page="mine"] .via-mine-empty{
+ text-align:center;padding:21px 8px;
+ color:#748a7d;font-size:12px;line-height:1.5
+}
+body[data-page="mine"] .via-mine-empty strong{display:block;color:#39584b;font-size:14px;margin-bottom:4px}
+/* Conductor — alerta inferior, sin interrumpir manejo de reservas. */
+body[data-page="driver"] .via-driver-tools{
+ display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:7px
+}
+body[data-page="driver"] .via-driver-count{
+ min-height:35px;border-radius:9px;padding:7px 10px;
+ background:#e5f6ed;border:1px solid #bfe2d0;color:#136d55;
+ font-size:11px;font-weight:830;white-space:nowrap
+}
+body[data-page="driver"] .via-driver-alert-permission{
+ min-height:35px;border-radius:9px;padding:7px 10px;
+ background:#f5f9f6;border:1px solid #dcebe2;color:#59776a;
+ font-size:10px;font-weight:780
+}
+body[data-page="driver"] .request-card[data-status="accepted"]{
+ border-color:#a8d9c2;
+ background:linear-gradient(120deg,#f8fdf9,#fff);
+ box-shadow:inset 3px 0 #32a17d,0 6px 15px rgba(18,93,65,.055)
+}
+body[data-page="driver"] .via-driver-sheet-backdrop{
+ position:fixed;z-index:2500;inset:0;
+ background:rgba(9,31,24,.18);
+ display:flex;align-items:flex-end;justify-content:center;
+ padding:10px 12px max(12px,env(safe-area-inset-bottom));
+}
+body[data-page="driver"] .via-driver-sheet{
+ width:min(100%,530px);
+ border:1px solid #deebe4;
+ border-radius:22px;background:#fff;
+ padding:9px 16px 16px;
+ box-shadow:0 20px 70px rgba(9,41,30,.18);
+ animation:via-sheet-appear .23s ease-out both;
+ outline:none
+}
+@keyframes via-sheet-appear{from{opacity:.7;transform:translateY(17px)}to{opacity:1;transform:translateY(0)}}
+body[data-page="driver"] .via-driver-sheet__handle{
+ width:38px;height:4px;border-radius:4px;background:#e1e9e4;margin:0 auto 12px
+}
+body[data-page="driver"] .via-driver-sheet__head{
+ display:flex;align-items:center;gap:10px
+}
+body[data-page="driver"] .via-driver-sheet__symbol{
+ width:39px;height:39px;display:grid;place-items:center;
+ border-radius:12px;background:#e6f7ee;color:#168266;font-size:22px;font-weight:800
+}
+body[data-page="driver"] .via-driver-sheet__head>div{min-width:0;flex:1}
+body[data-page="driver"] .via-driver-sheet__head strong{
+ color:#1f483b;font-size:16px;letter-spacing:-.3px
+}
+body[data-page="driver"] .via-driver-sheet__head p{
+ margin:3px 0 0;color:#6f8779;font-size:11px;line-height:1.35
+}
+body[data-page="driver"] .via-driver-sheet__close{
+ background:#f4f7f4;border:0;border-radius:9px;
+ width:32px;height:32px;color:#6b7b70;font-size:21px;font-weight:400
+}
+body[data-page="driver"] .via-driver-sheet__journey{
+ display:flex;justify-content:space-between;align-items:center;gap:12px;
+ margin:13px 0 8px;padding:12px;background:#f3faf6;
+ border:1px solid #e0eee5;border-radius:11px
+}
+body[data-page="driver"] .via-driver-sheet__journey span{
+ font-size:12px;line-height:1.35;color:#375d4c;font-weight:700;min-width:0
+}
+body[data-page="driver"] .via-driver-sheet__journey strong{
+ color:#0c7157;font-size:16px;white-space:nowrap;font-variant-numeric:tabular-nums
+}
+body[data-page="driver"] .via-driver-sheet__note{
+ color:#6e8878;font-size:11px;line-height:1.4;margin:0 0 12px
+}
+body[data-page="driver"] .via-driver-sheet__actions{
+ display:grid;grid-template-columns:1fr 1fr;gap:7px
+}
+body[data-page="driver"] .via-driver-sheet__actions button{
+ height:43px;min-height:43px;border-radius:10px;
+ border:1px solid #c8e4d5;font-size:12px;font-weight:790
+}
+body[data-page="driver"] .via-driver-sheet__primary{
+ color:#fff;background:linear-gradient(110deg,#158d77,#087663)
+}
+body[data-page="driver"] .via-driver-sheet__secondary{
+ color:#216b59;background:#f4faf6
+}
+@media(max-width:600px){
+ body[data-page="mine"] .app-shell{padding:0 11px}
+ body[data-page="mine"] .topbar{height:60px}
+ body[data-page="mine"] .via-mine-main.status-card{padding:13px!important;border-radius:16px}
+ body[data-page="mine"] .via-booking-card__route{grid-template-columns:minmax(0,1fr) 14px minmax(0,1fr);gap:5px}
+ body[data-page="mine"] .via-booking-card__location{font-size:11.5px}
+ body.premium-page.in-booking .via-account-card{gap:8px!important}
+ body.premium-page.in-booking #known-next{max-width:100%!important}
+ body[data-page="driver"] .via-driver-sheet{padding:8px 13px 13px}
+}
+@media(max-width:345px){
+ body[data-page="mine"] .via-booking-card__route{grid-template-columns:1fr;gap:2px}
+ body[data-page="mine"] .via-booking-card__route-symbol{text-align:left}
+ body[data-page="driver"] .via-driver-sheet__actions{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){
+ body[data-page="driver"] .via-driver-sheet{animation:none}
+}
