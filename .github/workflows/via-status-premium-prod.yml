@@ -2,7 +2,7 @@ name: Vía Traslados - publicar estados de reserva premium
 on:
   push:
     branches: [via-confirmation-premium-status-20261111]
-    paths: [".github/workflows/via-status-release-enable.yml"]
+    paths: [".github/workflows/via-status-premium-prod.yml"]
   workflow_dispatch:
 permissions:
   contents: read
