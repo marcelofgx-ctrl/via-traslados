@@ -1,0 +1,58 @@
+name: Via Traslados - comprobar actualizaciones APK QA
+on:
+  push:
+    branches: [via-actualizaciones-apk-qa-20261112]
+    paths:
+      - "android-driver/**"
+      - ".github/workflows/via-actualizaciones-apk-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-updater:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Obtener fuente de Vía Traslados
+        uses: actions/checkout@v4
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Preparar Android SDK 35
+        run: |
+          set -euo pipefail
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Revisar dominio, versión y controles de actualización
+        run: |
+          set -euo pipefail
+          grep -q 'via-conductor-apk-qa.vercel.app' android-driver/app/src/main/java/uy/viatraslados/conductor/ViaAppUpdates.java
+          grep -q 'MessageDigest.getInstance("SHA-256")' android-driver/app/src/main/java/uy/viatraslados/conductor/ViaAppUpdates.java
+          grep -q 'REQUEST_INSTALL_PACKAGES' android-driver/app/src/main/AndroidManifest.xml
+          grep -q 'versionCode 11' android-driver/app/build.gradle
+          if grep -RinE 'quicktrip|quick-trip|traslados-android' android-driver/app/src/main/java; then exit 1; fi
+      - name: Compilar QA sin publicar APK
+        run: gradle -p android-driver :app:assembleDebug --no-daemon
+      - name: Validar contenido instalable y versión
+        run: |
+          set -euo pipefail
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -2
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "versionCode='11'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "uy.viatraslados.conductor.autoprecalcqa"
+          sha256sum "$APK"
+      - name: Conservar APK de laboratorio (no distribuir)
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-conductor-updater-qa-unsigned-for-release
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
