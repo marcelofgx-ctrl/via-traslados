@@ -102,10 +102,18 @@ jobs:
             except Exception:pass
             time.sleep(3)
           else:raise AssertionError('New status page not available in isolated QA')
-          assert 'via-state--success' in get('/via-status-premium.css')
-          assert '¡Tu reserva está confirmada!' in get('/app.js?v=23')
+          # Cloudflare puede propagar los archivos estáticos en instantes distintos del HTML.
+          # Esperar a que app.js versionado y la hoja se hayan propagado ANTES del navegador.
+          for attempt in range(16):
+            css=get('/via-status-premium.css?v=1')
+            script=get('/app.js?v=23')
+            sw=get('/sw.js?v=23')
+            match='via-state--success' in css and '¡Tu reserva está confirmada!' in script and 'via-traslados-booking-states-v23' in sw
+            print('QA_ASSET_PROPAGATION',attempt,'css',len(css),'js',len(script),'newStatus',('¡Tu reserva está confirmada!' in script),'sw',len(sw))
+            if match:break
+            time.sleep(3)
+          else:raise AssertionError('Assets V23 no propagados en el edge QA')
           assert 'id="phone-lookup"' in get('/')
-          assert 'via-traslados-booking-states-v23' in get('/sw.js')
           q='/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
           addresses=json.loads(get(q)).get('results') or []
           assert addresses and 'shangril' in str(addresses[0].get('city','')).lower()
