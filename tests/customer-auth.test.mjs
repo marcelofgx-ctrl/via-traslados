@@ -173,3 +173,29 @@ test('verificación email de primera reserva crea sesión sin permitir nombre po
   assert.equal(reused.status,401);
  }finally{globalThis.fetch=original}
 });
+
+test('REGRESIÓN: cliente general deja el cuerpo WebAuthn intacto',async()=>{
+ const DB=db(),e=env(DB),path='/api/customer/passkeys/register/options';
+ const request=post(path,{purpose:'passkey',some:'json'});
+ const irrelevant=await customerRoutes(request,e,path,send);
+ assert.equal(irrelevant,null,'Los endpoints desconocidos no deben consumir el JSON');
+ assert.equal(request.bodyUsed,false,'La solicitud de passkey debe llegar íntegra');
+ const payload=await request.json();
+ assert.equal(payload.purpose,'passkey');
+});
+test('REGRESIÓN: el Worker no devuelve Datos incorrectos por consumir passkeys antes de registrarlas',async()=>{
+ const DB=db(),e=env(DB);
+ const response=await worker.fetch(post('/api/customer/passkeys/register/options',{}),e,{waitUntil(){}});
+ const data=await response.json();
+ assert.equal(response.status,401);
+ assert.match(data.error,/Iniciá sesión para activar la huella/);
+ assert.notEqual(data.error,'Datos incorrectos');
+});
+test('REGRESIÓN: passkey de teléfono sin registrar devuelve ayuda para correo y no JSON inválido',async()=>{
+ const DB=db(),e=env(DB);
+ const response=await worker.fetch(post('/api/customer/passkeys/login/options',{phone:fake.phone}),e,{waitUntil(){}});
+ const data=await response.json();
+ assert.equal(response.status,404);
+ assert.match(data.error,/activaste la huella/);
+ assert.notEqual(data.error,'Datos incorrectos');
+});
