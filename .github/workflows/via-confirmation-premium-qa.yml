@@ -173,7 +173,10 @@ jobs:
               for(const [name,title,tone] of states.slice(1)){
                 state=name;
                 await page.locator('#refresh-status').click();
-                await page.locator('.via-state--'+tone).waitFor({timeout:6500});
+                await page.waitForFunction(({expected,tone})=>{
+                  const node=document.querySelector('.via-state__heading h2');
+                  return node?.textContent===expected&&node.closest('.via-state')?.classList.contains('via-state--'+tone);
+                },{expected:title,tone},{timeout:6500});
                 const heading=await page.locator('.via-state__heading h2').textContent();
                 if(heading!==title)throw Error('Incorrect status presentation '+name+': '+heading);
                 if(name==='quoted'&&await page.locator('#accept-btn').count()!==1)throw Error('Offer acceptance action missing');
