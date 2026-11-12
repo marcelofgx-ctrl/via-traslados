@@ -578,6 +578,12 @@ function initDriver(){
   if(!['confirm','en_route','arrived','in_progress','completed'].includes(status))return;
   try{
    await S.operatorUpdate(button.dataset.id,{status:status==='confirm'?'confirmed':status},operatorKey);
+   // Una reserva confirmada deja de pertenecer a «Aceptadas». Mostrarla en «Próximas»,
+   // para que no parezca que desapareció tras confirmar el conductor.
+   if(status==='confirm'&&filter==='accepted'){
+    filter='upcoming';
+    document.querySelectorAll('.filter').forEach(item=>item.classList.toggle('active',item.dataset.filter==='upcoming'));
+   }
    await renderDriver();
   }catch(err){errorPlace('driver-error',err.message)}
  });
