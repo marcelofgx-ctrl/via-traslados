@@ -151,12 +151,23 @@ function initPassenger(){
  function beginReturning(data){
   registered=true;hasPin=!!data.hasPin;
   hidden('phone-first',true);hidden('new-account',true);hidden('return-form',false);
-  hidden('pin-login',!hasPin);hidden('return-otp',true);
+  // Primero ofrecé los tres métodos. El PIN requiere configuración previa; la huella, una passkey registrada.
+  hidden('pin-login',true);hidden('return-otp',true);
   $('recognized-email').textContent=data.maskedEmail?'Correo vinculado: '+data.maskedEmail:
    'Elegí cómo querés ingresar.';
   $('identity-heading').textContent='Ya conocemos tu cuenta';
-  $('identity-description').textContent='Podés entrar con PIN, huella o código por correo. No repetís el registro.';
-  hidden('return-passkey',!window.ViaPasskeys?.available());
+  $('identity-description').textContent='Elegí entre huella, PIN personal o código por correo. No repetís el registro.';
+  $('return-pin-option').textContent=hasPin?'Ingresar con PIN personal':'Crear mi PIN personal';
+  const supported=Boolean(window.ViaPasskeys?.available());
+  const passkeyReady=supported&&Boolean(data.hasPasskey);
+  const keyButton=$('return-passkey');
+  keyButton.disabled=!passkeyReady;
+  keyButton.setAttribute('aria-disabled',passkeyReady?'false':'true');
+  keyButton.textContent=passkeyReady?'Huella o PIN del teléfono':'Huella: activar después';
+  $('passkey-availability').textContent=!supported?
+   'Este navegador no permite el acceso biométrico. Entrá con correo o PIN.':
+   (!data.hasPasskey?'Para activar la huella, primero ingresá por correo; te ofreceremos vincular este dispositivo al confirmar el viaje.':
+    'Tu dispositivo ya tiene un acceso seguro registrado.');
   hidden('forgot-pin',!hasPin);
   hidden('turnstile-box',true);feedback('');
  }
@@ -195,6 +206,17 @@ function initPassenger(){
   }catch(ex){error(ex.message||'No se pudo verificar el número');resetCaptcha()}
   finally{onBusy('phone-lookup',false)}
  });
+ $('return-pin-option')?.addEventListener('click',()=>{
+  feedback('');
+  hidden('return-otp',true);
+  if(hasPin){
+   hidden('pin-login',false);
+   $('return-pin').focus();
+  }else{
+   hidden('pin-login',true);
+   emailForReturning(true); // Registro seguro del PIN luego de verificar el correo.
+  }
+ });
  $('return-pin-submit')?.addEventListener('click',async()=>{
   const pin=$('return-pin').value.trim();
   if(!/^\d{6}$/.test(pin))return feedback('Ingresá tu PIN de seis cifras.',true);
@@ -208,7 +230,12 @@ function initPassenger(){
  $('return-passkey')?.addEventListener('click',async()=>{
   onBusy('return-passkey',true,'Verificando dispositivo…');
   try{await window.ViaPasskeys.signIn(selectedPhone);remembered();openConfirmation(false)}
-  catch(ex){feedback(ex.message||'No se pudo usar la huella. Probá con correo.',true)}
+  catch(ex){
+   const message=ex.name==='NotAllowedError'?
+    'Se canceló la identificación del teléfono. Podés ingresar con PIN personal o recibir un código por correo.':
+    (ex.message||'No se pudo usar la huella. Podés ingresar por correo.');
+   feedback(message,true);
+  }
   finally{onBusy('return-passkey',false)}
  });
  async function emailForReturning(reset){
