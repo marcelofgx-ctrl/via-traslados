@@ -186,3 +186,43 @@ CREATE TABLE IF NOT EXISTS route_preview_cache (
  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS route_preview_recent ON route_preview_cache(updated_at);
+
+
+-- Verificación WhatsApp opcional (puente MacroDroid solo en QA hasta pruebas).
+-- No hay códigos en texto claro: el mensaje en cola se cifra con AES-GCM.
+CREATE TABLE IF NOT EXISTS whatsapp_otp_codes (
+ phone TEXT NOT NULL,
+ purpose TEXT NOT NULL CHECK(purpose IN ('registration','recovery')),
+ code_hash TEXT NOT NULL CHECK(length(code_hash)=64),
+ payload TEXT NOT NULL,
+ delivery_id TEXT NOT NULL UNIQUE,
+ expires_at INTEGER NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0,
+ delivery_status TEXT NOT NULL DEFAULT 'queued',
+ lease_until INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(phone,purpose)
+);
+CREATE INDEX IF NOT EXISTS whatsapp_queue_pending ON whatsapp_otp_codes(delivery_status,expires_at,lease_until);
+
+CREATE TABLE IF NOT EXISTS whatsapp_verified_sessions (
+ token_hash TEXT PRIMARY KEY,
+ phone TEXT NOT NULL,
+ purpose TEXT NOT NULL CHECK(purpose='registration'),
+ expires_at INTEGER NOT NULL,
+ consumed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS whatsapp_proofs_expiry ON whatsapp_verified_sessions(expires_at);
+
+-- Datos verificados por canal. Ausencia de fila = cuenta anterior basada en correo OTP.
+-- Las cuentas nuevas por WhatsApp tienen alias interno, no un correo ajeno sin verificar.
+CREATE TABLE IF NOT EXISTS customer_verified_channels (
+ email TEXT PRIMARY KEY REFERENCES customers(email) ON DELETE CASCADE,
+ email_verified_at INTEGER,
+ verified_phone TEXT UNIQUE,
+ phone_verified_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS whatsapp_bridge_health (
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ last_seen INTEGER NOT NULL
+);
