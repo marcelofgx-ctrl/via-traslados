@@ -94,3 +94,15 @@ El seguimiento en `https://viatraslados.com/reserva.html` tiene presentación es
 - Web Push, correo de confirmación automática y garantías de entrega **no se implementaron** mediante este cambio visual.
 
 **En futuras actualizaciones del sitio público, preservar explícitamente este CSS y `app.js?v=23`; no sobrescribir con `pages-release` anterior.**
+
+## Seguimiento compacto V24 — 12/11/2026
+
+Se corrigió la regresión de los botones gigantes mediante `grid`, botones de 43/36 px y una tarjeta móvil más compacta. La propuesta `accepted` pulsa sutilmente pero NO implica confirmación definitiva; distancia, duración e importe aparecen juntos. Los nueve estados y cuatro resoluciones de QA fueron validados sin scroll con direcciones típicas, sin ocultar información en casos excepcionalmente largos.
+
+- Publicación y verificación: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/43195140369
+- QA automatizada: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/43194885480
+- Worker antes: `d10ed0df-5f7a-48a3-bc64-bc8410066fb0`
+- Worker después: `20606cd4-c5da-4d3d-a020-9ab4ae3ce947`
+- Copia de archivos realmente publicados: `design/via/booking-v24/`
+
+**IMPORTANTE:** v24 sustituye a v23 en producción. No desplegar de nuevo `app.js?v=23` ni `via-status-premium.css?v=1` sobre este Worker. No se cambió la D1, backend, CORS ni los DNS. Las notificaciones push/correo por cambio de estado siguen pendientes de implementación funcional.
