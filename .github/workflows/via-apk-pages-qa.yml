@@ -1,0 +1,68 @@
+name: Via Traslados - publicar centro de APK QA (Cloudflare aislado)
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths:
+      - "qa-apk-download/**"
+      - ".github/workflows/via-apk-pages-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-apk-pages-qa
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar binario y manifiesto QA antes de publicar
+        run: |
+          set -euo pipefail
+          cd qa-apk-download
+          sha256sum -c SHA256SUMS.txt
+          node -e '
+            const fs=require("fs"),m=JSON.parse(fs.readFileSync("latest.json"));
+            if(m.channel!=="qa"||m.versionCode!==10||
+              m.packageName!=="uy.viatraslados.conductor.autoprecalcqa")
+              throw Error("No es un paquete QA autorizado");
+            const h=fs.readFileSync("SHA256SUMS.txt","utf8").split(" ")[0];
+            if(m.sha256!==h)throw Error("El manifiesto no coincide con la APK");
+          '
+          unzip -t via-traslados-conductor-qa.apk | tail -2
+      - name: Crear sitio Cloudflare Pages independiente (si falta)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages project create via-conductor-apk-qa --production-branch=via-apk-descarga-qa-20261112 > /tmp/pages-create.log 2>&1 || {
+            if ! grep -Ei 'already exists|already taken|already in use' /tmp/pages-create.log; then
+              cat /tmp/pages-create.log
+              exit 1
+            fi
+          }
+      - name: Publicar exclusivamente descarga QA
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages deploy qa-apk-download --project-name=via-conductor-apk-qa --branch=via-apk-descarga-qa-20261112
+      - name: Probar acceso anónimo a HTML, JSON y APK sin modificar otros proyectos
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.pages.dev
+          for i in $(seq 1 15); do
+            if curl -fLsS --max-time 10 "$BASE/" -o /tmp/qa-index && grep -q 'Vía Traslados' /tmp/qa-index; then break; fi
+            sleep 3
+          done
+          test -s /tmp/qa-index
+          curl -fLsS --retry 3 "$BASE/latest.json" -o /tmp/qa-manifest
+          node -e 'const m=require("/tmp/qa-manifest");if(m.versionCode!==10)throw Error("Manifest inválido")'
+          curl -fLsS --retry 3 --max-time 90 "$BASE/via-traslados-conductor-qa.apk" -o /tmp/qa-conductor.apk
+          echo "010ca6cf801bf6db0134ef99c85de67a5cd77df76241a2ca05cacbe69faf8bcf  /tmp/qa-conductor.apk" | sha256sum -c -
