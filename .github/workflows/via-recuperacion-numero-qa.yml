@@ -1,0 +1,39 @@
+name: Via Traslados - comprobar corrección de número sin exponerlo
+on:
+  push:
+    branches: [via-recuperacion-diagnostico-qa-20261112]
+    paths: [".github/workflows/via-recuperacion-numero-qa.yml"]
+permissions:
+  contents: read
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validación SHA-256 de número candidato contra D1 (lectura)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const token=process.env.CLOUDFLARE_API_TOKEN,account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          if(!token||!/^[a-f0-9]{32}$/.test(account||''))throw Error('No autorizado');
+          const headers={Authorization:'Bearer '+token,Accept:'application/json'};
+          const base='https://api.cloudflare.com/client/v4/accounts/'+account;
+          const l=await fetch(base+'/d1/database?name=via-traslados-db',{headers});
+          if(!l.ok)throw Error('Error D1');
+          const db=(await l.json()).result?.filter(x=>x.name==='via-traslados-db');
+          if(db?.length!==1)throw Error('D1 no identificada');
+          const sql='SELECT u.email,c.phone,c.email_verified_at FROM staff_users u JOIN staff_contacts c ON c.staff_id=u.id';
+          const r=await fetch(base+'/d1/database/'+db[0].uuid+'/query',{method:'POST',
+            headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({sql})});
+          if(!r.ok)throw Error('Error lectura D1');
+          const j=await r.json();if(!j.success||!j.result?.[0]?.results)throw Error('Consulta incompleta');
+          const hash=s=>createHash('sha256').update(String(s)).digest('hex');
+          const emailDigest='f91b84206d2515d804518955c1116c0cc635788942ba66edb74271a7c8b2457b';
+          const candidate='f3ead0d50cbf9e0c7cc8afb6caf7e1d70405903a1553ef83d5d5fbc50a7387e2';
+          const record=j.result[0].results.find(x=>hash(String(x.email).trim().toLowerCase())===emailDigest);
+          console.log(JSON.stringify({account_found:!!record,number_candidate_matches:!!record&&hash(record.phone)===candidate,email_verified:!!record?.email_verified_at}));
+          NODE
