@@ -389,11 +389,201 @@ async function initBooking(){const id=new URLSearchParams(location.search).get('
   });
  }
  window.addEventListener('storage',render);window.addEventListener('via-updated',render);setInterval(render,12000)}
-let filter='all';let operatorKey='';function filtered(rows){return rows.filter(x=>filter==='all'||(filter==='pending'&&['requested','quoted'].includes(x.status))||(filter==='upcoming'&&['accepted','confirmed','en_route','arrived','in_progress'].includes(x.status))||(filter==='finished'&&['completed','cancelled'].includes(x.status)))}
-function cardHTML(b){let actions='';if(b.status==='requested'){actions=`<form class="request-inline-form" data-action="quote" data-id="${esc(b.id)}"><label class="field-label" for="price-${esc(b.id)}">PRECIO $ UYU</label><input type="number" id="price-${esc(b.id)}" name="price" min="1" max="10000000" step="1" placeholder="Importe" required><button type="submit">Cotizar →</button></form>`}else if(b.status==='accepted'){actions=`<button class="secondary-btn" data-action="confirm" data-id="${esc(b.id)}">Confirmar reserva</button>`}else if(b.status==='confirmed'){actions=`<button class="secondary-btn" data-action="en_route" data-id="${esc(b.id)}">Salir a recoger</button>`}else if(b.status==='en_route'){actions=`<button class="secondary-btn" data-action="arrived" data-id="${esc(b.id)}">Llegué</button>`}else if(b.status==='arrived'){actions=`<button class="secondary-btn" data-action="in_progress" data-id="${esc(b.id)}">Iniciar viaje</button>`}else if(b.status==='in_progress'){actions=`<button class="secondary-btn" data-action="completed" data-id="${esc(b.id)}">Finalizar viaje</button>`}
-const pill=['confirmed','accepted','en_route','arrived','in_progress'].includes(b.status)?'confirmed':['completed','cancelled'].includes(b.status)?'done':'';return `<article class="request-card"><div><div class="request-head"><span class="pill ${pill}">${esc(labels[b.status]||b.status)}</span><span>· ${esc(fmtDate(b.date))} ${esc(b.time)}</span></div><h3>${esc(b.origin)} → ${esc(b.destination)}</h3><p>Pasajero: <strong>${esc(b.name)}</strong> · ${esc(b.phone)} · ${esc(b.passengers)} persona(s) · ${esc(b.bags)} valija(s)</p>${b.notes?`<p>Nota: ${esc(b.notes)}</p>`:''}${b.price!=null?`<p><strong>Propuesta: $ ${Number(b.price).toLocaleString('es-UY')} UYU</strong></p>`:''}<p style="font-size:10px;color:#9daaa3">${esc(b.id)}</p></div><div class="request-actions">${actions}</div></article>`}
-async function renderDriver(){try{const rows=await S.list(operatorKey);$('driver-error').classList.add('hidden');$('stat-total').textContent=rows.length;$('stat-pending').textContent=rows.filter(x=>x.status==='requested').length;$('stat-confirmed').textContent=rows.filter(x=>['accepted','confirmed','en_route','arrived','in_progress'].includes(x.status)).length;const rs=filtered(rows);$('requests-list').innerHTML=rs.length?rs.map(cardHTML).join(''):`<div class="empty"><span class="empty-icon">◇</span><h3>Sin solicitudes en esta vista</h3><p>Desde la PWA del pasajero podés crear una reserva de prueba y verla acá, en este mismo navegador.</p><a href="./index.html">Abrir PWA de pasajeros →</a></div>`}catch(err){if(/acceso|clave|auth|401/i.test(err.message)){$('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden');sessionStorage.removeItem('via-operator-key')}else errorPlace('driver-error',err.message)}}
-function initDriver(){$('today-chip').textContent=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});if(!S.isDemo()){operatorKey=sessionStorage.getItem('via-operator-key')||'';if(!operatorKey){$('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden')}}$('auth-form').addEventListener('submit',async(e)=>{e.preventDefault();operatorKey=$('driver-key').value.trim();sessionStorage.setItem('via-operator-key',operatorKey);$('driver-auth').classList.add('hidden');$('driver-content').classList.remove('hidden');await renderDriver()});$('refresh-btn').addEventListener('click',renderDriver);document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(c=>c.classList.toggle('active',b===c));renderDriver()}));$('requests-list').addEventListener('submit',async(e)=>{const form=e.target.closest('form[data-action="quote"]');if(!form)return;e.preventDefault();const price=Number(new FormData(form).get('price'));if(!Number.isInteger(price)||price<1)return;try{await S.operatorUpdate(form.dataset.id,{status:'quoted',price},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});$('requests-list').addEventListener('click',async(e)=>{const b=e.target.closest('button[data-action]');if(!b)return;const status=b.dataset.action;if(!['confirm','en_route','arrived','in_progress','completed'].includes(status))return;try{await S.operatorUpdate(b.dataset.id,{status:status==='confirm'?'confirmed':status},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});renderDriver();window.addEventListener('storage',renderDriver);window.addEventListener('via-updated',renderDriver)}
+let filter='all',operatorKey='',driverFetchInProgress=false;
+let driverSnapshots=new Map(),driverFirstLoad=true,driverAlertBooking=null,driverAlertTrigger=null;
+const notifiedKey='via-acceptance-notified-v25';
+function filtered(rows){
+ return rows.filter(x=>filter==='all'||
+  (filter==='pending'&&['requested','quoted'].includes(x.status))||
+  (filter==='accepted'&&x.status==='accepted')||
+  (filter==='upcoming'&&['accepted','confirmed','en_route','arrived','in_progress'].includes(x.status))||
+  (filter==='finished'&&['completed','cancelled'].includes(x.status)));
+}
+function cardHTML(b){
+ let actions='';
+ if(b.status==='requested'){
+  actions='<form class="request-inline-form" data-action="quote" data-id="'+esc(b.id)+'"><label class="field-label" for="price-'+esc(b.id)+'">PRECIO $ UYU</label><input type="number" id="price-'+esc(b.id)+'" name="price" min="1" max="10000000" step="1" placeholder="Importe" required><button type="submit">Cotizar →</button></form>';
+ }else{
+  const action={accepted:['confirm','Confirmar reserva'],confirmed:['en_route','Salir a recoger'],
+   en_route:['arrived','Llegué'],arrived:['in_progress','Iniciar viaje'],in_progress:['completed','Finalizar viaje']}[b.status];
+  if(action)actions='<button type="button" class="secondary-btn" data-action="'+action[0]+'" data-id="'+esc(b.id)+'">'+action[1]+'</button>';
+ }
+ const pill=['confirmed','accepted','en_route','arrived','in_progress'].includes(b.status)?'confirmed':
+  ['completed','cancelled'].includes(b.status)?'done':'';
+ const price=b.price!=null&&Number.isFinite(Number(b.price))?'<p><strong>Propuesta: $ '+esc(Number(b.price).toLocaleString('es-UY'))+' UYU</strong></p>':'';
+ const km=Number(b.route?.distanceKm);
+ return '<article class="request-card" id="driver-booking-'+esc(b.id)+'" data-booking-id="'+esc(b.id)+'" data-status="'+esc(b.status)+'">'+
+  '<div><div class="request-head"><span class="pill '+pill+'">'+esc(labels[b.status]||b.status)+'</span><span>· '+esc(fmtDate(b.date))+' '+esc(b.time)+'</span></div>'+
+  '<h3>'+esc(b.origin)+' → '+esc(b.destination)+'</h3>'+
+  '<p>Pasajero: <strong>'+esc(b.name)+'</strong> · '+esc(b.phone)+' · '+esc(b.passengers)+' persona(s) · '+esc(b.bags)+' valija(s)</p>'+
+  (b.notes?'<p>Nota: '+esc(b.notes)+'</p>':'')+price+
+  (Number.isFinite(km)&&km>0?'<p>'+esc(km.toLocaleString('es-UY',{maximumFractionDigits:1}))+' km estimados</p>':'')+
+  '<p style="font-size:10px;color:#9daaa3">'+esc(b.id)+'</p></div><div class="request-actions">'+actions+'</div></article>';
+}
+function driverAcknowledged(){
+ try{const arr=JSON.parse(localStorage.getItem(notifiedKey)||'[]');return new Set(Array.isArray(arr)?arr.slice(-120):[])}
+ catch{return new Set()}
+}
+function rememberDriverAlert(id){
+ try{const ids=driverAcknowledged();ids.add(String(id));localStorage.setItem(notifiedKey,JSON.stringify([...ids].slice(-120)))}catch{}
+}
+function closeDriverSheet(){
+ $('driver-accept-alert')?.classList.add('hidden');
+ driverAlertBooking=null;
+ if(driverAlertTrigger?.isConnected)driverAlertTrigger.focus({preventScroll:true});
+ driverAlertTrigger=null;
+}
+function focusAcceptedBooking(){
+ const b=driverAlertBooking;
+ closeDriverSheet();
+ if(!b)return;
+ filter='accepted';
+ document.querySelectorAll('.filter').forEach(btn=>btn.classList.toggle('active',btn.dataset.filter==='accepted'));
+ renderDriver().then(()=>{
+  const card=[...document.querySelectorAll('.request-card')].find(node=>node.dataset.bookingId===b.id);
+  if(card){card.scrollIntoView({block:'center',behavior:'smooth'});card.setAttribute('tabindex','-1');card.focus({preventScroll:true})}
+ });
+}
+function displayAcceptedSheet(b){
+ if(!b||b.status!=='accepted'||!$('driver-accept-alert'))return;
+ driverAlertBooking=b;
+ driverAlertTrigger=document.activeElement instanceof HTMLElement?document.activeElement:null;
+ const first=String(b.name||'El pasajero').trim().split(/\s+/)[0]||'El pasajero';
+ $('driver-alert-description').textContent=first+' aceptó tu propuesta.';
+ const origin=String(b.origin||'').split(',')[0].trim(),dest=String(b.destination||'').split(',')[0].trim();
+ $('driver-alert-route').textContent=origin+' → '+dest;
+ $('driver-alert-price').textContent=b.price!=null&&Number.isFinite(Number(b.price))?
+  '$ '+Number(b.price).toLocaleString('es-UY')+' UYU':'';
+ $('driver-accept-alert').classList.remove('hidden');
+ $('driver-accept-alert').querySelector('.via-driver-sheet')?.focus({preventScroll:true});
+ if(document.hidden&&'Notification' in window&&Notification.permission==='granted'){
+  try{
+   const notice=new Notification('Vía Traslados · Presupuesto aceptado',{
+    body:'El pasajero aceptó una propuesta. Falta tu confirmación.',
+    tag:'via-accepted-'+b.id,icon:'./icon.svg'});
+   notice.onclick=()=>{window.focus();notice.close();focusAcceptedBooking()};
+  }catch{}
+ }
+}
+function updateDriverAcceptance(rows){
+ const accepted=rows.filter(b=>b.status==='accepted');
+ const badge=$('driver-new-acceptances');
+ badge?.classList.toggle('hidden',accepted.length===0);
+ if(badge)badge.textContent=accepted.length===1?'1 aceptación pendiente':accepted.length+' aceptaciones pendientes';
+ const permission=$('driver-enable-alerts');
+ if(permission)permission.classList.toggle('hidden',S.isDemo()||!('Notification'in window)||Notification.permission!=='default');
+ const acknowledged=driverAcknowledged();
+ const fresh=accepted.filter(b=>{
+  if(acknowledged.has(String(b.id)))return false;
+  const previous=driverSnapshots.get(b.id);
+  if(previous&&previous!=='accepted')return true;
+  if(driverFirstLoad){
+   const raw=String(b.updated_at||'').trim();
+   const timestamp=Date.parse(raw.includes('T')||raw.endsWith('Z')?raw:raw.replace(' ','T')+'Z');
+   return Number.isFinite(timestamp)&&Date.now()-timestamp<4*3600000&&Date.now()>=timestamp-120000;
+  }
+  return !previous;
+ }).sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+ for(const b of rows)driverSnapshots.set(b.id,b.status);
+ driverFirstLoad=false;
+ if(fresh.length){
+  const next=fresh[0];
+  rememberDriverAlert(next.id);
+  if(!driverAlertBooking)displayAcceptedSheet(next);
+ }
+ if(driverAlertBooking&&!accepted.some(x=>x.id===driverAlertBooking.id))closeDriverSheet();
+}
+async function renderDriver(){
+ if(driverFetchInProgress)return;
+ driverFetchInProgress=true;
+ try{
+  const rows=await S.list(operatorKey);
+  $('driver-error').classList.add('hidden');
+  $('stat-total').textContent=rows.length;
+  $('stat-pending').textContent=rows.filter(x=>x.status==='requested').length;
+  $('stat-confirmed').textContent=rows.filter(x=>['confirmed','en_route','arrived','in_progress'].includes(x.status)).length;
+  updateDriverAcceptance(rows);
+  const rs=filtered(rows);
+  $('requests-list').innerHTML=rs.length?rs.map(cardHTML).join(''):
+   '<div class="empty"><span class="empty-icon">◇</span><h3>Sin solicitudes en esta vista</h3><p>Las reservas aparecerán aquí cuando haya novedades.</p></div>';
+ }catch(err){
+  if(/acceso|clave|auth|401/i.test(err.message)){
+   $('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden');
+   sessionStorage.removeItem('via-operator-key');operatorKey='';closeDriverSheet();
+  }else errorPlace('driver-error',err.message);
+ }finally{driverFetchInProgress=false}
+}
+function initDriver(){
+ $('today-chip').textContent=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});
+ if(!S.isDemo()){
+  operatorKey=sessionStorage.getItem('via-operator-key')||'';
+  if(!operatorKey){$('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden')}
+ }
+ $('auth-form').addEventListener('submit',async e=>{
+  e.preventDefault();operatorKey=$('driver-key').value.trim();
+  sessionStorage.setItem('via-operator-key',operatorKey);
+  driverFirstLoad=true;driverSnapshots=new Map();
+  $('driver-auth').classList.add('hidden');$('driver-content').classList.remove('hidden');
+  await renderDriver();
+ });
+ $('refresh-btn').addEventListener('click',renderDriver);
+ document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{
+  filter=b.dataset.filter;
+  document.querySelectorAll('.filter').forEach(c=>c.classList.toggle('active',b===c));
+  renderDriver();
+ }));
+ $('driver-new-acceptances')?.addEventListener('click',()=>{
+  filter='accepted';
+  document.querySelectorAll('.filter').forEach(c=>c.classList.toggle('active',c.dataset.filter==='accepted'));
+  renderDriver();
+  $('requests-list').scrollIntoView({behavior:'smooth',block:'start'});
+ });
+ $('driver-enable-alerts')?.addEventListener('click',async()=>{
+  if(!('Notification'in window))return;
+  const state=await Notification.requestPermission();
+  $('driver-enable-alerts').classList.toggle('hidden',state!=='default');
+ });
+ $('driver-alert-close')?.addEventListener('click',closeDriverSheet);
+ $('driver-accept-alert')?.addEventListener('click',e=>{
+  if(e.target===$('driver-accept-alert'))closeDriverSheet();
+ });
+ $('driver-alert-open')?.addEventListener('click',focusAcceptedBooking);
+ $('driver-alert-confirm')?.addEventListener('click',()=>{
+  const id=driverAlertBooking?.id;
+  focusAcceptedBooking();
+  if(!id)return;
+  setTimeout(()=>{
+   const card=[...document.querySelectorAll('.request-card')].find(node=>node.dataset.bookingId===id);
+   const button=card?.querySelector('button[data-action="confirm"]');
+   if(button){button.focus({preventScroll:true});button.scrollIntoView({behavior:'smooth',block:'center'})}
+  },180);
+ });
+ document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&!$('driver-accept-alert')?.classList.contains('hidden'))closeDriverSheet();
+ });
+ $('requests-list').addEventListener('submit',async e=>{
+  const form=e.target.closest('form[data-action="quote"]');if(!form)return;
+  e.preventDefault();
+  const price=Number(new FormData(form).get('price'));
+  if(!Number.isInteger(price)||price<1)return;
+  try{await S.operatorUpdate(form.dataset.id,{status:'quoted',price},operatorKey);await renderDriver()}
+  catch(err){errorPlace('driver-error',err.message)}
+ });
+ $('requests-list').addEventListener('click',async e=>{
+  const button=e.target.closest('button[data-action]');if(!button)return;
+  const status=button.dataset.action;
+  if(!['confirm','en_route','arrived','in_progress','completed'].includes(status))return;
+  try{
+   await S.operatorUpdate(button.dataset.id,{status:status==='confirm'?'confirmed':status},operatorKey);
+   await renderDriver();
+  }catch(err){errorPlace('driver-error',err.message)}
+ });
+ if(S.isDemo()||operatorKey)renderDriver();
+ window.addEventListener('storage',()=>{if(S.isDemo()||operatorKey)renderDriver()});
+ window.addEventListener('via-updated',()=>{if(S.isDemo()||operatorKey)renderDriver()});
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&(S.isDemo()||operatorKey))renderDriver()});
+ setInterval(()=>{if((S.isDemo()||operatorKey)&&!document.hidden)renderDriver()},12000);
+}
 async function initMine(){
  const container=$('mine-list'),login=$('mine-login-card'),welcome=$('mine-welcome');
  const tabs=$('mine-tabs'),more=$('mine-more');
