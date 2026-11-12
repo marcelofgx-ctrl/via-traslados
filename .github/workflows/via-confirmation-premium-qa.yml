@@ -1,0 +1,201 @@
+name: Vía Traslados - QA estados de reserva premium
+on:
+  push:
+    branches: [via-confirmation-premium-status-20261111]
+    paths:
+      - "pages/app.js"
+      - "pages/via-status-premium.css"
+      - "pages/reserva.html"
+      - "pages/index.html"
+      - "pages/mis-reservas.html"
+      - "pages/sw.js"
+      - ".github/workflows/via-confirmation-premium-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  booking_status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validar sintaxis y assets versionados
+        run: |
+          node --check pages/app.js
+          node --check pages/store.js
+          node --check pages/sw.js
+          grep -q 'via-status-premium.css?v=1' pages/reserva.html
+          grep -q 'app.js?v=23' pages/reserva.html
+          grep -q 'via-traslados-booking-states-v23' pages/sw.js
+          test -s pages/via-status-premium.css
+      - name: Empaquetar copia activa del Worker con nuevos estilos, sin tocar producción
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,urllib.request,urllib.error,json,re,pathlib,shutil
+          account=os.environ['CF_ACCOUNT_ID'];token=os.environ['CF_TOKEN']
+          base=f'https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/via-traslados-web-prod'
+          def cloud(url):
+            request=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept-Encoding':'identity'})
+            with urllib.request.urlopen(request,timeout=35) as response:return response.read(),response.headers
+          data,_=cloud(base+'/deployments')
+          active=json.loads(data)['result']['deployments'][0]['versions']
+          assert len(active)==1 and int(active[0]['percentage'])==100
+          version=active[0]['version_id']
+          data,headers=cloud(base)
+          marker=re.search('boundary="?([^";]+)',headers.get('Content-Type',''))
+          assert marker,'Cloudflare Worker source was not multipart'
+          source=None
+          for part in data.split(b'--'+marker.group(1).encode()):
+            if b'Content-Disposition' not in part or b'\r\n\r\n' not in part:continue
+            head,body=part.split(b'\r\n\r\n',1)
+            if b'.js"' in head or b'.mjs"' in head or b'name="_worker.js"' in head:
+              source=body.rstrip(b'\r\n').decode('utf-8');break
+          assert source and len(source)>4000
+          assert 'correctKnownPortal' in source and 'env.ASSETS.fetch(request)' in source
+          folder=pathlib.Path('via-booking-status-package');assets=folder/'assets';assets.mkdir(parents=True)
+          (folder/'worker.mjs').write_text(source)
+          (folder/'previous-version.txt').write_text(version)
+          for file in pathlib.Path('pages').iterdir():
+            if file.is_file() and not file.name.startswith('_'):shutil.copy2(file,assets/file.name)
+          for name in ['flow-premium.css','flow-premium.js','via-refinement.css','admin.html']:
+            req=urllib.request.Request('https://viatraslados.com/'+name,headers={'User-Agent':'ViaStatusQASnapshot/1.0'})
+            try:
+              with urllib.request.urlopen(req,timeout=25) as response:
+                data=response.read(2500000);content_type=response.headers.get('Content-Type','')
+              if content_type.startswith('text/html') and not name.endswith('.html'):continue
+              (assets/name).write_bytes(data)
+            except urllib.error.HTTPError as err:
+              if err.code!=404:raise
+          assert len(list(assets.iterdir()))>=25
+          assert 'via-status-premium.css?v=1' in (assets/'reserva.html').read_text()
+          assert 'via-traslados-booking-states-v23' in (assets/'sw.js').read_text()
+          config={'name':'via-traslados-web-v3-qa','main':'worker.mjs','compatibility_date':'2026-11-10',
+            'workers_dev':True,'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
+          (folder/'wrangler.jsonc').write_text(json.dumps(config,indent=2))
+          print('PRODUCTION_WORKER_SNAPSHOT_OK',version,'assets',len(list(assets.iterdir())))
+          PY
+          node --check via-booking-status-package/worker.mjs
+      - name: Publicar solo en Worker QA aislado
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 deploy --config via-booking-status-package/wrangler.jsonc --dry-run --outdir /tmp/via-booking-status-compiled
+          npx --yes wrangler@4 deploy --config via-booking-status-package/wrangler.jsonc
+      - name: Comprobar assets y buscador
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.parse,time,json
+          root='https://via-traslados-web-v3-qa.marcelof-gx.workers.dev'
+          def get(path):
+            req=urllib.request.Request(root+path,headers={'User-Agent':'ViaStatusQA/1.0'})
+            with urllib.request.urlopen(req,timeout=25) as r:return r.read().decode('utf-8','replace')
+          for i in range(12):
+            try:
+              content=get('/reserva.html')
+              if 'via-status-premium.css?v=1' in content and 'app.js?v=23' in content:break
+            except Exception:pass
+            time.sleep(3)
+          else:raise AssertionError('New status page not available in isolated QA')
+          assert 'via-state--success' in get('/via-status-premium.css')
+          assert '¡Tu reserva está confirmada!' in get('/app.js?v=23')
+          assert 'id="phone-lookup"' in get('/')
+          assert 'via-traslados-booking-states-v23' in get('/sw.js')
+          q='/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
+          addresses=json.loads(get(q)).get('results') or []
+          assert addresses and 'shangril' in str(addresses[0].get('city','')).lower()
+          print('STATUS_QA_ASSETS_AND_GEOCODER_OK')
+          PY
+      - name: Instalar navegador móvil para QA de 9 estados
+        run: |
+          npm install --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verificar estado real vs confirmado, legibilidad y acciones sin reservas reales
+        run: |
+          cat >/tmp/via-status-ui-qa.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright');
+          const root='https://via-traslados-web-v3-qa.marcelof-gx.workers.dev';
+          const api='https://via-traslados-api.marcelof-gx.workers.dev';
+          const ref='VIA-QA-000';
+          const states=[
+            ['requested','Recibimos tu solicitud','waiting'],
+            ['quoted','Tenés una propuesta','offer'],
+            ['accepted','Aceptaste la propuesta','waiting'],
+            ['confirmed','¡Tu reserva está confirmada!','success'],
+            ['en_route','Tu conductor está en camino','moving'],
+            ['arrived','Tu conductor llegó','moving'],
+            ['in_progress','Tu traslado está en curso','moving'],
+            ['completed','Tu viaje finalizó','finished'],
+            ['cancelled','Reserva cancelada','cancelled']
+          ];
+          (async()=>{
+            const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+            for(const [width,height] of [[320,640],[360,740],[390,844],[1280,820]]){
+              const page=await browser.newPage({viewport:{width,height},isMobile:width<700,hasTouch:width<700});
+              let state='requested';
+              await page.addInitScript(code=>localStorage.setItem('via-traslados-solo-demo-access-v3',
+                JSON.stringify({[code]:'qa-token-no-access'})),ref);
+              await page.route(api+'/**',route=>{
+                const path=new URL(route.request().url()).pathname;
+                if(path==='/api/requests/'+ref){
+                  const booking={id:ref,origin:'ROQUE SAENZ PEÑA 1711, Shangrilá, Canelones',
+                    destination:'Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones',
+                    date:'2026-11-20',time:'10:00',passengers:1,bags:1,status:state,
+                    route:{distanceKm:2.9,durationMinutes:6},price:1850};
+                  return route.fulfill({status:200,contentType:'application/json',
+                    headers:{'Access-Control-Allow-Origin':root},body:JSON.stringify(booking)});
+                }
+                return route.fulfill({status:503,contentType:'application/json',
+                  headers:{'Access-Control-Allow-Origin':root},body:'{"error":"Mocked QA; no writes"}'});
+              });
+              await page.goto(root+'/reserva.html?id='+ref,{waitUntil:'domcontentloaded',timeout:45000});
+              await page.locator('.via-state--waiting').waitFor({timeout:10000});
+              const pending=await page.locator('.via-state__heading h2').textContent();
+              if(pending!=='Recibimos tu solicitud')throw Error('Unexpected pending state '+pending);
+              if((await page.locator('.via-state').textContent()).includes('¡Tu reserva está confirmada!'))throw Error('Misleading premature confirmation');
+              if((await page.locator('#cancel-btn').count())!==1)throw Error('Request cancel action disappeared');
+              if((await page.locator('.via-trip-stop strong').first().textContent()).includes('Shangrilá')!==true)throw Error('Origin lost locality');
+              if((await page.locator('.via-status-route strong').first().textContent()).includes('2,9 km')!==true)throw Error('Estimated route missing');
+              await page.screenshot({path:'via-status-pending-'+width+'.png'});
+              for(const [name,title,tone] of states.slice(1)){
+                state=name;
+                await page.locator('#refresh-status').click();
+                await page.locator('.via-state--'+tone).waitFor({timeout:6500});
+                const heading=await page.locator('.via-state__heading h2').textContent();
+                if(heading!==title)throw Error('Incorrect status presentation '+name+': '+heading);
+                if(name==='quoted'&&await page.locator('#accept-btn').count()!==1)throw Error('Offer acceptance action missing');
+                if(name==='confirmed'){
+                  if(await page.locator('#cancel-btn').count())throw Error('Confirmed booking incorrectly shows cancel request');
+                  const status=await page.evaluate(()=>{
+                    const el=document.querySelector('.via-state--success');
+                    return{background:getComputedStyle(el).backgroundImage,
+                      foreground:getComputedStyle(el.querySelector('h2')).color,
+                      flag:el.querySelector('.via-state__flag').textContent};
+                  });
+                  if(!status.background.includes('gradient')||status.flag!=='CONFIRMADA')throw Error('Confirmation is not visually distinct');
+                  await page.screenshot({path:'via-status-confirmed-'+width+'.png'});
+                  console.log('CONFIRMED_VISUAL',width,height,JSON.stringify(status));
+                }
+                const overflow=await page.evaluate(()=>({doc:document.documentElement.scrollWidth,
+                  win:innerWidth,body:document.body.scrollWidth}));
+                if(overflow.doc>width+2||overflow.body>width+2)throw Error('Horizontal overflow '+name+' '+width+': '+JSON.stringify(overflow));
+              }
+              console.log('NINE_STATUSES_PASS',width,height);
+              await page.close();
+            }
+            await browser.close();
+            console.log('STATUS_VISUAL_QA_PASSED: 9 states, 4 viewports, only mocked GET, no real bookings or emails');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/via-status-ui-qa.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-status-premium-qa
+          path: via-status-*.png
+          retention-days: 14
