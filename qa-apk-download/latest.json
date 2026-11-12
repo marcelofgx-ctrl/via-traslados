@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "channel": "qa",
+  "packageName": "uy.viatraslados.conductor.autoprecalcqa",
+  "versionCode": 10,
+  "versionName": "0.2.0 QA",
+  "apkUrl": "https://via-conductor-apk-qa.vercel.app/via-traslados-conductor-qa.apk",
+  "sha256": "010ca6cf801bf6db0134ef99c85de67a5cd77df76241a2ca05cacbe69faf8bcf",
+  "notes": "Aviso de presupuesto aceptado y confirmación del conductor. Versión de prueba."
+}
