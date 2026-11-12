@@ -389,7 +389,7 @@ async function initBooking(){const id=new URLSearchParams(location.search).get('
   });
  }
  window.addEventListener('storage',render);window.addEventListener('via-updated',render);setInterval(render,12000)}
-let filter='all',operatorKey='',driverFetchInProgress=false;
+let filter='all',operatorKey='',driverFetchInProgress=false,driverRefreshPending=false;
 let driverSnapshots=new Map(),driverFirstLoad=true,driverAlertBooking=null,driverAlertTrigger=null;
 const notifiedKey='via-acceptance-notified-v25';
 function filtered(rows){
@@ -494,7 +494,7 @@ function updateDriverAcceptance(rows){
  if(driverAlertBooking&&!accepted.some(x=>x.id===driverAlertBooking.id))closeDriverSheet();
 }
 async function renderDriver(){
- if(driverFetchInProgress)return;
+ if(driverFetchInProgress){driverRefreshPending=true;return}
  driverFetchInProgress=true;
  try{
   const rows=await S.list(operatorKey);
@@ -511,7 +511,10 @@ async function renderDriver(){
    $('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden');
    sessionStorage.removeItem('via-operator-key');operatorKey='';closeDriverSheet();
   }else errorPlace('driver-error',err.message);
- }finally{driverFetchInProgress=false}
+ }finally{
+  driverFetchInProgress=false;
+  if(driverRefreshPending){driverRefreshPending=false;queueMicrotask(renderDriver)}
+ }
 }
 function initDriver(){
  $('today-chip').textContent=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});
