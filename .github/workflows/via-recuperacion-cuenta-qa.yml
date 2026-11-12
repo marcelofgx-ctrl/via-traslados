@@ -1,0 +1,59 @@
+name: Via Traslados - confirmar estado de cuenta para recuperación (sin PII)
+on:
+  push:
+    branches: [via-recuperacion-diagnostico-qa-20261112]
+    paths: [".github/workflows/via-recuperacion-cuenta-qa.yml"]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verificar cuenta de la captura con huella SHA-256 (solo lectura)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          if(!token || !/^[a-f0-9]{32}$/.test(account||''))throw Error('Faltan credenciales');
+          const targetDigest='7f8052a467c330790c6c207ac4425f3d1caecfdeb7698d843b39493464f8f8bd';
+          const base='https://api.cloudflare.com/client/v4/accounts/'+account;
+          const headers={Authorization:'Bearer '+token,Accept:'application/json'};
+          const list=await fetch(base+'/d1/database?name=via-traslados-db',{headers,signal:AbortSignal.timeout(15000)});
+          if(!list.ok)throw Error('No se pudo consultar D1');
+          const body=await list.json();
+          const databases=(body.result||[]).filter(d=>d.name==='via-traslados-db');
+          if(!body.success||databases.length!==1)throw Error('D1 de Vía Traslados no es única');
+          const sql=`SELECT c.phone,c.email_verified_at,u.role,u.status,u.email,
+            r.sent_at AS reset_sent_at, r.expires_at AS reset_expires_at,
+            e.sent_at AS verify_sent_at
+            FROM staff_contacts c JOIN staff_users u ON u.id=c.staff_id
+            LEFT JOIN staff_password_resets r ON r.staff_id=u.id
+            LEFT JOIN staff_email_codes e ON e.staff_id=u.id`;
+          const res=await fetch(base+'/d1/database/'+databases[0].uuid+'/query',{
+            method:'POST',headers:{...headers,'Content-Type':'application/json'},
+            body:JSON.stringify({sql}),signal:AbortSignal.timeout(15000)
+          });
+          if(!res.ok)throw Error('Fallo consulta de solo lectura');
+          const data=await res.json();
+          if(!data.success||!Array.isArray(data.result?.[0]?.results))throw Error('D1 respuesta inválida');
+          const rows=data.result[0].results;
+          const row=rows.find(r=>createHash('sha256').update(String(r.phone)).digest('hex')===targetDigest);
+          if(!row){console.log(JSON.stringify({found:false,checked_records:rows.length}));process.exit(0)}
+          const email=String(row.email||'');
+          const parts=email.split('@');
+          const masked=parts.length===2 ? parts[0].slice(0,2)+'•••@'+parts[1] : '[no disponible]';
+          const now=Math.floor(Date.now()/1000);
+          console.log(JSON.stringify({
+            found:true,email_masked:masked,email_verified:!!row.email_verified_at,
+            role:row.role,account_status:row.status,
+            has_reset_code:!!row.reset_sent_at,
+            reset_code_valid:!!row.reset_expires_at&&row.reset_expires_at>now,
+            verify_code_pending:!!row.verify_sent_at
+          }));
+          NODE
