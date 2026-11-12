@@ -90,13 +90,13 @@ function initPassenger(){
   hidden('known-customer',!person);
   if(person){
    $('name').value=person.name||'';$('phone').value=person.phone||'';$('email').value=person.email||'';
-   $('known-customer-title').textContent='Hola, '+String(person.name||'').trim().split(/\s+/)[0]+'. Ya reconocimos tu cuenta.';
+   $('known-customer-title').textContent='Hola, '+String(person.name||'').trim().split(/\s+/)[0];
    hidden('phone-first',true);hidden('return-form',true);hidden('new-account',true);hidden('turnstile-box',true);
    $('identity-heading').textContent='Bienvenido de nuevo';
-   $('identity-description').textContent='Tu cuenta sigue verificada en este dispositivo. No tenés que volver a ingresar tus datos.';
+   $('identity-description').textContent='Tu cuenta sigue verificada. Continuá sin repetir tus datos.';
    if(!$('known-next')){
     const button=document.createElement('button');button.type='button';button.id='known-next';
-    button.className='primary-btn wizard-next';button.textContent='Revisar y confirmar solicitud →';
+    button.className='primary-btn wizard-next';button.textContent='Continuar con la reserva →';
     $('known-customer').appendChild(button);
     button.addEventListener('click',()=>openConfirmation(false));
    }
@@ -396,31 +396,82 @@ async function renderDriver(){try{const rows=await S.list(operatorKey);$('driver
 function initDriver(){$('today-chip').textContent=new Date().toLocaleDateString('es-UY',{weekday:'long',day:'numeric',month:'long'});if(!S.isDemo()){operatorKey=sessionStorage.getItem('via-operator-key')||'';if(!operatorKey){$('driver-content').classList.add('hidden');$('driver-auth').classList.remove('hidden')}}$('auth-form').addEventListener('submit',async(e)=>{e.preventDefault();operatorKey=$('driver-key').value.trim();sessionStorage.setItem('via-operator-key',operatorKey);$('driver-auth').classList.add('hidden');$('driver-content').classList.remove('hidden');await renderDriver()});$('refresh-btn').addEventListener('click',renderDriver);document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('.filter').forEach(c=>c.classList.toggle('active',b===c));renderDriver()}));$('requests-list').addEventListener('submit',async(e)=>{const form=e.target.closest('form[data-action="quote"]');if(!form)return;e.preventDefault();const price=Number(new FormData(form).get('price'));if(!Number.isInteger(price)||price<1)return;try{await S.operatorUpdate(form.dataset.id,{status:'quoted',price},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});$('requests-list').addEventListener('click',async(e)=>{const b=e.target.closest('button[data-action]');if(!b)return;const status=b.dataset.action;if(!['confirm','en_route','arrived','in_progress','completed'].includes(status))return;try{await S.operatorUpdate(b.dataset.id,{status:status==='confirm'?'confirmed':status},operatorKey);await renderDriver()}catch(err){errorPlace('driver-error',err.message)}});renderDriver();window.addEventListener('storage',renderDriver);window.addEventListener('via-updated',renderDriver)}
 async function initMine(){
  const container=$('mine-list'),login=$('mine-login-card'),welcome=$('mine-welcome');
+ const tabs=$('mine-tabs'),more=$('mine-more');
  if(S.isDemo()){
-  const thumb=$('mine-login-passkey');
-  if(thumb)thumb.hidden=true;
-  const row=document.querySelector('.mine-login-actions');
-  if(row)row.style.gridTemplateColumns='1fr';
+  const thumb=$('mine-login-passkey');if(thumb)thumb.hidden=true;
+  const row=document.querySelector('.mine-login-actions');if(row)row.style.gridTemplateColumns='1fr';
  }
  if(!container)return;
- let captchaToken='',turnstileLoaded=false;
+ let captchaToken='',turnstileLoaded=false,mineTab='active',mineLimit=5,mineRows=[];
  const note=message=>{const el=$('mine-login-feedback');if(el)el.textContent=message||''};
+ const archived=new Set(['completed','cancelled']);
+ const shortPlace=value=>{
+  const full=String(value||'').trim();
+  if(/aeropuerto internacional de carrasco/i.test(full))return 'Aeropuerto de Carrasco';
+  const parts=full.split(',').map(x=>x.trim()).filter(Boolean);
+  if(parts.length<2)return full;
+  const street=parts[0].replace(/^(?:AVENIDA|AV\.)\s+/i,'Av. ');
+  const locality=parts[1].replace(/^MONTEVIDEO$/i,'Montevideo');
+  return street+', '+locality;
+ };
+ const palette=status=>status==='accepted'?'accepted':
+  status==='confirmed'?'confirmed':
+  ['en_route','arrived','in_progress'].includes(status)?'moving':
+  status==='completed'?'finished':status==='cancelled'?'cancelled':'quoted';
+ const item=b=>{
+  const historic=archived.has(b.status);
+  const origin=String(b.origin||''),destination=String(b.destination||'');
+  const price=Number(b.price),hasPrice=b.price!=null&&Number.isFinite(price);
+  const km=Number(b.route?.distanceKm);
+  const label=b.status==='accepted'?'Oferta aceptada':b.status==='confirmed'?'Reserva confirmada':
+   (labels[b.status]||'Solicitud recibida');
+  return '<a class="via-booking-card '+(historic?'via-booking-card--history':'')+'" href="./reserva.html?id='+encodeURIComponent(String(b.id||''))+'" aria-label="'+esc(label+' · '+origin+' a '+destination)+'">'+
+   '<div class="via-booking-card__top"><span class="via-status-chip via-status-chip--'+palette(b.status)+'">'+esc(label)+'</span><span class="via-booking-card__arrow" aria-hidden="true">→</span></div>'+
+   '<div class="via-booking-card__route"><span class="via-booking-card__location" title="'+esc(origin)+'">'+esc(shortPlace(origin))+'</span><span class="via-booking-card__route-symbol" aria-hidden="true">→</span><span class="via-booking-card__location" title="'+esc(destination)+'">'+esc(shortPlace(destination))+'</span></div>'+
+   '<div class="via-booking-card__bottom"><span>'+esc(fmtDate(b.date))+' · '+esc(b.time)+
+   (Number.isFinite(km)&&km>0?' · '+esc(km.toLocaleString('es-UY',{maximumFractionDigits:1}))+' km':'')+
+   '</span>'+(hasPrice?'<strong class="via-booking-card__price">$ '+esc(price.toLocaleString('es-UY',{maximumFractionDigits:0}))+'</strong>':'')+'</div></a>';
+ };
+ const displayRows=()=>{
+  const active=mineRows.filter(b=>!archived.has(b.status));
+  const history=mineRows.filter(b=>archived.has(b.status));
+  $('mine-count-active').textContent=active.length;
+  $('mine-count-history').textContent=history.length;
+  const priority=s=>({accepted:0,confirmed:1,quoted:2,requested:3,en_route:4,arrived:5,in_progress:6})[s]??7;
+  active.sort((a,b)=>priority(a.status)-priority(b.status)||
+   String(a.date||'').localeCompare(String(b.date||''))||String(a.time||'').localeCompare(String(b.time||'')));
+  history.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.time||'').localeCompare(String(a.time||'')));
+  const selected=mineTab==='active'?active:history;
+  const page=selected.slice(0,mineLimit);
+  container.innerHTML=page.length?page.map(item).join(''):
+    '<div class="via-mine-empty"><strong>'+(mineTab==='active'?'No tenés reservas activas':'Todavía no hay historial')+'</strong><span>'+
+    (mineTab==='active'?'Cuando solicites un nuevo viaje, aparecerá aquí.':'Las reservas finalizadas o canceladas aparecerán aquí.')+'</span></div>';
+  more?.classList.toggle('hidden',selected.length<=mineLimit);
+  for(const name of ['active','history']){
+   const tab=$('mine-tab-'+name);
+   tab?.classList.toggle('is-active',mineTab===name);
+   tab?.setAttribute('aria-pressed',String(mineTab===name));
+  }
+ };
+ for(const name of ['active','history'])$('mine-tab-'+name)?.addEventListener('click',()=>{
+  mineTab=name;mineLimit=5;displayRows();
+ });
+ more?.addEventListener('click',()=>{mineLimit+=5;displayRows()});
  async function draw(){
   const person=S.customer()?.profile;
   login?.classList.toggle('hidden',!!person);
   welcome?.classList.toggle('hidden',!person);
   if(person){
-   const first=String(person.name||'').trim().split(/\s+/)[0];
-   $('mine-greeting').textContent='Hola, '+first+'. Tus viajes están aquí.';
+   const first=String(person.name||'').trim().split(/\s+/)[0]||'';
+   $('mine-greeting').textContent='Hola, '+first;
   }
   try{
-   const rows=await S.mine();
-   if(!rows.length){
-    container.innerHTML='<div class="empty"><h3>Todavía no tenés reservas</h3><p>Cuando solicites un traslado, aparecerá aquí. Podrás consultarlo desde tus dispositivos una vez que ingreses a tu cuenta.</p><a href="./index.html">Solicitar un traslado →</a></div>';
-    return;
-   }
-   container.innerHTML=rows.map(b=>'<a class="mine-item" href="./reserva.html?id='+encodeURIComponent(b.id)+'"><div><strong>'+esc(b.origin)+' → '+esc(b.destination)+'</strong><p>'+esc(fmtDate(b.date))+' · '+esc(b.time)+' · '+esc(labels[b.status]||b.status)+'</p></div><span aria-hidden="true">→</span></a>').join('');
-  }catch(e){container.textContent='No pudimos consultar tus viajes. Revisá tu conexión e intentá entrar nuevamente.'}
+   mineRows=await S.mine();
+   tabs?.classList.remove('hidden');
+   displayRows();
+  }catch(e){
+   container.textContent='No pudimos consultar tus viajes. Revisá tu conexión e intentá ingresar de nuevo.';
+  }
  }
  function turnstile(){
   if(S.isDemo()||S.customer()||turnstileLoaded||!window.VIA_CONFIG?.turnstileSiteKey)return;
@@ -467,6 +518,7 @@ async function initMine(){
  });
  $('mine-logout')?.addEventListener('click',async()=>{
   await S.logout();note('Sesión cerrada. Podés ingresar nuevamente con tu celular.');
+  mineTab='active';mineLimit=5;mineRows=[];
   await draw();turnstileLoaded=false;turnstile();
  });
  await draw();
