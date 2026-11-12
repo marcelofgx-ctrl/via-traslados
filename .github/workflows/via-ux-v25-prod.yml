@@ -2,7 +2,7 @@ name: Vía Traslados - V25 identidad reservas y avisos conductor
 on:
   push:
     branches: [via-ux-premium-v25-20261112]
-    paths: [".github/workflows/via-ux-v25-prod-enable.yml"]
+    paths: [".github/workflows/via-ux-v25-prod.yml"]
   workflow_dispatch:
 permissions:
   contents: read
