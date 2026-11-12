@@ -1,0 +1,260 @@
+name: Vía Traslados - corregir huella y opciones de acceso
+on:
+  push:
+    branches: [via-passenger-v3-pages]
+    paths: [".github/workflows/via-passkey-login-prod-release.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  worker_qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 23
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Recuperar Worker activo y empaquetar frontend V3 sin tocar producción
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,re,json,hashlib,urllib.request,urllib.error,pathlib,shutil
+          account=os.environ['CF_ACCOUNT_ID']; token=os.environ['CF_TOKEN']
+          base=f'https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/via-traslados-web-prod'
+          def private(url):
+            req=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept-Encoding':'identity'})
+            with urllib.request.urlopen(req,timeout=35) as r:return r.read(),r.headers
+          info,headers=private(base+'/deployments')
+          active=json.loads(info)['result']['deployments'][0]['versions']
+          assert len(active)==1 and int(active[0]['percentage'])==100
+          prior=active[0]['version_id']
+          raw,headers=private(base)
+          m=re.search(r'boundary="?([^";]+)',headers.get('Content-Type',''))
+          assert m,'Expected multipart Cloudflare Worker source'
+          source=None
+          for item in raw.split(b'--'+m.group(1).encode()):
+            if b'Content-Disposition' not in item or b'\r\n\r\n' not in item:continue
+            head,body=item.split(b'\r\n\r\n',1)
+            if b'.js"' in head or b'.mjs"' in head or b'name="_worker.js"' in head:
+              source=body.rstrip(b'\r\n').decode('utf-8');break
+          assert source and len(source)>4000
+          assert 'correctKnownPortal' in source and 'env.ASSETS.fetch(request)' in source and 'isClosed' in source
+          target=pathlib.Path('via-v3-worker-package')
+          asset=target/'assets';asset.mkdir(parents=True,exist_ok=True)
+          for path in pathlib.Path('pages').iterdir():
+            if path.is_file() and not path.name.startswith('_'):shutil.copy2(path,asset/path.name)
+          for name in ['flow-premium.css','flow-premium.js','via-refinement.css','admin.html']:
+            try:
+              req=urllib.request.Request('https://viatraslados.com/'+name,headers={'User-Agent':'ViaV3CompatAssets/1.0'})
+              with urllib.request.urlopen(req,timeout=20) as r:
+                data=r.read(2500000)
+                ct=r.headers.get('Content-Type','')
+              if ct.startswith('text/html') and not name.endswith('.html'):continue
+              (asset/name).write_bytes(data)
+              print('COMPAT_ASSET',name,len(data))
+            except urllib.error.HTTPError as e:
+              if e.code!=404:raise
+          assert len(list(asset.iterdir()))>=25
+          html=(asset/'index.html').read_text()
+          assert 'via-v3.css?v=2' in html and 'id="phone-lookup"' in html
+          assert 'via-traslados-passkey-login-fix-v20' in (asset/'sw.js').read_text()
+          (target/'worker.mjs').write_text(source)
+          (target/'previous-version.txt').write_text(prior)
+          conf={'name':'via-traslados-web-v3-qa','main':'worker.mjs',
+           'compatibility_date':'2026-11-10','workers_dev':True,
+           'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
+          (target/'wrangler.jsonc').write_text(json.dumps(conf,indent=2))
+          print('WORKER_SOURCE_STABLE',prior)
+          print('V3_ASSETS',len(list(asset.iterdir())))
+          PY
+          node --check via-v3-worker-package/worker.mjs
+          node --check via-v3-worker-package/assets/app.js
+          node --check via-v3-worker-package/assets/store.js
+      - name: Desplegar solo Worker QA separado
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 deploy --config via-v3-worker-package/wrangler.jsonc --dry-run --outdir /tmp/via-v3-worker-compiled
+          npx --yes wrangler@4 deploy --config via-v3-worker-package/wrangler.jsonc
+      - name: Verificar motor y activos reales en QA
+        run: |
+          python3 - <<'PY'
+          import json,time,urllib.request,urllib.parse,urllib.error
+          root='https://via-traslados-web-v3-qa.marcelof-gx.workers.dev'
+          def get(path):
+            req=urllib.request.Request(root+path,headers={'User-Agent':'ViaV3WorkerQA/1.0'})
+            with urllib.request.urlopen(req,timeout=25) as r:
+              assert r.status==200
+              return r.read().decode('utf-8','replace')
+          for i in range(9):
+            try:
+              page=get('/')
+              if 'via-v3.css?v=2' in page:break
+            except Exception:pass
+            time.sleep(3)
+          else:raise AssertionError('Worker QA not serving V3')
+          assert 'id="phone-lookup"' in page
+          assert 'via-route-overview' in get('/via-v3.css')
+          assert 'via-v3.css?v=2' in get('/reserva.html')
+          assert 'async function identifyPhone' in get('/store.js')
+          q='/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
+          data=json.loads(get(q))
+          assert data.get('results') and 'shangril' in str(data['results'][0].get('city','')).lower(),data
+          print('ISOLATED_WORKER_QA_OK',root)
+          print('EXACT_GEOCODER_PRESERVED',data['results'][0].get('city'))
+          PY
+      - name: Chromium en Worker QA para asegurar portada compacta
+        run: |
+          npm install --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+          cat >/tmp/via-v3-worker-qa.cjs <<'JS'
+          const {chromium}=require(process.cwd()+'/node_modules/playwright');
+          (async()=>{
+            const b=await chromium.launch({headless:true,args:['--no-sandbox']});
+            const root='https://via-traslados-web-v3-qa.marcelof-gx.workers.dev';
+            for(const [w,h] of [[320,640],[360,740],[390,844],[1280,820]]){
+              const page=await b.newPage({viewport:{width:w,height:h},isMobile:w<700,hasTouch:w<700});
+              await page.route('https://via-traslados-api.marcelof-gx.workers.dev/**',async r=>{
+                const path=new URL(r.request().url()).pathname;
+                if(path==='/api/public/route-preview')return r.fulfill({status:200,contentType:'application/json',headers:{'Access-Control-Allow-Origin':root},body:JSON.stringify({distanceKm:18.5,durationMinutes:26,estimate:true})});
+                return r.fulfill({status:503,contentType:'application/json',headers:{'Access-Control-Allow-Origin':root},body:'{"error":"Simulated QA only"}'});
+              });
+              await page.goto(root,{waitUntil:'domcontentloaded',timeout:45000});
+              const top=await page.evaluate(()=>({w:document.documentElement.scrollWidth,cta:document.querySelector('#start-booking').getBoundingClientRect().bottom,photo:getComputedStyle(document.querySelector('.premium-shell')).backgroundImage}));
+              if(top.w>w+2||top.cta>h+3||!top.photo.includes('rambla'))throw Error('Home viewport '+w+': '+JSON.stringify(top));
+              await page.locator('#home-origin').fill('Montevideo Shopping, Montevideo');
+              await page.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
+              await page.locator('#start-booking').click();
+              await page.locator('#via-route-distance').getByText(/18,5 km/).waitFor({timeout:6000});
+              const k=await page.evaluate(()=>({w:document.documentElement.scrollWidth,cta:document.querySelector('#to-contact').getBoundingClientRect().bottom,screen:innerHeight}));
+              if(k.w>w+2||k.cta>h+3)throw Error('Booking viewport '+w+': '+JSON.stringify(k));
+              await page.locator('#to-contact').click();
+              if(!(await page.locator('#phone-first').isVisible()))throw Error('Phone-first absent');
+              await page.close();
+              console.log('V3_WORKER_VIEWPORT_OK',w,h);
+            }
+            await b.close();console.log('V3_FULL_WORKER_BROWSER_QA_PASS');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/via-v3-worker-qa.cjs
+
+      - name: Verificar API V3 con preflight real de navegador
+        run: |
+          set -euo pipefail
+          API=https://via-traslados-api.marcelof-gx.workers.dev
+          for path in /api/customer/phone/identify /api/customer/pin/login /api/public/route-preview; do
+            code=$(curl -sS --connect-timeout 14 --max-time 28 -A 'ViaV3ReleaseCheck/1.0' -X OPTIONS \
+              -H 'Origin: https://viatraslados.com' \
+              -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: Content-Type' \
+              -D /tmp/via-v3-cors-headers -o /dev/null -w '%{http_code}' "$API$path")
+            echo "VALID_ORIGIN $path HTTP $code"
+            test "$code" = 204
+            grep -iFq 'access-control-allow-origin: https://viatraslados.com' /tmp/via-v3-cors-headers
+          done
+          code=$(curl -sS --connect-timeout 14 --max-time 28 -A 'ViaV3ReleaseCheck/1.0' -X OPTIONS \
+            -H 'Origin: https://evil.example' -H 'Access-Control-Request-Method: POST' \
+            -D /tmp/via-v3-blocked-headers -o /dev/null -w '%{http_code}' "$API/api/customer/pin/login")
+          if grep -iFq 'access-control-allow-origin: https://evil.example' /tmp/via-v3-blocked-headers; then
+            echo 'SECURITY_ERROR_UNKNOWN_ORIGIN_ALLOWED';exit 1
+          fi
+          echo "V3_CORS_OK (unknown blocked HTTP $code; no credentials or bookings modified)"
+          # Validación segura sin sesión: el registro WebAuthn debe responder 401, no «Datos incorrectos».
+          authcode=$(curl -sS --connect-timeout 14 --max-time 28 -X POST \
+            -H 'Origin: https://viatraslados.com' -H 'Content-Type: application/json' \
+            --data '{}' -o /tmp/via-passkey-unauthed.json -w '%{http_code}' \
+            "$API/api/customer/passkeys/register/options")
+          test "$authcode" = 401
+          grep -q 'Iniciá sesión para activar la huella' /tmp/via-passkey-unauthed.json
+          echo 'LIVE_PASSKEY_ROUTING_FIX_OK: no booking/no email/no registration'
+      - name: Publicar únicamente el Worker público con guardia de versión y rollback
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          python3 - <<'PY'
+          import os,json,pathlib,urllib.request,urllib.parse,urllib.error,subprocess,time
+          target=pathlib.Path('via-v3-worker-package')
+          expected=(target/'previous-version.txt').read_text().strip()
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];token=os.environ['CLOUDFLARE_API_TOKEN']
+          base=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-web-prod'
+          origin='https://viatraslados.com'
+          def cloud(url,data=None):
+            headers={'Authorization':'Bearer '+token,'Accept':'application/json'}
+            payload=None;method='GET'
+            if data is not None:
+              payload=json.dumps(data).encode('utf-8');method='POST';headers['Content-Type']='application/json'
+            req=urllib.request.Request(url,data=payload,headers=headers,method=method)
+            with urllib.request.urlopen(req,timeout=40) as r:info=json.load(r)
+            assert info.get('success'),info.get('errors')
+            return info.get('result') or {}
+          def current():
+            data=cloud(base+'/deployments')
+            rows=data.get('deployments') or []
+            assert rows and len(rows[0].get('versions') or [])==1,'Multiple active production versions'
+            row=rows[0]['versions'][0];assert int(row['percentage'])==100
+            return row['version_id']
+          def public(path):
+            req=urllib.request.Request(origin+path,headers={'User-Agent':'ViaV3ReleaseAudit/1.0','Cache-Control':'no-cache','Accept-Encoding':'identity'})
+            with urllib.request.urlopen(req,timeout=25) as r:
+              assert r.status==200
+              return r.read()
+          assert current()==expected,'The production Worker was changed since the QA snapshot'
+          original=public('/')
+          assert b'id="phone-lookup"' in original and b'via-v3.css?v=1' in original,'Expected V3 active: refusing unsafe overwrites'
+          assert b'via-v3.css?v=2' not in original,'The access revision is already present'
+          assert (target/'assets'/'index.html').read_bytes().count(b'via-v3.css?v=2')==1
+          cfg=json.loads((target/'wrangler.jsonc').read_text())
+          assert cfg['name']=='via-traslados-web-v3-qa'
+          cfg['name']='via-traslados-web-prod'
+          cfg['workers_dev']=True
+          (target/'wrangler.prod.jsonc').write_text(json.dumps(cfg,indent=2))
+          print('PRECHECK_PRODUCTION_VERSION',expected)
+          changed=False
+          def rollback():
+            print('RESTORING_PREVIOUS_WORKER_VERSION',expected)
+            cloud(base+'/deployments',{'strategy':'percentage','versions':[{'percentage':100,'version_id':expected}],
+              'annotations':{'workers/message':'Via V3 automatic rollback after failed post-deployment checks'}})
+            for i in range(8):
+              time.sleep(3)
+              if current()==expected:
+                print('ROLLBACK_DEPLOYMENT_VERIFIED');return
+            raise RuntimeError('Rollback was requested, but previous version not confirmed')
+          try:
+            args=['npx','--yes','wrangler@4','deploy','--config',str(target/'wrangler.prod.jsonc')]
+            result=subprocess.run(args,text=True,capture_output=True,timeout=240)
+            print('WRANGLER_EXIT',result.returncode)
+            print('WRANGLER_REPORT',result.stdout[-1700:])
+            if result.returncode:
+              print('WRANGLER_STDERR',result.stderr[-900:])
+              raise RuntimeError('Worker release command failed')
+            changed=True
+            for i in range(12):
+              try:
+                html=public('/').decode('utf-8','replace')
+                if 'via-v3.css?v=2' in html and 'id="return-pin-option"' in html:break
+              except Exception:pass
+              time.sleep(3)
+            else:raise AssertionError('New V3 HTML did not become active on viatraslados.com')
+            assert 'via-v3.css?v=2' in public('/reserva.html').decode('utf-8','replace')
+            assert 'via-route-overview' in public('/via-v3.css').decode('utf-8','replace')
+            assert 'async function identifyPhone' in public('/store.js').decode('utf-8','replace')
+            assert 'function initPassenger()' in public('/app.js').decode('utf-8','replace')
+            assert 'return-pin-option' in public('/app.js').decode('utf-8','replace')
+            assert 'via-traslados-passkey-login-fix-v20' in public('/sw.js').decode('utf-8','replace')
+            for filename in ['app.js','store.js','config.js','reference.js','address-autocomplete.js',
+                'wizard-ux.js','passkeys.js','premium.css','reference.css','styles.css','via-v3.css']:
+              assert public('/'+filename)==(target/'assets'/filename).read_bytes(),'Unexpected public asset: '+filename
+            query='/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
+            results=json.loads(public(query)).get('results') or []
+            assert results and 'shangril' in str(results[0].get('city','')).lower(),'Geocoder lost the known locality correction'
+            new=current();assert new!=expected,'Active Worker version did not change'
+            print('V3_PRODUCTION_RELEASE_VERIFIED',origin,'old',expected,'new',new)
+            print('PHONE_FIRST_PIN_ROUTE_AND_STATUS_UI_OK; DB_BACKEND_DNS_OTHER_PROJECTS_UNCHANGED')
+          except Exception as exc:
+            print('V3_PRODUCTION_POSTCHECK_FAILURE',type(exc).__name__,str(exc)[:400])
+            if changed or current()!=expected:rollback()
+            raise
+          PY
