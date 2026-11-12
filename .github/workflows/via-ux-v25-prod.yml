@@ -247,12 +247,22 @@ jobs:
               except Exception:pass
               time.sleep(3)
             else:raise AssertionError('New V3 HTML did not become active on viatraslados.com')
-            details=public('/reserva.html').decode('utf-8','replace')
-            assert 'via-status-premium.css?v=24' in details and 'app.js?v=25' in details
-            mine=public('/mis-reservas.html').decode('utf-8','replace')
-            driver=public('/conductor.html').decode('utf-8','replace')
-            assert 'via-ux-v25.css?v=25' in mine and 'app.js?v=25' in mine
-            assert 'via-ux-v25.css?v=25' in driver and 'driver-accept-alert' in driver
+            # La portada, las reservas y el panel del conductor pueden propagarse en
+            # momentos diferentes por la caché de Cloudflare. Esperar los tres documentos.
+            for html_try in range(30):
+              details=public('/reserva.html').decode('utf-8','replace')
+              mine=public('/mis-reservas.html').decode('utf-8','replace')
+              driver=public('/conductor.html').decode('utf-8','replace')
+              updated=(('via-status-premium.css?v=24' in details and 'app.js?v=25' in details)
+                       and ('via-ux-v25.css?v=25' in mine and 'app.js?v=25' in mine)
+                       and ('via-ux-v25.css?v=25' in driver and 'driver-accept-alert' in driver))
+              print('V25_HTML_PROPAGATION',html_try,
+                    'booking',('app.js?v=25' in details),
+                    'mine',('via-ux-v25.css?v=25' in mine),
+                    'driver',('driver-accept-alert' in driver))
+              if updated:break
+              time.sleep(3)
+            else:raise AssertionError('Cloudflare no propagó aún las tres pantallas V25')
             uxcss=public('/via-ux-v25.css?v=25').decode('utf-8','replace')
             assert '.via-mine-tabs' in uxcss and '.via-driver-sheet' in uxcss
             assert 'passkeys.js?v=21' in details
