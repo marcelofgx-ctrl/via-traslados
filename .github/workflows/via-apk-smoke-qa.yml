@@ -17,13 +17,24 @@ jobs:
           ok=0
           for i in $(seq 1 15); do
             code="$(curl -sSL --max-time 15 -o /tmp/via-download.html -w '%{http_code}' "$URL/" || true)"
-            if [ "$code" = "200" ] && grep -q "Vía Traslados" /tmp/via-download.html; then
+            if [ "$code" = "200" ] && grep -q "Vía Traslados" /tmp/via-download.html && grep -q "<main>" /tmp/via-download.html; then
               ok=1; break
             fi
             echo "Attempt $i: HTTP $code"
             sleep 4
           done
           test "$ok" -eq 1
+      - name: Verify version manifest over public HTTPS
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 "https://via-conductor-apk-qa.vercel.app/latest.json" -o /tmp/via-version.json
+          node -e '
+            const m=require("/tmp/via-version.json");
+            if(m.channel!=="qa"||m.versionCode!==10||m.packageName!=="uy.viatraslados.conductor.autoprecalcqa")
+              throw Error("No coincide el manifiesto público");
+            if(m.sha256!=="010ca6cf801bf6db0134ef99c85de67a5cd77df76241a2ca05cacbe69faf8bcf")
+              throw Error("SHA-256 publicado incorrecto");
+          '
       - name: Verify public APK download and exact SHA256 of approved QA release
         run: |
           set -euo pipefail
