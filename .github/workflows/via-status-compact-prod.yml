@@ -2,7 +2,7 @@ name: Vía Traslados - botones compactos y aceptada v24
 on:
   push:
     branches: [via-status-compact-v24-20261112]
-    paths: [".github/workflows/via-status-compact-release-enable.yml"]
+    paths: [".github/workflows/via-status-compact-prod.yml"]
   workflow_dispatch:
 permissions:
   contents: read
