@@ -1,0 +1,49 @@
+name: Via Traslados - encontrar móvil vinculado sin exponer contactos
+on:
+  push:
+    branches: [via-recuperacion-diagnostico-qa-20261112]
+    paths: [".github/workflows/via-recuperacion-correo-qa.yml"]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comprobar solo correos propios de la consulta y números enmascarados
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const targets=new Map([
+            ['f91b84206d2515d804518955c1116c0cc635788942ba66edb74271a7c8b2457b','cuenta principal'],
+            ['29ca378ecb2e7145d78aaf9012170c450428ef078aa1c21b246228b1fcccd8fa','cuenta secundaria'],
+            ['9c94586ee848d2802f08bfc5dd3ed1b08659625d7ada2bb1be28d4038f417e63','cuenta alternativa']
+          ]);
+          const token=process.env.CLOUDFLARE_API_TOKEN,account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          if(!token||!/^[a-f0-9]{32}$/.test(account||''))throw Error('Acceso no disponible');
+          const base='https://api.cloudflare.com/client/v4/accounts/'+account;
+          const headers={Authorization:'Bearer '+token,Accept:'application/json'};
+          const list=await fetch(base+'/d1/database?name=via-traslados-db',{headers,signal:AbortSignal.timeout(15000)});
+          if(!list.ok)throw Error('No se pudo acceder a D1');
+          const body=await list.json();
+          const databases=(body.result||[]).filter(x=>x.name==='via-traslados-db');
+          if(!body.success||databases.length!==1)throw Error('D1 equivocada o no accesible');
+          const sql='SELECT u.email,c.phone,c.email_verified_at,u.role,u.status FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id';
+          const res=await fetch(base+'/d1/database/'+databases[0].uuid+'/query',{method:'POST',
+            headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({sql}),signal:AbortSignal.timeout(15000)});
+          if(!res.ok)throw Error('Error consulta D1');
+          const response=await res.json();
+          if(!response.success||!Array.isArray(response.result?.[0]?.results))throw Error('D1 sin datos válidos');
+          const hits=response.result[0].results.map(x=>{
+            const hash=createHash('sha256').update(String(x.email).trim().toLowerCase()).digest('hex');
+            const label=targets.get(hash);if(!label)return null;
+            return {correo:label,cuenta_encontrada:true,celular_ultimas_cifras:String(x.phone||'').slice(-4),
+              celular_asociado:!!x.phone,correo_verificado:!!x.email_verified_at,rol:x.role,estado:x.status};
+          }).filter(Boolean);
+          console.log('Resultado filtrado a las cuentas indicadas, sin emails ni teléfonos completos:');
+          console.log(JSON.stringify(hits));
+          NODE
