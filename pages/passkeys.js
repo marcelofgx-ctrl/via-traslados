@@ -2,7 +2,8 @@
    Se ejecuta solo en viatraslados.com (HTTPS), nunca en las demos de Vercel. */
 (function(global){'use strict';
 const S=global.ViaStore;
-const available=()=>!!(global.isSecureContext&&global.PublicKeyCredential&&
+const officialOrigin=()=>global.location?.origin==='https://viatraslados.com';
+const available=()=>!!(officialOrigin()&&global.isSecureContext&&global.PublicKeyCredential&&
   global.navigator?.credentials?.create&&global.navigator?.credentials?.get&&!S.isDemo());
 function toBytes(s){
  const base=String(s).replace(/-/g,'+').replace(/_/g,'/');
@@ -48,7 +49,8 @@ function toJson(credential){
  return j;
 }
 async function enable(){
- if(!available())throw Error('La huella está disponible al abrir viatraslados.com en Chrome o en una app compatible.');
+ if(!officialOrigin())throw Error('La huella se activa únicamente en https://viatraslados.com.');
+ if(!available())throw Error('La huella está disponible en Chrome o una app compatible con passkeys.');
  if(!S.customer())throw Error('Primero confirmá tu correo para activar el acceso con huella.');
  const requested=await S.passkeyRequest('register/options',{});
  const credential=await navigator.credentials.create({publicKey:creationOptions(requested.options)});
@@ -60,6 +62,7 @@ async function enable(){
  return result;
 }
 async function signIn(phone){
+ if(!officialOrigin())throw Error('Para entrar con huella abrí https://viatraslados.com.');
  if(!available())throw Error('Este navegador no admite huella. Podés entrar con código por correo.');
  const requested=await S.passkeyRequest('login/options',{phone});
  const credential=await navigator.credentials.get({publicKey:loginOptions(requested.options)});
