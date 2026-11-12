@@ -100,7 +100,7 @@ jobs:
           assert "global.location?.origin==='https://viatraslados.com'" in get('/passkeys.js')
           assert 'via-route-overview' in get('/via-v3.css')
           assert 'via-status-premium.css?v=24' in get('/reserva.html') and 'app.js?v=24' in get('/reserva.html')
-          assert 'async function identifyPhone' in get('/store.js') and 'via-state--success' in get('/via-status-premium.css')
+          assert 'async function identifyPhone' in get('/store.js') and 'via-state--accepted' in get('/via-status-premium.css?v=24')
           q='/api/direcciones?'+urllib.parse.urlencode({'mode':'resolve','q':'Roque Sáenz Peña 1711, Shangrilá, Canelones'})
           data=json.loads(get(q))
           assert data.get('results') and 'shangril' in str(data['results'][0].get('city','')).lower(),data
@@ -265,7 +265,7 @@ jobs:
             assert 'via-traslados-status-compact-v24' in public('/sw.js?v=24').decode('utf-8','replace')
             for filename in ['app.js','store.js','config.js','reference.js','address-autocomplete.js',
                 'wizard-ux.js','passkeys.js','premium.css','reference.css','styles.css','via-v3.css','via-status-premium.css']:
-              suffix='?v=23' if filename=='app.js' else ('?v=21' if filename=='passkeys.js' else ('?v=1' if filename=='via-status-premium.css' else ''))
+              suffix='?v=24' if filename in ('app.js','via-status-premium.css') else ('?v=21' if filename=='passkeys.js' else '')
               remote_path='/'+filename+suffix
               # Propagación CDN: el HTML puede llegar antes que los JS/CSS.
               for asset_try in range(20):
