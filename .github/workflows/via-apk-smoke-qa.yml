@@ -1,0 +1,37 @@
+name: Via Traslados - APK QA public smoke (no GitHub login)
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths: [".github/workflows/via-apk-smoke-qa.yml"]
+permissions:
+  contents: read
+jobs:
+  public-download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify download page is publicly reachable without authentication
+        run: |
+          set -euo pipefail
+          URL="https://via-conductor-apk-qa.vercel.app"
+          ok=0
+          for i in $(seq 1 15); do
+            code="$(curl -sSL --max-time 15 -o /tmp/via-download.html -w '%{http_code}' "$URL/" || true)"
+            if [ "$code" = "200" ] && grep -q "Vía Traslados" /tmp/via-download.html; then
+              ok=1; break
+            fi
+            echo "Attempt $i: HTTP $code"
+            sleep 4
+          done
+          test "$ok" -eq 1
+      - name: Verify public APK download and exact SHA256 of approved QA release
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/via-apk-public
+          cd /tmp/via-apk-public
+          curl -fLsS --retry 3 --max-time 90 \
+            "https://via-conductor-apk-qa.vercel.app/via-traslados-conductor-qa.apk" \
+            -o via-traslados-conductor-qa.apk
+          echo "010ca6cf801bf6db0134ef99c85de67a5cd77df76241a2ca05cacbe69faf8bcf  via-traslados-conductor-qa.apk" | sha256sum -c -
+          file via-traslados-conductor-qa.apk
+          unzip -t via-traslados-conductor-qa.apk | tail -2
