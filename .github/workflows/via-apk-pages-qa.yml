@@ -1,10 +1,5 @@
-name: Via Traslados - publicar centro de APK QA (Cloudflare aislado)
+name: Via Traslados - publicar APK QA en Cloudflare (manual, requiere permiso Pages)
 on:
-  push:
-    branches: [via-apk-descarga-qa-20261112]
-    paths:
-      - "qa-apk-download/**"
-      - ".github/workflows/via-apk-pages-qa.yml"
   workflow_dispatch:
 permissions:
   contents: read
