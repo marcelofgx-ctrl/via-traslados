@@ -308,25 +308,36 @@ function initPassenger(){
 
  $('send-code').addEventListener('click',async()=>{
   const p=trip(),email=p.email;
-  if(p.name.length<2||!email||email.length>200||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-   return error('Completá nombre y correo electrónico válido.');
+  if(p.name.length<2)return error('Completá tu nombre y apellido.');
+  if(verificationChannel==='email'&&(!email||email.length>200||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))
+   return error('Completá un correo electrónico válido.');
   if(!$('privacy-consent').checked)return error('Necesitamos tu consentimiento para gestionar la solicitud.');
   if(!S.isDemo()&&!turnstileToken)return error('Completá la verificación de seguridad.');
-  onBusy('send-code',true,'Enviando verificación…');
+  onBusy('send-code',true,'Preparando código…');
   try{
-   const result=await S.startVerification(email,turnstileToken);
-   verifiedEmail=result.email;signupPayload={...p,email:result.email};enrolled=false;
-   $('verification-heading').textContent='Validá tu correo';
-   $('verification-description').textContent='Enviamos un código a '+result.maskedEmail+'.';
-   $('otp-guidance').textContent=S.isDemo()?'DEMO: ingresá 123456.':'El código vence en diez minutos y es personal.';
+   signupPayload={...p};enrolled=false;
+   if(verificationChannel==='whatsapp'){
+    if(!whatsappReady)throw Error('WhatsApp no está disponible. Elegí correo.');
+    await window.ViaVerification.start(selectedPhone,'registration',turnstileToken);
+    $('verification-heading').textContent='Validá tu celular';
+    $('verification-description').textContent='Solicitamos el código para tu WhatsApp '+selectedPhone+'.';
+   }else{
+    const result=await S.startVerification(email,turnstileToken);
+    verifiedEmail=result.email;signupPayload.email=result.email;
+    $('verification-heading').textContent='Validá tu correo';
+    $('verification-description').textContent='Enviamos un código a '+result.maskedEmail+'.';
+   }
+   $('otp-guidance').textContent=S.isDemo()?'DEMO: ingresá 123456.':
+    'El código vence en diez minutos y solo sirve una vez.';
    if(S.isDemo())$('otp-code').value='123456';
    hidden('verification-group',false);hidden('pin-create-group',false);
    hidden('booking-confirm',true);hidden('resend-code',false);
    $('verify-and-book').textContent='Crear cuenta y solicitar traslado →';
    resetCaptcha();changeStep(3);
-  }catch(ex){error(ex.message||'No se pudo enviar el correo');resetCaptcha()}
+  }catch(ex){error(ex.message||'No pudimos preparar el código');resetCaptcha()}
   finally{onBusy('send-code',false)}
  });
+
  $('resend-code')?.addEventListener('click',()=>{changeStep(2);resetCaptcha();loadCaptcha()});
  form.addEventListener('submit',async event=>{
   event.preventDefault();if(step!==3)return;
@@ -336,10 +347,13 @@ function initPassenger(){
   try{
    if(!hasSession()&&!enrolled){
     const code=$('otp-code').value.trim(),pin=$('new-pin').value.trim();
-    if(!/^\d{6}$/.test(code))throw Error('Ingresá las seis cifras del correo.');
+    if(!/^\d{6}$/.test(code))throw Error('Ingresá las seis cifras recibidas.');
     if(!/^\d{6}$/.test(pin))throw Error('Elegí un PIN de seis cifras para tu cuenta.');
     if(!signupPayload)throw Error('Revisá tu registro y pedí un código nuevo.');
-    await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});
+    if(verificationChannel==='whatsapp'){
+     const session=await window.ViaVerification.verify(selectedPhone,code,'registration',{name:signupPayload.name});
+     $('email').value=session.profile.email; // identidad interna, correo no verificado
+    }else await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});
     enrolled=true;
    }
    if(!hasSession())throw Error('Necesitamos verificar tu identidad antes de reservar.');
