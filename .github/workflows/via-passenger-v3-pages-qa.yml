@@ -111,12 +111,13 @@ jobs:
               await p.screenshot({path:'via-v3-step1-'+w+'.png'});
               await p.locator('#to-contact').click();
               if(!(await p.locator('#phone-first').isVisible())||(await p.locator('#new-account').isVisible()))throw Error('Phone not first');
+              if(await p.evaluate(()=>window.ViaPasskeys.available()))throw Error('WebAuthn must be disabled outside official domain');
               await p.locator('#account-phone').fill('094123456');
               await p.waitForTimeout(100);
               await p.locator('#phone-lookup').click();
               await p.waitForTimeout(250);
               if(!(await p.locator('#return-pin-option').isVisible())||!(await p.locator('#return-send-code').isVisible()))throw Error('Login choices missing');
-              if(!(await p.locator('#return-passkey').isEnabled()))throw Error('Fingerprint already enrolled should remain enabled');
+              if(!(await p.locator('#return-passkey').isDisabled()))throw Error('Fingerprint must not authenticate on Pages QA origin');
               await p.locator('#return-pin-option').click();
               if(!(await p.locator('#pin-login').isVisible()))throw Error('Known user PIN form did not open');
               await p.locator('#return-pin').fill('739251');
