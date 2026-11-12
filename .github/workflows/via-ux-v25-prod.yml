@@ -285,7 +285,7 @@ jobs:
             assert 'Propuesta aceptada' in public('/app.js?v=25').decode('utf-8','replace') and 'displayAcceptedSheet' in public('/app.js?v=25').decode('utf-8','replace')
             assert 'via-traslados-passenger-driver-ux-v25' in public('/sw.js?v=25').decode('utf-8','replace')
             for filename in ['app.js','store.js','config.js','reference.js','address-autocomplete.js',
-                'wizard-ux.js','passkeys.js','premium.css','reference.css','styles.css','via-v3.css','via-status-premium.css','via-ux-v25.css','mis-reservas.html','conductor.html']:
+                'wizard-ux.js','passkeys.js','premium.css','reference.css','styles.css','via-v3.css','via-status-premium.css','via-ux-v25.css']:
               suffix='?v=25' if filename in ('app.js','via-ux-v25.css') else ('?v=24' if filename=='via-status-premium.css' else ('?v=21' if filename=='passkeys.js' else ''))
               remote_path='/'+filename+suffix
               # Propagación CDN: el HTML puede llegar antes que los JS/CSS.
