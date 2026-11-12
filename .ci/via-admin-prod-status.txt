@@ -9,8 +9,8 @@ Estado público: {"enabled":true}
 ────────────────────
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
-Total Upload: 938.28 KiB / gzip: 164.10 KiB
-Worker Startup Time: 2 ms
+Total Upload: 938.52 KiB / gzip: 164.15 KiB
+Worker Startup Time: 6 ms
 Your Worker has access to the following bindings:
 Binding                                                               Resource                  
 env.DB (via-traslados-db)                                             D1 Database               
@@ -18,7 +18,7 @@ env.PUBLIC_ORIGIN ("https://viatraslados.com")                        Environmen
 env.OPERATOR_ORIGIN ("https://viatraslados.com")                      Environment Variable      
 env.RESEND_FROM ("Vía Traslados <reservas@viatraslados....")          Environment Variable      
 
-Uploaded via-traslados-api (2.80 sec)
-Deployed via-traslados-api triggers (0.62 sec)
+Uploaded via-traslados-api (2.23 sec)
+Deployed via-traslados-api triggers (0.40 sec)
   https://via-traslados-api.marcelof-gx.workers.dev
-Current Version ID: 45c00c6b-e767-4f66-a3e9-e079767a3554
+Current Version ID: b8110b8a-6804-4932-8e75-287ec934425d
