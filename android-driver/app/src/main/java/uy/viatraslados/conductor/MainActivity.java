@@ -91,6 +91,7 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         visible = true;
+        ViaAppUpdates.onForeground(this);
         handler.removeCallbacks(poll);
         handler.postDelayed(poll, 20000);
         if (operatorKey != null || staffToken != null) fetchBookings(false);
@@ -2171,9 +2172,12 @@ public final class MainActivity extends Activity {
         LinearLayout info=card();
         addLine(info,"INFORMACIÓN",11,MUTED,true,9);
         addLine(info,"Vía Traslados",17,INK,true,7);
-        addLine(info,"Versión 0.9.0 · Rutas Geoapify",13,MUTED,false,5);
+        addLine(info,"Versión " + getAppVersionName() + " · Canal QA",13,MUTED,false,5);
         addLine(info,"Actualización de viajes: cada 30 segundos",13,MUTED,false,12);
         info.addView(button("Comprobar conexión",false,v->fetchBookings(true)),
+            new LinearLayout.LayoutParams(-1,dp(46)));
+        spacer(info,10);
+        info.addView(button("Buscar actualizaciones",false,v->ViaAppUpdates.check(this,true)),
             new LinearLayout.LayoutParams(-1,dp(46)));
         appendCard(body,info,13);
 
@@ -2229,6 +2233,14 @@ public final class MainActivity extends Activity {
         }
         dock.addView(bar,new LinearLayout.LayoutParams(-1,dp(70)));
         root.addView(dock,new LinearLayout.LayoutParams(-1,-2));
+    }
+
+    private String getAppVersionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(),0).versionName;
+        } catch (Exception e) {
+            return "QA";
+        }
     }
 
     private void message(String s) { Toast.makeText(this,s,Toast.LENGTH_LONG).show(); }
