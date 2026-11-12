@@ -80,3 +80,17 @@ Backend API desplegado por el flujo [GitHub Actions / habilitar control administ
 - `GET /api/requests/:id` incluye ruta almacenada cuando esté disponible, sólo para su titular/su token de reserva. No divulga datos del resto.
 
 Las pruebas en memoria, QA de rutas y controles de seguridad fueron aprobadas. La vista pública V3 se desarrolló en la rama `via-passenger-v3-pages` del repositorio, partiendo de `pages-release`, y se probó en el alias `visual-premium-qa.via-traslados-pasajeros.pages.dev`. Su publicación en el Worker público `via-traslados-web-prod` es un despliegue **independiente** y no debe confundirse con activar Pages ni con actualizar el backend.
+
+## Estado visual de las reservas — confirmación premium (11/11/2026)
+
+El seguimiento en `https://viatraslados.com/reserva.html` tiene presentación específica para los **nueve estados reales** de reserva. `confirmed` se muestra verde esmeralda, con confirmación explícita y símbolo de aprobación; `requested`, `quoted` y `accepted` nunca se presentan como confirmados. Rutas, datos y estados continúan viniendo de la API. Botón para comprobar novedades y refresco cada 12 segundos mientras la página está abierta.
+
+- Fuentes del diseño archivadas en `design/via/booking-v23/` en `main`, incluyendo el `app.js` efectivamente publicado.
+- QA 9 estados × 4 anchos, sin reservas ni correos: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/43139167612
+- Publicación y verificaciones de producción en verde: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/43139522976
+- Worker anterior para rollback: `d34fc7ae-33de-424c-96e5-400c0a6ce953`
+- Worker nuevo: `d10ed0df-5f7a-48a3-bc64-bc8410066fb0`
+- No se alteró D1, el backend, el dominio de correo ni otros proyectos; solo frontend del Worker público.
+- Web Push, correo de confirmación automática y garantías de entrega **no se implementaron** mediante este cambio visual.
+
+**En futuras actualizaciones del sitio público, preservar explícitamente este CSS y `app.js?v=23`; no sobrescribir con `pages-release` anterior.**
