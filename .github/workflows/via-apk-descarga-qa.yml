@@ -1,0 +1,41 @@
+name: Via Traslados - staged public QA APK download
+on:
+  push:
+    branches:
+      - via-apk-descarga-qa-20261112
+    paths:
+      - ".github/workflows/via-apk-descarga-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout private QA branch
+        uses: actions/checkout@v4
+      - name: Download exact existing QA release from private GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/via-qa-release
+          gh release download via-conductor-qa-v0.2.0 --repo "${GITHUB_REPOSITORY}" \
+            --pattern "via-traslados-conductor-qa.apk" --pattern "SHA256SUMS.txt" \
+            --dir /tmp/via-qa-release
+          cd /tmp/via-qa-release
+          sha256sum --check SHA256SUMS.txt
+          unzip -t via-traslados-conductor-qa.apk | tail -2
+      - name: Stage only compiled APK and checksum for public download
+        run: |
+          set -euo pipefail
+          cp /tmp/via-qa-release/via-traslados-conductor-qa.apk qa-apk-download/
+          cp /tmp/via-qa-release/SHA256SUMS.txt qa-apk-download/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add qa-apk-download/via-traslados-conductor-qa.apk qa-apk-download/SHA256SUMS.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "qa(via): stage verified conductor APK v0.2.0 for isolated download"
+            git push origin HEAD:via-apk-descarga-qa-20261112
+          fi
