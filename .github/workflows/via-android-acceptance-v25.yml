@@ -1,0 +1,85 @@
+name: Vía Traslados - APK conductor aviso de presupuesto aceptado V25
+on:
+  push:
+    branches: [via-android-acceptance-v25-20261112]
+    paths:
+      - "android-driver/**"
+      - ".github/workflows/via-android-acceptance-v25.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-conductor-acceptance-v25
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Generar APK Samsung
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Obtener fuente exclusiva Vía Traslados
+        uses: actions/checkout@v4
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Preparar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Instalar Android 35 con SDK disponible en GitHub
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Validar que la APK no incluye secretos ni Quick Trip
+        run: |
+          set -euo pipefail
+          test -f android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -q "via-traslados-api.marcelof-gx.workers.dev" android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -q "showAcceptedBottomSheet" android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -q "notifyAcceptedProposals" android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -q 'Confirmar servicio' android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          if grep -R -i -n 'quicktrip\|quick-trip\|traslados-android' android-driver/app/src/main/java android-driver/app/src/main/AndroidManifest.xml; then
+            echo "Referencia ajena detectada"; exit 1
+          fi
+      - name: Compilar APK debug con Gradle
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug --no-daemon --stacktrace
+      - name: Renombrar APK y generar verificación
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-conductor-qa.apk
+          cd dist
+          sha256sum via-traslados-conductor-qa.apk > SHA256SUMS.txt
+          unzip -t via-traslados-conductor-qa.apk | tail -2
+          ls -lh via-traslados-conductor-qa.apk
+      - name: Descargar en formato artifact desde GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-traslados-conductor-acceptance-v25-apk
+          path: dist/*
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publicar versión instalable QA (sin Play Store)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: via-conductor-qa-v0.2.0
+          target_commitish: via-android-acceptance-v25-20261112
+          name: "Vía Traslados Conductor · QA v0.2.0 · Aceptación"
+          body: |
+            APK de pruebas V25 del conductor de Vía Traslados.\n            Incluye hoja inferior al aceptar el pasajero un presupuesto, contador persistente y actualización cada 20 s con la app abierta.\n            Confirmar sigue requiriendo la aprobación explícita del conductor.\n            No incorpora aún push remoto cuando la APK esté cerrada.
+            Se conecta a via-traslados-api; no contiene credenciales.
+            Descargá el archivo .apk, abrilo en tu Android y autorizá la instalación desde el navegador.
+            No es una publicación de Google Play ni una versión final.
+          files: |
+            dist/via-traslados-conductor-qa.apk
+            dist/SHA256SUMS.txt
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
