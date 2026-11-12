@@ -116,7 +116,7 @@ jobs:
               await p.locator('#phone-lookup').click();
               await p.waitForTimeout(250);
               if(!(await p.locator('#return-pin-option').isVisible())||!(await p.locator('#return-send-code').isVisible()))throw Error('Login choices missing');
-              if(!(await p.locator('#return-passkey').isDisabled()))throw Error('Fingerprint must be disabled until enrolled');
+              if(!(await p.locator('#return-passkey').isEnabled()))throw Error('Fingerprint already enrolled should remain enabled');
               await p.locator('#return-pin-option').click();
               if(!(await p.locator('#pin-login').isVisible()))throw Error('Known user PIN form did not open');
               await p.locator('#return-pin').fill('739251');
@@ -133,7 +133,7 @@ jobs:
                 return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({registered:true,hasPin:false,hasPasskey:false,maskedEmail:'te•••@example.invalid',grant:'qa-signed-grant'})});
               if(path==='/api/customer/login/start')
                 return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({sent:true,recognized:true,maskedEmail:'te•••@example.invalid'})});
-              return route.continue();
+              return route.fallback();
             });
             await noPin.locator('#home-origin').fill('Montevideo Shopping, Montevideo');
             await noPin.locator('#home-destination').fill('Aeropuerto Internacional de Carrasco');
