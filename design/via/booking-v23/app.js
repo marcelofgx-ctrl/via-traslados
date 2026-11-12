@@ -467,7 +467,10 @@ async function initMine(){
     container.innerHTML='<div class="empty"><h3>Todavía no tenés reservas</h3><p>Cuando solicites un traslado, aparecerá aquí. Podrás consultarlo desde tus dispositivos una vez que ingreses a tu cuenta.</p><a href="./index.html">Solicitar un traslado →</a></div>';
     return;
    }
-   container.innerHTML=rows.map(b=>'<a class="mine-item" href="./reserva.html?id='+encodeURIComponent(b.id)+'"><div><strong>'+esc(b.origin)+' → '+esc(b.destination)+'</strong><p>'+esc(fmtDate(b.date))+' · '+esc(b.time)+' · '+esc(labels[b.status]||b.status)+'</p></div><span aria-hidden="true">→</span>< function turnstile(){
+   container.innerHTML=rows.map(b=>'<a class="mine-item" href="./reserva.html?id='+encodeURIComponent(b.id)+'"><div><strong>'+esc(b.origin)+' → '+esc(b.destination)+'</strong><p>'+esc(fmtDate(b.date))+' · '+esc(b.time)+' · '+esc(labels[b.status]||b.status)+'</p></div><span aria-hidden="true">→</span></a>').join('');
+  }catch(e){container.textContent='No pudimos consultar tus viajes. Revisá tu conexión e intentá entrar nuevamente.'}
+ }
+ function turnstile(){
   if(S.isDemo()||S.customer()||turnstileLoaded||!window.VIA_CONFIG?.turnstileSiteKey)return;
   turnstileLoaded=true;
   const box=$('mine-turnstile');box?.classList.remove('hidden');
@@ -561,12 +564,6 @@ async function initMine(){
    await S.setPin($('mine-new-pin').value.trim());
    recoveryAuthenticated=false;note('');await draw();
   }catch(e){note(e.message||'Código incorrecto o PIN inválido.')}
-  finally{button.disabled=false}
- });
-
-alue.trim());
-   note('');await draw();
-  }catch(e){note(e.message||'Código inválido o vencido.')}
   finally{button.disabled=false}
  });
  $('mine-logout')?.addEventListener('click',async()=>{
