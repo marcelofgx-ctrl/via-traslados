@@ -122,7 +122,7 @@ jobs:
       - name: Instalar navegador móvil para QA de 9 estados
         run: |
           npm install --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium >/dev/null
+          command -v google-chrome || command -v chromium || exit 1
       - name: Verificar estado real vs confirmado, legibilidad y acciones sin reservas reales
         run: |
           cat >/tmp/via-status-ui-qa.cjs <<'JS'
@@ -142,7 +142,7 @@ jobs:
             ['cancelled','Reserva cancelada','cancelled']
           ];
           (async()=>{
-            const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+            const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-sandbox']});
             for(const [width,height] of [[320,640],[360,740],[390,844],[1280,820]]){
               const page=await browser.newPage({viewport:{width,height},isMobile:width<700,hasTouch:width<700});
               let state='requested';
