@@ -165,7 +165,7 @@ function initPassenger(){
   keyButton.setAttribute('aria-disabled',passkeyReady?'false':'true');
   keyButton.textContent=passkeyReady?'Huella o PIN del teléfono':'Huella: activar después';
   $('passkey-availability').textContent=!supported?
-   'Este navegador no permite el acceso biométrico. Entrá con correo o PIN.':
+   (location.origin!=='https://viatraslados.com'?'La huella se activa únicamente en viatraslados.com.':'Este navegador no permite el acceso biométrico. Entrá con correo o PIN.'):
    (!data.hasPasskey?'Para activar la huella, primero ingresá por correo; te ofreceremos vincular este dispositivo al confirmar el viaje.':
     'Tu dispositivo ya tiene un acceso seguro registrado.');
   hidden('forgot-pin',!hasPin);
