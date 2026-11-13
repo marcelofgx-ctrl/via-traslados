@@ -1,0 +1,81 @@
+name: Vía Traslados V28 - densidad premium QA
+on:
+  push:
+    branches: [via-densidad-premium-v28-qa-20261113]
+    paths:
+      - "android-driver/**"
+      - ".github/workflows/via-v28-density-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-v28-density-qa
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verificar reglas y tests sin base de datos remota
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          python3 scripts/v26-assignment-sql-test.py
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Instalar Android SDK 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar demo V28 aislada
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaDensePreview=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v28preview'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='28'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-conductor-v28-premium-demo
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - name: Publicar solo binario de demostración en página QA
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin via-apk-descarga-qa-20261112
+          git worktree add /tmp/via-v28-site FETCH_HEAD
+          mkdir -p /tmp/via-v28-site/qa-apk-download/v28-preview
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v28-site/qa-apk-download/v28-preview/via-conductor-v28-demo.apk
+          cd /tmp/via-v28-site/qa-apk-download/v28-preview
+          sha256sum via-conductor-v28-demo.apk > SHA256SUMS.txt
+          cat > index.html <<'HTML'
+          <!doctype html>
+          <html lang="es-UY"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <meta name="robots" content="noindex,nofollow"><title>Vía Traslados V28 · Demo premium</title>
+          <style>*{box-sizing:border-box}html{font-family:system-ui,-apple-system,Roboto,sans-serif;background:#f4f8f8;color:#21383b}body{max-width:540px;margin:28px auto;padding:16px}main{padding:26px 23px;background:white;border:1px solid #dce9e6;border-radius:20px}h1{font-size:25px;line-height:1.2;margin:12px 0}p{font-size:14px;line-height:1.55;color:#566e70}small{color:#006d69;font-weight:750;letter-spacing:.12em;font-size:11px}a{display:block;text-decoration:none;text-align:center;background:#00726d;color:white;border-radius:12px;padding:15px;font-weight:750;min-height:48px;margin:20px 0}</style></head>
+          <body><main><small>VÍA TRASLADOS · ANDROID DEMO</small><h1>Centro de operaciones V28</h1>
+          <p>Rediseño de mayor densidad: listado de solicitudes compacto, detalle de traslado optimizado y asignación con datos de prueba.</p>
+          <a href="./via-conductor-v28-demo.apk" download>Descargar APK V28 Demo</a>
+          <p>Solo demostración, sin usuario ni contraseña. No se conecta a producción, no modifica reservas y se instala como aplicación independiente de V27 y la versión operativa.</p>
+          </main></body></html>
+          HTML
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f via-conductor-v28-demo.apk
+          git add SHA256SUMS.txt index.html
+          git commit -m "qa(via): publicar demo V28 optimizada sin alterar V27"
+          git push origin HEAD:via-apk-descarga-qa-20261112
