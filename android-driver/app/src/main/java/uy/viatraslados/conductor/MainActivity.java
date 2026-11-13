@@ -2503,6 +2503,18 @@ public final class MainActivity extends Activity {
             appendCard(content,c,10);
         }
         if(canManageRoles) {
+            LinearLayout commercial=card();
+            addLine(commercial,"DESPACHO Y TARIFAS",11,TEAL_DARK,true,8);
+            addLine(commercial,"Modalidades privadas y permisos de cotización",
+                15,INK,true,7);
+            addLine(commercial,"Solo el administrador fundador puede ver y cambiar "+
+                "las condiciones comerciales de cada conductor.",12,MUTED,false,12);
+            commercial.addView(button("Socios, contratados y permisos",false,
+                v->openCommercialDashboard()),new LinearLayout.LayoutParams(-1,dp(44)));
+            spacer(commercial,8);
+            commercial.addView(button("Parámetros de precios sugeridos",false,
+                v->openPricingSettings()),new LinearLayout.LayoutParams(-1,dp(44)));
+            appendCard(content,commercial,13);
             spacer(content,18);
             addLine(content,"Administradores",21,INK,true,5);
             addLine(content,"Vos decidís quién puede administrar el servicio.",
@@ -2528,6 +2540,198 @@ public final class MainActivity extends Activity {
         spacer(content,5);
         addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
             12,MUTED,false,13);
+    }
+
+    // Modalidad comercial visible exclusivamente al administrador fundador.
+    private void openCommercialDashboard() {
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("CONFIGURACIÓN PRIVADA","Modelo de conductores",
+            "Solo administrador fundador","Permisos",sections);
+        LinearLayout body=sections[0];
+        addLine(body,"Definí quién puede cotizar solicitudes nuevas y quién puede liberarlas. "+
+            "Esta clasificación no aparece en las cuentas de conductores.",13,MUTED,false,12);
+        LinearLayout list=column();
+        body.addView(list);
+        addLine(list,"Consultando perfiles comerciales…",13,MUTED,false,0);
+        api("GET","/api/admin/commercial-drivers",null,(status,result,error)->{
+            if(!panel.isShowing())return;
+            list.removeAllViews();
+            if(status!=200){
+                addLine(list,error.isEmpty()?"No se pudieron cargar las condiciones.":error,
+                    13,ORANGE,false,0);
+                return;
+            }
+            try{
+                JSONArray rows=new JSONObject(result).getJSONArray("drivers");
+                for(int i=0;i<rows.length();i++){
+                    JSONObject driver=rows.optJSONObject(i);
+                    if(driver==null)continue;
+                    LinearLayout card=card();
+                    addLine(card,driver.optString("name","Conductor"),15,INK,true,5);
+                    addLine(card,"partner".equals(driver.optString("mode"))?"Socio":"Contratado",
+                        12,TEAL_DARK,true,5);
+                    addLine(card,"Cotización general: "+
+                        (driver.optBoolean("canQuoteAll")?"habilitada":"no habilitada")+
+                        " · Liberación: "+(driver.optBoolean("canRelease")?"sí":"no"),
+                        11,MUTED,false,10);
+                    card.addView(button("Editar permisos y comisión",false,v->{
+                        panel.dismiss();
+                        editCommercialDriver(driver);
+                    }),new LinearLayout.LayoutParams(-1,dp(44)));
+                    appendCard(list,card,10);
+                }
+                if(rows.length()==0)addLine(list,"No hay conductores registrados.",13,MUTED,false,0);
+            }catch(Exception ex){
+                addLine(list,"Respuesta comercial inválida.",13,ORANGE,false,0);
+            }
+        });
+    }
+
+    private void editCommercialDriver(JSONObject driver) {
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("ÚNICAMENTE ADMINISTRACIÓN","Permisos comerciales",
+            driver.optString("name","Conductor"),"Privado",sections);
+        LinearLayout body=sections[0],footer=sections[1];
+        addLine(body,"MODALIDAD INTERNA",10,TEAL_DARK,true,12);
+        android.widget.RadioGroup options=new android.widget.RadioGroup(this);
+        options.setOrientation(android.widget.RadioGroup.VERTICAL);
+        android.widget.RadioButton partner=new android.widget.RadioButton(this);
+        partner.setId(View.generateViewId());partner.setText("Socio · sin comisión");
+        partner.setTextSize(14);partner.setTextColor(INK);
+        android.widget.RadioButton contractor=new android.widget.RadioButton(this);
+        contractor.setId(View.generateViewId());contractor.setText("Contratado · comisión");
+        contractor.setTextSize(14);contractor.setTextColor(INK);
+        options.addView(partner);
+        options.addView(contractor);
+        options.check("partner".equals(driver.optString("mode"))?
+            partner.getId():contractor.getId());
+        body.addView(options);
+        spacer(body,12);
+        android.widget.CheckBox quoteAll=new android.widget.CheckBox(this);
+        quoteAll.setText("Puede ver y cotizar solicitudes generales");
+        quoteAll.setTextColor(INK);
+        quoteAll.setTextSize(13);
+        quoteAll.setChecked(driver.optBoolean("canQuoteAll",false));
+        body.addView(quoteAll);
+        android.widget.CheckBox release=new android.widget.CheckBox(this);
+        release.setText("Puede liberar solicitudes a contratados");
+        release.setTextColor(INK);
+        release.setTextSize(13);
+        release.setChecked(driver.optBoolean("canRelease",false));
+        body.addView(release);
+        spacer(body,12);
+        addLine(body,"COMISIÓN % SOBRE LA COTIZACIÓN",10,MUTED,true,7);
+        EditText fee=new EditText(this);
+        fee.setSingleLine(true);fee.setTextSize(17);
+        fee.setInputType(InputType.TYPE_CLASS_NUMBER);
+        fee.setText(String.valueOf(driver.optInt("commissionBps",2500)/100));
+        fee.setBackground(bg(Color.WHITE,12,BORDER));
+        fee.setPadding(dp(12),dp(8),dp(12),dp(8));
+        body.addView(fee,new LinearLayout.LayoutParams(-1,dp(48)));
+        TextView note=text("Ejemplo contratado: cotización $ 4.000 · "+
+            "comisión 25% = $ 1.000 · conductor recibe $ 3.000.",12,MUTED,false);
+        body.addView(note);
+        options.setOnCheckedChangeListener((group,checkedId)->{
+            boolean isPartner=checkedId==partner.getId();
+            release.setEnabled(isPartner);
+            if(!isPartner)release.setChecked(false);
+            fee.setEnabled(!isPartner);
+            if(isPartner)fee.setText("0");
+            else if("0".equals(fee.getText().toString()))fee.setText("25");
+        });
+        boolean initialPartner=options.getCheckedRadioButtonId()==partner.getId();
+        release.setEnabled(initialPartner);
+        fee.setEnabled(!initialPartner);
+        TextView error=text("",12,ORANGE,false);
+        footer.addView(error);
+        Button save=button("Guardar permisos",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            try{
+                boolean isPartner=options.getCheckedRadioButtonId()==partner.getId();
+                int bps=Integer.parseInt(fee.getText().toString().trim())*100;
+                JSONObject patch=new JSONObject()
+                    .put("mode",isPartner?"partner":"contractor")
+                    .put("canQuoteAll",quoteAll.isChecked())
+                    .put("canRelease",isPartner&&release.isChecked())
+                    .put("commissionBps",isPartner?0:bps);
+                save.setEnabled(false);
+                api("PATCH","/api/admin/drivers/"+
+                    Uri.encode(driver.optString("id"))+"/commercial",patch,(status,result,problem)->{
+                    if(status==200){
+                        panel.dismiss();
+                        message("Permisos comerciales actualizados.");
+                        openCommercialDashboard();
+                    }else{
+                        error.setText(problem.isEmpty()?"No se pudieron guardar los cambios.":problem);
+                        save.setEnabled(true);
+                    }
+                });
+            }catch(Exception ex){error.setText("Ingresá una comisión válida entre 0 y 50%.");}
+        });
+    }
+
+    private void openPricingSettings(){
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("ADMINISTRACIÓN","Guía de tarifas",
+            "Parámetros orientativos · pesos uruguayos","Configurar",sections);
+        LinearLayout body=sections[0],footer=sections[1];
+        addLine(body,"Ajustá los valores que alimentan el rango mínimo, sugerido y máximo. "+
+            "No incluye peajes, esperas, estacionamiento ni retornos vacíos.",
+            13,MUTED,false,13);
+        final String[] keys={"baseUyu","perKmUyu","perMinuteUyu",
+            "minTargetUyu","minFloorUyu","lowFactorBps","highFactorBps"};
+        final String[] titles={"Base por traslado (UYU)","Por kilómetro (UYU)",
+            "Por minuto (UYU)","Precio mínimo sugerido (UYU)",
+            "Piso absoluto del rango (UYU)","Banda baja (%)","Banda alta (%)"};
+        final int[] defaults={300,25,4,850,650,75,155};
+        EditText[] fields=new EditText[keys.length];
+        for(int i=0;i<keys.length;i++){
+            addLine(body,titles[i],11,TEAL_DARK,true,5);
+            EditText field=new EditText(this);
+            field.setInputType(InputType.TYPE_CLASS_NUMBER);
+            field.setSingleLine(true);field.setTextSize(15);
+            field.setText(String.valueOf(defaults[i]));
+            field.setBackground(bg(Color.WHITE,12,BORDER));
+            field.setPadding(dp(12),dp(8),dp(12),dp(8));
+            body.addView(field,new LinearLayout.LayoutParams(-1,dp(45)));
+            spacer(body,10);
+            fields[i]=field;
+        }
+        api("GET","/api/admin/pricing",null,(status,data,error)->{
+            if(!panel.isShowing())return;
+            if(status!=200){message(error.isEmpty()?"Sin acceso a configuración de tarifas":error);return;}
+            try{
+                JSONObject params=new JSONObject(data).getJSONObject("config");
+                for(int i=0;i<keys.length;i++){
+                    int n=params.optInt(keys[i],i>=5?defaults[i]*100:defaults[i]);
+                    fields[i].setText(String.valueOf(i>=5?n/100:n));
+                }
+            }catch(Exception ignored){}
+        });
+        TextView problem=text("",12,ORANGE,false);
+        footer.addView(problem);
+        Button save=button("Guardar parámetros de tarifa",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            try{
+                JSONObject config=new JSONObject();
+                for(int i=0;i<keys.length;i++){
+                    int n=Integer.parseInt(fields[i].getText().toString().trim());
+                    config.put(keys[i],i>=5?n*100:n);
+                }
+                save.setEnabled(false);
+                api("PATCH","/api/admin/pricing",config,(status,data,error)->{
+                    if(status==200){
+                        panel.dismiss();message("Parámetros de precios actualizados.");
+                    }else{save.setEnabled(true);problem.setText(error.isEmpty()?
+                        "Revisá los valores.":error);}
+                });
+            }catch(Exception e){problem.setText("Ingresá valores numéricos válidos.");}
+        });
     }
 
     private void confirmTeamRole(String id,String name,String role) {
