@@ -30,6 +30,6 @@ jobs:
           BASE=https://via-conductor-apk-qa.vercel.app
           curl -fLsS --retry 4 --max-time 140 "$BASE/v29-preview/via-conductor-v29-demo.apk" -o /tmp/via-v29.apk
           test "$(stat -c%s /tmp/via-v29.apk)" -gt 1000000
-          echo "5a360927a8ad434f4ef301c78507a944a807aa26935bacc7d01e52a914fe1c97  /tmp/via-v29.apk" | sha256sum -c -
+          echo "7bec36b964ebe1ac93e562fc3b2602151b8c825ba244629ca43762d271a1bf83  /tmp/via-v29.apk" | sha256sum -c -
           unzip -t /tmp/via-v29.apk | tail -2
           curl -fLsS --retry 3 "$BASE/v28-preview/SHA256SUMS.txt" | grep -q 'via-conductor-v28-demo.apk'
