@@ -1,0 +1,43 @@
+name: Vía Traslados - diagnóstico OTP solo lectura
+on:
+  push:
+    branches: [via-otp-diagnostico-20261113]
+    paths: ['.github/workflows/via-otp-diagnostico.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Comprobar estado público y contador global sin ver información personal
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node <<'NODE'
+          const crypto = require('node:crypto');
+          (async()=>{
+            const token=process.env.CLOUDFLARE_API_TOKEN, account=process.env.CLOUDFLARE_ACCOUNT_ID;
+            if(!token||!account) throw Error('No hay credenciales Cloudflare');
+            const root='https://api.cloudflare.com/client/v4/accounts/'+account;
+            const auth={'Authorization':'Bearer '+token,'Content-Type':'application/json'};
+            const list=await fetch(root+'/d1/database?name=via-traslados-db',{headers:auth});
+            const dbs=await list.json();
+            if(!list.ok||!dbs.success)throw Error('No se puede consultar metadata D1: HTTP '+list.status);
+            const db=(dbs.result||[]).filter(x=>x.name==='via-traslados-db');
+            if(db.length!==1)throw Error('No se encuentra D1 exclusiva');
+            const hash=crypto.createHash('sha256').update('start-global').digest('hex');
+            const sql='SELECT attempts,window_started,unixepoch() AS actual,CASE WHEN unixepoch()-window_started < 86400 THEN 86400-(unixepoch()-window_started) ELSE 0 END AS segundos_restantes FROM otp_rate_limits WHERE rate_key=? LIMIT 1';
+            const response=await fetch(root+'/d1/database/'+db[0].uuid+'/query',{method:'POST',headers:auth,body:JSON.stringify({sql,params:[hash]})});
+            const query=await response.json();
+            if(!response.ok||!query.success)throw Error('Falló consulta solo lectura D1: HTTP '+response.status);
+            const row=query.result?.[0]?.results?.[0];
+            console.log('VIA_OTP_GLOBAL_COUNT:',row?.attempts??0);
+            console.log('VIA_OTP_GLOBAL_REMAINING_SECONDS:',row?.segundos_restantes??0);
+            console.log('VIA_OTP_GLOBAL_BLOCKED:',Boolean(row&&row.segundos_restantes>0&&row.attempts>=25));
+            const health=await fetch('https://via-traslados-api.marcelof-gx.workers.dev/api/health',{headers:{Origin:'https://viatraslados.com'}});
+            const h=await health.json();
+            console.log('VIA_OTP_HEALTH_HTTP:',health.status,'AVAILABLE:',h.otpAvailable===true);
+          })().catch(error=>{console.error(error.message);process.exitCode=1});
+          NODE
