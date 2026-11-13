@@ -1,0 +1,79 @@
+name: Vía Traslados - V27 listado premium QA y demo
+on:
+  push:
+    branches: [via-listado-compacto-v27-qa-20261113]
+    paths:
+      - "android-driver/**"
+      - ".github/workflows/via-v27-list-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-v27-list-qa
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Comprobar pruebas funcionales existentes y formato
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Preparar Android SDK 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar demo offline de V27 con identidad independiente
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaListPreview=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v27preview'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='27'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-conductor-v27-compact-list-demo
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - name: Publicar únicamente APK demo en rama web QA, sin modificar producción
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin via-apk-descarga-qa-20261112
+          git worktree add /tmp/via-v27-site FETCH_HEAD
+          mkdir -p /tmp/via-v27-site/qa-apk-download/v27-preview
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v27-site/qa-apk-download/v27-preview/via-conductor-v27-demo.apk
+          cd /tmp/via-v27-site/qa-apk-download/v27-preview
+          sha256sum via-conductor-v27-demo.apk > SHA256SUMS.txt
+          cat > index.html <<'HTML'
+          <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Vía Traslados · V27 Demo</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;max-width:540px;margin:20px auto;padding:16px;background:#f5f8f8;color:#213b3f}
+          main{background:white;border-radius:18px;padding:26px;border:1px solid #dce8e5}h1{font-size:24px}p{line-height:1.6;font-size:14px;color:#52686b}
+          a{display:block;background:#00736f;color:white;text-align:center;padding:15px;border-radius:12px;text-decoration:none;font-weight:700;min-height:48px}</style></head>
+          <body><main><h1>Vía Traslados V27 · Demo</h1><p>Nuevo listado premium compacto de solicitudes, filtros, búsqueda, ofertas y tarjetas de viaje. Solo datos ficticios; no se conecta a la base de producción.</p>
+          <p>Se instala junto a la aplicación del conductor y la demo V26, sin reemplazarlas.</p>
+          <a href="./via-conductor-v27-demo.apk" download>Descargar APK de prueba V27</a>
+          <p>La firma es de laboratorio. No representa una actualización operativa automática.</p></main></body></html>
+          HTML
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f via-conductor-v27-demo.apk
+          git add index.html SHA256SUMS.txt
+          git commit -m "qa(via): publicar demo aislada V27 con listado compacto"
+          git push origin HEAD:via-apk-descarga-qa-20261112
