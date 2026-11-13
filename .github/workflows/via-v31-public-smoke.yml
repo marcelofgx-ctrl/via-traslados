@@ -1,0 +1,35 @@
+name: Vía Traslados V31 — descarga pública verificada
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths: [".github/workflows/via-v31-public-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Centro de versiones V31 disponible sin iniciar sesión
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          ok=0
+          for n in $(seq 1 12); do
+            code=$(curl -sSL --max-time 15 -o /tmp/via-home -w '%{http_code}' "$BASE/" || true)
+            if [ "$code" = 200 ] && grep -q 'Descargar V31 Demo' /tmp/via-home; then ok=1;break;fi
+            sleep 3
+          done
+          test "$ok" -eq 1
+          curl -fLsS --retry 3 "$BASE/v31-preview/" -o /tmp/via-v31-page
+          grep -q 'Ficha premium de traslado' /tmp/via-v31-page
+      - name: APK V31 SHA256 público sin redirección a GitHub
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          curl -fLsS --retry 4 --max-time 160 "$BASE/v31-preview/via-conductor-v31-demo.apk" -o /tmp/via-v31.apk
+          test "$(stat -c%s /tmp/via-v31.apk)" -gt 1000000
+          echo "17279f08059fe928a2eba4c433e57fa48f96832bfc61609a720d9a448099f24b  /tmp/via-v31.apk" | sha256sum -c -
+          unzip -t /tmp/via-v31.apk | tail -2
+          curl -fLsS "$BASE/v30-preview/SHA256SUMS.txt" | grep -q 'via-conductor-v30-demo.apk'
