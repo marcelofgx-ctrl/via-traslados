@@ -94,6 +94,10 @@ public final class MainActivity extends Activity {
             staffRole = "admin";
             staffName = "Administrador de demostración";
             operatorKey = "PREVIEW_LOCAL_NO_NETWORK";
+            if(BuildConfig.VIA_BUSINESS_PREVIEW){
+                staffToken = "PREVIEW_LOCAL_TOKEN_NO_NETWORK";
+                canManageRoles = true;
+            }
             adminLoaded = true;
             managedDrivers = ViaPreviewData.drivers();
             bookings = ViaPreviewData.requests();
@@ -888,7 +892,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_DENSE_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_BUSINESS_PREVIEW ?
+                "V29 · SOCIOS Y TARIFAS · DEMO SIN PRODUCCIÓN" :
+                BuildConfig.VIA_DENSE_PREVIEW ?
                 "V28 · DEMO PREMIUM COMPACTA · SIN PRODUCCIÓN" :
                 "V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
                 10,TEAL_DARK,true);
@@ -1387,7 +1393,8 @@ public final class MainActivity extends Activity {
         }
         // En todas las tarjetas se puede tocar cualquier zona para abrir el detalle.
         // En las cotizadas no duplicamos esa acción en una fila de 42 dp.
-        if("requested".equals(status)){
+        if("requested".equals(status)&&item.optBoolean("canQuote",
+            BuildConfig.VIA_PREVIEW||"admin".equals(staffRole))){
             spacer(tile,9);
             View separator=new View(this);
             separator.setBackgroundColor(BORDER);
@@ -1506,6 +1513,23 @@ public final class MainActivity extends Activity {
     }
 
     // Vista V28: detalles completos en menos tarjetas sin ocultar información útil.
+    private void routePoint(LinearLayout parent,String marker,String label,String address,
+            boolean origin){
+        LinearLayout row=row();
+        row.setGravity(Gravity.TOP);
+        TextView pin=text(marker,11,origin?Color.WHITE:TEAL_DARK,true);
+        pin.setGravity(Gravity.CENTER);
+        pin.setBackground(bg(origin?TEAL_DARK:SOFT,22,0));
+        row.addView(pin,new LinearLayout.LayoutParams(dp(27),dp(27)));
+        LinearLayout content=column();
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);
+        lp.leftMargin=dp(10);
+        row.addView(content,lp);
+        addLine(content,label,10,MUTED,true,5);
+        addLine(content,prettyAddress(address),14,INK,true,0);
+        parent.addView(row);
+    }
+
     private void details(JSONObject item) {
         final String id=item.optString("id","");
         final String state=item.optString("status","");
@@ -1537,11 +1561,11 @@ public final class MainActivity extends Activity {
 
         LinearLayout itinerary=card();
         itinerary.setPadding(dp(13),dp(13),dp(13),dp(11));
-        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,9);
-        addLine(itinerary,"●  ORIGEN",10,MUTED,true,4);
-        addLine(itinerary,prettyAddress(item.optString("origin")),14,INK,true,10);
-        addLine(itinerary,"◆  DESTINO",10,MUTED,true,4);
-        addLine(itinerary,prettyAddress(item.optString("destination")),14,INK,true,11);
+        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,12);
+        routePoint(itinerary,"A","ORIGEN",item.optString("origin"),true);
+        spacer(itinerary,13);
+        routePoint(itinerary,"B","DESTINO",item.optString("destination"),false);
+        spacer(itinerary,12);
         View routeSeparator=new View(this);
         routeSeparator.setBackgroundColor(BORDER);
         itinerary.addView(routeSeparator,new LinearLayout.LayoutParams(-1,dp(1)));
@@ -1553,7 +1577,23 @@ public final class MainActivity extends Activity {
         if(item.optInt("price",0)>0)
             serviceSummary+=" · $ "+String.format(new java.util.Locale("es","UY"),
                 "%,d",item.optInt("price"))+" UYU";
-        addLine(itinerary,serviceSummary,12,INK,true,7);
+        LinearLayout serviceData=row();
+        TextView pax=text(paxText,12,INK,true);
+        serviceData.addView(pax,new LinearLayout.LayoutParams(0,-2,1));
+        TextView baggage=text(luggageText,12,INK,true);
+        serviceData.addView(baggage);
+        itinerary.addView(serviceData);
+        if(item.optInt("price",0)>0){
+            spacer(itinerary,8);
+            LinearLayout fare=row();
+            addLine(fare,"IMPORTE OFERTADO",10,MUTED,true,0);
+            TextView total=text("$ "+String.format(new java.util.Locale("es","UY"),
+                "%,d",item.optInt("price"))+" UYU",15,TEAL_DARK,true);
+            total.setGravity(Gravity.RIGHT);
+            fare.addView(total,new LinearLayout.LayoutParams(0,-2,1));
+            itinerary.addView(fare);
+        }
+        spacer(itinerary,7);
         if(measured!=null){
             TextView credit=text("",9,MUTED,false);
             if(BuildConfig.VIA_PREVIEW){
@@ -1639,7 +1679,8 @@ public final class MainActivity extends Activity {
             spacer(body,7);
         }
 
-        if("requested".equals(state)){
+        if("requested".equals(state)&&item.optBoolean("canQuote",
+            BuildConfig.VIA_PREVIEW||"admin".equals(staffRole))){
             TextView quoteAction=actionText("Sugerir precio  ›",TEAL_DARK,v->{
                 panel.dismiss();quote(item);
             });
@@ -1647,6 +1688,27 @@ public final class MainActivity extends Activity {
             quoteAction.setTextSize(12);
             quoteAction.setPadding(dp(4),0,0,0);
             body.addView(quoteAction,new LinearLayout.LayoutParams(-1,dp(38)));
+        }
+        if("requested".equals(state)&&item.optBoolean("canRelease",false)
+            &&!hasDriver){
+            TextView release=actionText("Liberar solicitud a conductores  ›",
+                TEAL_DARK,v->new AlertDialog.Builder(this)
+                    .setTitle("Liberar solicitud")
+                    .setMessage("La solicitud será visible para los conductores contratados habilitados. "+
+                        "El primero que envíe una propuesta válida quedará asignado.")
+                    .setNegativeButton("Volver",null)
+                    .setPositiveButton("Liberar",(dialog,which)->api("POST",
+                        "/api/operator/requests/"+Uri.encode(id)+"/release",
+                        new JSONObject(),(status,result,error)->{
+                            if(status==200){
+                                panel.dismiss();
+                                message("Solicitud liberada.");
+                                fetchBookings(true);
+                            }else message(error.isEmpty()?"No se pudo liberar la solicitud.":error);
+                        })).show());
+            release.setTextSize(12);
+            release.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            body.addView(release,new LinearLayout.LayoutParams(-1,dp(40)));
         }
         if("requested".equals(state)||"quoted".equals(state)||
            "accepted".equals(state)||"confirmed".equals(state)||
@@ -1699,32 +1761,151 @@ public final class MainActivity extends Activity {
     }
 
     private void quote(JSONObject item) {
-        EditText price = new EditText(this);
+        if(!item.optBoolean("canQuote",BuildConfig.VIA_PREVIEW||
+            "admin".equals(staffRole))) {
+            message("Esta solicitud aún no está habilitada para tu cuenta.");
+            return;
+        }
+        String id=item.optString("id","");
+        LinearLayout[] views=new LinearLayout[2];
+        Dialog panel=premiumPage("PRESUPUESTO ORIENTATIVO","Cotizar traslado",
+            id,"Tomar viaje",views);
+        LinearLayout body=views[0],footer=views[1];
+        LinearLayout route=card();
+        addLine(route,"RECORRIDO",10,TEAL_DARK,true,8);
+        addLine(route,prettyAddress(item.optString("origin")),14,INK,true,5);
+        addLine(route,"→  "+prettyAddress(item.optString("destination")),14,INK,true,10);
+        JSONObject measured=routeResults.get(id);
+        if(measured==null)measured=item.optJSONObject("route");
+        addLine(route,measured==null?"Ruta pendiente de cálculo":
+            routeMetrics(measured)+" · sin tráfico en vivo",12,MUTED,false,0);
+        appendCard(body,route,11);
+        addLine(body,"TARIFA DE REFERENCIA",10,TEAL_DARK,true,10);
+        addLine(body,"Son valores orientativos. Elegí uno o escribí tu oferta en pesos uruguayos.",
+            12,MUTED,false,10);
+        LinearLayout bands=row();
+        body.addView(bands);
+        TextView info=text("Consultando tarifa orientativa…",12,MUTED,false);
+        LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,-2);
+        ip.topMargin=dp(10);
+        body.addView(info,ip);
+        spacer(body,13);
+        LinearLayout amountBox=card();
+        addLine(amountBox,"IMPORTE AL PASAJERO · UYU",10,MUTED,true,9);
+        EditText price=new EditText(this);
         price.setInputType(InputType.TYPE_CLASS_NUMBER);
         price.setSingleLine(true);
-        price.setTextSize(20);
-        price.setHint("Importe en UYU");
-        LinearLayout wrap=column();
-        wrap.setPadding(dp(23),dp(10),dp(23),dp(5));
-        JSONObject measured=routeResults.get(item.optString("id"));
-        addLine(wrap,measured==null?"El cálculo de ruta aún no está disponible · Podés cotizar manualmente":
-            "Ruta estimada: "+routeMetrics(measured)+" · sin tráfico en vivo",
-            13,measured==null?MUTED:TEAL_DARK,false,14);
-        wrap.addView(price);
-        new AlertDialog.Builder(this).setTitle("Sugerir precio")
-          .setMessage("El pasajero recibirá una propuesta para decidir si la acepta. No se cobra comisión.")
-          .setView(wrap)
-          .setNegativeButton("Cancelar",null)
-          .setPositiveButton("Enviar propuesta",(dialog,which)->{
-              try {
-                  long value=Long.parseLong(price.getText().toString().trim());
-                  if (value<1 || value>10000000) { message("Importe fuera de rango."); return; }
-                  JSONObject patch=new JSONObject();
-                  patch.put("status","quoted");
-                  patch.put("price",value);
-                  change(item,patch);
-              }catch(Exception e){message("Ingresá un importe válido en pesos uruguayos.");}
-          }).show();
+        price.setTextSize(22);
+        price.setHint("$ 0");
+        price.setTextColor(INK);
+        amountBox.addView(price,new LinearLayout.LayoutParams(-1,dp(52)));
+        appendCard(body,amountBox,10);
+        TextView financials=text("",12,TEAL_DARK,false);
+        body.addView(financials);
+        addLine(body,"Al enviar la propuesta, el viaje se asignará a tu cuenta. "+
+            "El pasajero deberá aceptarla y luego se confirmará el servicio.",
+            12,MUTED,false,0);
+
+        Button submit=button("Enviar propuesta y tomar viaje  →",true,null);
+        footer.addView(submit,new LinearLayout.LayoutParams(-1,dp(46)));
+        final int[] feeBps={0};
+        final boolean[] guideReady={false};
+        price.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence s,int start,int before,int count){
+                try{
+                    long value=Long.parseLong(s.toString());
+                    double fee=value*feeBps[0]/10000.0;
+                    financials.setText("Importe neto estimado para vos: $ "+
+                        String.format(new java.util.Locale("es","UY"),"%,.2f",value-fee)+
+                        " UYU · comisión $ "+
+                        String.format(new java.util.Locale("es","UY"),"%,.2f",fee));
+                }catch(Exception ignored){financials.setText("Ingresá un importe en UYU.");}
+            }
+            public void afterTextChanged(android.text.Editable s){}
+        });
+        api("GET","/api/operator/requests/"+Uri.encode(id)+"/price-guide",null,
+            (status,response,error)->{
+            if(!panel.isShowing())return;
+            bands.removeAllViews();
+            if(status!=200){
+                info.setText("No hay guía disponible. Podés cotizar manualmente.");
+                return;
+            }
+            try{
+                JSONObject payload=new JSONObject(response);
+                JSONObject guide=payload.optJSONObject("guide");
+                if(!payload.optBoolean("canQuote",true)){
+                    submit.setEnabled(false);
+                    info.setText("Esta solicitud ya no se puede cotizar.");
+                    return;
+                }
+                JSONObject example=payload.optJSONObject("exampleAtSuggested");
+                if(example!=null)feeBps[0]=example.optInt("commissionBps",0);
+                if(guide==null){
+                    info.setText("Todavía no está calculada la ruta. Ingresá una tarifa manual.");
+                    return;
+                }
+                int[] values={guide.optInt("minimum"),guide.optInt("suggested"),
+                    guide.optInt("maximum")};
+                String[] labels={"MÍNIMO","SUGERIDO","MÁXIMO"};
+                for(int i=0;i<3;i++){
+                    final int value=values[i];
+                    LinearLayout box=column();
+                    box.setPadding(dp(7),dp(9),dp(7),dp(9));
+                    box.setBackground(ripple(i==1?SOFT:Color.WHITE,BORDER,12));
+                    TextView title=text(labels[i],9,MUTED,true);
+                    title.setGravity(Gravity.CENTER);
+                    box.addView(title);
+                    spacer(box,5);
+                    TextView sum=text("$ "+
+                        String.format(new java.util.Locale("es","UY"),"%,d",value),
+                        15,i==1?TEAL_DARK:INK,true);
+                    sum.setGravity(Gravity.CENTER);
+                    box.addView(sum);
+                    box.setContentDescription(labels[i]+": "+value+" pesos. Usar esta tarifa.");
+                    box.setOnClickListener(v->price.setText(String.valueOf(value)));
+                    LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(62),1);
+                    if(i>0)p.leftMargin=dp(7);
+                    bands.addView(box,p);
+                }
+                price.setText(String.valueOf(values[1]));
+                guideReady[0]=true;
+                info.setText("Guía Vía Traslados · no incluye peajes, esperas ni regreso vacío.");
+            }catch(Exception e){info.setText("No se pudo interpretar la guía. Cotizá manualmente.");}
+        });
+        submit.setOnClickListener(v->{
+            final int value;
+            try{
+                value=Integer.parseInt(price.getText().toString().trim());
+                if(value<1||value>10000000)throw new IllegalArgumentException();
+            }catch(Exception e){message("Ingresá una tarifa válida en pesos uruguayos.");return;}
+            new AlertDialog.Builder(this)
+                .setTitle("Confirmar propuesta")
+                .setMessage("Ofertar $ "+String.format(new java.util.Locale("es","UY"),"%,d",value)+
+                    " UYU y adjudicarte este viaje. El pasajero todavía deberá aceptar tu propuesta.")
+                .setNegativeButton("Volver",null)
+                .setPositiveButton("Enviar y tomar",(dialog,which)->{
+                    submit.setEnabled(false);
+                    try{
+                        JSONObject patch=new JSONObject().put("status","quoted").put("price",value);
+                        api("PATCH","/api/operator/requests/"+Uri.encode(id),patch,
+                            (status,result,error)->{
+                            if(status==200){
+                                panel.dismiss();
+                                message("Propuesta enviada. El viaje quedó asignado a tu cuenta.");
+                                fetchBookings(true);
+                            }else{
+                                submit.setEnabled(true);
+                                message(error.isEmpty()?
+                                    "No se pudo cotizar. Puede haber sido tomado por otro conductor.":
+                                    error);
+                                fetchBookings(false);
+                            }
+                        });
+                    }catch(Exception e){submit.setEnabled(true);message("No se pudo enviar la cotización.");}
+                }).show();
+        });
     }
 
     private void confirmStatus(JSONObject item,String next,String title) {
@@ -2361,6 +2542,21 @@ public final class MainActivity extends Activity {
             appendCard(content,c,10);
         }
         if(canManageRoles) {
+            LinearLayout commercial=card();
+            addLine(commercial,"DESPACHO Y TARIFAS",11,TEAL_DARK,true,8);
+            addLine(commercial,"Modalidades privadas y permisos de cotización",
+                15,INK,true,7);
+            addLine(commercial,"Solo el administrador fundador puede ver y cambiar "+
+                "las condiciones comerciales de cada conductor.",12,MUTED,false,12);
+            commercial.addView(button("Socios, contratados y permisos",false,
+                v->openCommercialDashboard()),new LinearLayout.LayoutParams(-1,dp(44)));
+            spacer(commercial,8);
+            commercial.addView(button("Parámetros de precios sugeridos",false,
+                v->openPricingSettings()),new LinearLayout.LayoutParams(-1,dp(44)));
+            spacer(commercial,8);
+            commercial.addView(button("Comisiones devengadas y liquidaciones",false,
+                v->openCommissionLedger()),new LinearLayout.LayoutParams(-1,dp(44)));
+            appendCard(content,commercial,13);
             spacer(content,18);
             addLine(content,"Administradores",21,INK,true,5);
             addLine(content,"Vos decidís quién puede administrar el servicio.",
@@ -2386,6 +2582,287 @@ public final class MainActivity extends Activity {
         spacer(content,5);
         addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
             12,MUTED,false,13);
+    }
+
+    // Modalidad comercial visible exclusivamente al administrador fundador.
+    private void openCommercialDashboard() {
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("CONFIGURACIÓN PRIVADA","Modelo de conductores",
+            "Solo administrador fundador","Permisos",sections);
+        LinearLayout body=sections[0];
+        addLine(body,"Definí quién puede cotizar solicitudes nuevas y quién puede liberarlas. "+
+            "Esta clasificación no aparece en las cuentas de conductores.",13,MUTED,false,12);
+        LinearLayout list=column();
+        body.addView(list);
+        addLine(list,"Consultando perfiles comerciales…",13,MUTED,false,0);
+        api("GET","/api/admin/commercial-drivers",null,(status,result,error)->{
+            if(!panel.isShowing())return;
+            list.removeAllViews();
+            if(status!=200){
+                addLine(list,error.isEmpty()?"No se pudieron cargar las condiciones.":error,
+                    13,ORANGE,false,0);
+                return;
+            }
+            try{
+                JSONArray rows=new JSONObject(result).getJSONArray("drivers");
+                for(int i=0;i<rows.length();i++){
+                    JSONObject driver=rows.optJSONObject(i);
+                    if(driver==null)continue;
+                    LinearLayout card=card();
+                    addLine(card,driver.optString("name","Conductor"),15,INK,true,5);
+                    addLine(card,"partner".equals(driver.optString("mode"))?"Socio":"Contratado",
+                        12,TEAL_DARK,true,5);
+                    addLine(card,"Cotización general: "+
+                        (driver.optBoolean("canQuoteAll")?"habilitada":"no habilitada")+
+                        " · Liberación: "+(driver.optBoolean("canRelease")?"sí":"no"),
+                        11,MUTED,false,10);
+                    card.addView(button("Editar permisos y comisión",false,v->{
+                        panel.dismiss();
+                        editCommercialDriver(driver);
+                    }),new LinearLayout.LayoutParams(-1,dp(44)));
+                    appendCard(list,card,10);
+                }
+                if(rows.length()==0)addLine(list,"No hay conductores registrados.",13,MUTED,false,0);
+            }catch(Exception ex){
+                addLine(list,"Respuesta comercial inválida.",13,ORANGE,false,0);
+            }
+        });
+    }
+
+    private void editCommercialDriver(JSONObject driver) {
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("ÚNICAMENTE ADMINISTRACIÓN","Permisos comerciales",
+            driver.optString("name","Conductor"),"Privado",sections);
+        LinearLayout body=sections[0],footer=sections[1];
+        addLine(body,"MODALIDAD INTERNA",10,TEAL_DARK,true,12);
+        android.widget.RadioGroup options=new android.widget.RadioGroup(this);
+        options.setOrientation(android.widget.RadioGroup.VERTICAL);
+        android.widget.RadioButton partner=new android.widget.RadioButton(this);
+        partner.setId(View.generateViewId());partner.setText("Socio · sin comisión");
+        partner.setTextSize(14);partner.setTextColor(INK);
+        android.widget.RadioButton contractor=new android.widget.RadioButton(this);
+        contractor.setId(View.generateViewId());contractor.setText("Contratado · comisión");
+        contractor.setTextSize(14);contractor.setTextColor(INK);
+        options.addView(partner);
+        options.addView(contractor);
+        options.check("partner".equals(driver.optString("mode"))?
+            partner.getId():contractor.getId());
+        body.addView(options);
+        spacer(body,12);
+        android.widget.CheckBox quoteAll=new android.widget.CheckBox(this);
+        quoteAll.setText("Puede ver y cotizar solicitudes generales");
+        quoteAll.setTextColor(INK);
+        quoteAll.setTextSize(13);
+        quoteAll.setChecked(driver.optBoolean("canQuoteAll",false));
+        body.addView(quoteAll);
+        android.widget.CheckBox release=new android.widget.CheckBox(this);
+        release.setText("Puede liberar solicitudes a contratados");
+        release.setTextColor(INK);
+        release.setTextSize(13);
+        release.setChecked(driver.optBoolean("canRelease",false));
+        body.addView(release);
+        spacer(body,12);
+        addLine(body,"COMISIÓN % SOBRE LA COTIZACIÓN",10,MUTED,true,7);
+        EditText fee=new EditText(this);
+        fee.setSingleLine(true);fee.setTextSize(17);
+        fee.setInputType(InputType.TYPE_CLASS_NUMBER);
+        fee.setText(String.valueOf(driver.optInt("commissionBps",2500)/100));
+        fee.setBackground(bg(Color.WHITE,12,BORDER));
+        fee.setPadding(dp(12),dp(8),dp(12),dp(8));
+        body.addView(fee,new LinearLayout.LayoutParams(-1,dp(48)));
+        TextView note=text("Ejemplo contratado: cotización $ 4.000 · "+
+            "comisión 25% = $ 1.000 · conductor recibe $ 3.000.",12,MUTED,false);
+        body.addView(note);
+        options.setOnCheckedChangeListener((group,checkedId)->{
+            boolean isPartner=checkedId==partner.getId();
+            release.setEnabled(isPartner);
+            if(!isPartner)release.setChecked(false);
+            fee.setEnabled(!isPartner);
+            if(isPartner)fee.setText("0");
+            else if("0".equals(fee.getText().toString()))fee.setText("25");
+        });
+        boolean initialPartner=options.getCheckedRadioButtonId()==partner.getId();
+        release.setEnabled(initialPartner);
+        fee.setEnabled(!initialPartner);
+        TextView error=text("",12,ORANGE,false);
+        footer.addView(error);
+        Button save=button("Guardar permisos",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            try{
+                boolean isPartner=options.getCheckedRadioButtonId()==partner.getId();
+                int bps=Integer.parseInt(fee.getText().toString().trim())*100;
+                JSONObject patch=new JSONObject()
+                    .put("mode",isPartner?"partner":"contractor")
+                    .put("canQuoteAll",quoteAll.isChecked())
+                    .put("canRelease",isPartner&&release.isChecked())
+                    .put("commissionBps",isPartner?0:bps);
+                save.setEnabled(false);
+                api("PATCH","/api/admin/drivers/"+
+                    Uri.encode(driver.optString("id"))+"/commercial",patch,(status,result,problem)->{
+                    if(status==200){
+                        panel.dismiss();
+                        message("Permisos comerciales actualizados.");
+                        openCommercialDashboard();
+                    }else{
+                        error.setText(problem.isEmpty()?"No se pudieron guardar los cambios.":problem);
+                        save.setEnabled(true);
+                    }
+                });
+            }catch(Exception ex){error.setText("Ingresá una comisión válida entre 0 y 50%.");}
+        });
+    }
+
+    private void openCommissionLedger(){
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("SOLO ADMINISTRACIÓN","Comisiones",
+            "Viajes completados · pesos uruguayos","Interno",sections);
+        LinearLayout body=sections[0];
+        addLine(body,"Las comisiones se registran al completar los viajes. "+
+            "Marcar una liquidación no realiza transferencias ni cobros automáticos.",
+            12,MUTED,false,12);
+        LinearLayout list=column();
+        body.addView(list);
+        addLine(list,"Consultando liquidaciones…",13,MUTED,false,0);
+        api("GET","/api/admin/commissions",null,(status,result,error)->{
+            if(!panel.isShowing())return;
+            list.removeAllViews();
+            if(status!=200){
+                addLine(list,error.isEmpty()?"Sin acceso al registro de comisiones.":error,
+                    13,ORANGE,false,0);
+                return;
+            }
+            try{
+                JSONArray entries=new JSONObject(result).getJSONArray("items");
+                double total=0;
+                for(int i=0;i<entries.length();i++){
+                    JSONObject entry=entries.optJSONObject(i);
+                    if(entry==null)continue;
+                    String state=entry.optString("paymentStatus");
+                    if("pending".equals(state))total+=entry.optDouble("commissionUyu",0);
+                }
+                addLine(list,"Pendiente: $ "+String.format(new java.util.Locale("es","UY"),
+                    "%,.2f",total)+" UYU",18,TEAL_DARK,true,14);
+                for(int i=0;i<entries.length();i++){
+                    JSONObject entry=entries.optJSONObject(i);
+                    if(entry==null)continue;
+                    LinearLayout tile=card();
+                    addLine(tile,entry.optString("driverName","Conductor"),
+                        15,INK,true,5);
+                    addLine(tile,entry.optString("bookingId",""),11,MUTED,false,8);
+                    addLine(tile,"Comisión: $ "+String.format(
+                        new java.util.Locale("es","UY"),"%,.2f",
+                        entry.optDouble("commissionUyu",0))+" · "+
+                        ("paid".equals(entry.optString("paymentStatus"))?"Pagada":
+                          "waived".equals(entry.optString("paymentStatus"))?
+                          "Sin comisión":"Pendiente"),
+                        13,TEAL_DARK,true,8);
+                    if("pending".equals(entry.optString("paymentStatus"))){
+                        String id=entry.optString("bookingId","");
+                        tile.addView(button("Registrar pago recibido",false,v->
+                            confirmCommissionPayment(id,entry.optString("driverName"),panel)),
+                            new LinearLayout.LayoutParams(-1,dp(44)));
+                    }
+                    appendCard(list,tile,9);
+                }
+                if(entries.length()==0)
+                    addLine(list,"No hay viajes completados con comisión registrada.",
+                        13,MUTED,false,0);
+            }catch(Exception ex){
+                addLine(list,"No se pudo leer el registro de comisiones.",13,ORANGE,false,0);
+            }
+        });
+    }
+
+    private void confirmCommissionPayment(String id,String name,Dialog parent){
+        LinearLayout form=formContainer();
+        EditText reference=formInput(form,"Referencia del pago recibido",
+            InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+            .setTitle("Registrar liquidación")
+            .setMessage("Confirmá que recibiste la comisión de "+name+
+                ". Esta acción únicamente registra el pago; no mueve dinero.")
+            .setView(form)
+            .setNegativeButton("Volver",null)
+            .setPositiveButton("Registrar",(dialog,which)->{
+                String ref=reference.getText().toString().trim();
+                if(ref.length()<3){message("Ingresá una referencia verificable.");return;}
+                try{
+                    JSONObject patch=new JSONObject().put("status","paid").put("reference",ref);
+                    api("PATCH","/api/admin/commissions/"+Uri.encode(id),patch,
+                        (status,result,error)->{
+                            if(status==200){
+                                parent.dismiss();
+                                message("Liquidación registrada.");
+                                openCommissionLedger();
+                            }else message(error.isEmpty()?"No se pudo registrar el pago.":error);
+                        });
+                }catch(Exception e){message("No se pudo preparar la liquidación.");}
+            }).show();
+    }
+
+    private void openPricingSettings(){
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("ADMINISTRACIÓN","Guía de tarifas",
+            "Parámetros orientativos · pesos uruguayos","Configurar",sections);
+        LinearLayout body=sections[0],footer=sections[1];
+        addLine(body,"Ajustá los valores que alimentan el rango mínimo, sugerido y máximo. "+
+            "No incluye peajes, esperas, estacionamiento ni retornos vacíos.",
+            13,MUTED,false,13);
+        final String[] keys={"baseUyu","perKmUyu","perMinuteUyu",
+            "minTargetUyu","minFloorUyu","lowFactorBps","highFactorBps"};
+        final String[] titles={"Base por traslado (UYU)","Por kilómetro (UYU)",
+            "Por minuto (UYU)","Precio mínimo sugerido (UYU)",
+            "Piso absoluto del rango (UYU)","Banda baja (%)","Banda alta (%)"};
+        final int[] defaults={300,25,4,850,650,75,155};
+        EditText[] fields=new EditText[keys.length];
+        for(int i=0;i<keys.length;i++){
+            addLine(body,titles[i],11,TEAL_DARK,true,5);
+            EditText field=new EditText(this);
+            field.setInputType(InputType.TYPE_CLASS_NUMBER);
+            field.setSingleLine(true);field.setTextSize(15);
+            field.setText(String.valueOf(defaults[i]));
+            field.setBackground(bg(Color.WHITE,12,BORDER));
+            field.setPadding(dp(12),dp(8),dp(12),dp(8));
+            body.addView(field,new LinearLayout.LayoutParams(-1,dp(45)));
+            spacer(body,10);
+            fields[i]=field;
+        }
+        api("GET","/api/admin/pricing",null,(status,data,error)->{
+            if(!panel.isShowing())return;
+            if(status!=200){message(error.isEmpty()?"Sin acceso a configuración de tarifas":error);return;}
+            try{
+                JSONObject params=new JSONObject(data).getJSONObject("config");
+                for(int i=0;i<keys.length;i++){
+                    int n=params.optInt(keys[i],i>=5?defaults[i]*100:defaults[i]);
+                    fields[i].setText(String.valueOf(i>=5?n/100:n));
+                }
+            }catch(Exception ignored){}
+        });
+        TextView problem=text("",12,ORANGE,false);
+        footer.addView(problem);
+        Button save=button("Guardar parámetros de tarifa",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            try{
+                JSONObject config=new JSONObject();
+                for(int i=0;i<keys.length;i++){
+                    int n=Integer.parseInt(fields[i].getText().toString().trim());
+                    config.put(keys[i],i>=5?n*100:n);
+                }
+                save.setEnabled(false);
+                api("PATCH","/api/admin/pricing",config,(status,data,error)->{
+                    if(status==200){
+                        panel.dismiss();message("Parámetros de precios actualizados.");
+                    }else{save.setEnabled(true);problem.setText(error.isEmpty()?
+                        "Revisá los valores.":error);}
+                });
+            }catch(Exception e){problem.setText("Ingresá valores numéricos válidos.");}
+        });
     }
 
     private void confirmTeamRole(String id,String name,String role) {

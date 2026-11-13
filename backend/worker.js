@@ -5,6 +5,7 @@ import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js'
 import {customerSession,customerRoutes} from './customer-auth.js';
 import {customerPasskeyRoutes} from './customer-passkeys.js';
 import {allowedOriginsFor} from './origins.js';
+import {driverPolicy,visibilityFor,quoteBooking,releaseBooking,guideForBooking} from './dispatch-ops.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
 const OP_FIELDS=FIELDS+',customer_name,phone,email';
@@ -131,28 +132,83 @@ export default {async fetch(req,env,ctx){
   }
   if(path==='/api/operator/requests'&&req.method==='GET'){
    const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
+   const policy=await driverPolicy(env,actor);
    if(actor.role==='admin'){
-     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS},${routeSelect('bookings')},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
+     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS},${routeSelect('bookings')},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name,(SELECT booking_id FROM booking_dispatch_releases r WHERE r.booking_id=bookings.id) AS released FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
      scheduleMissingRoutes(env,ctx,rows.results);
-     return send(rows.results.map(operatorRow));
+     return send(rows.results.map(r=>({...operatorRow(r),
+       canQuote:actor.id!=='master'&&r.status==='requested'&&!r.assigned_driver_id,
+       canRelease:r.status==='requested'&&!r.assigned_driver_id&&!r.released,
+       released:Boolean(r.released)
+     })));
    }
-   const rows=await env.DB.prepare(`SELECT b.*,a.driver_id AS assigned_driver_id,u.display_name AS assigned_driver_name,${routeSelect('b')} FROM bookings b JOIN driver_assignments a ON a.booking_id=b.id JOIN staff_users u ON u.id=a.driver_id WHERE a.driver_id=? ORDER BY b.trip_date DESC,b.trip_time DESC LIMIT 200`).bind(actor.id).all();
+   if(actor.role!=='driver')return err('Acceso no autorizado',403);
+   const rows=await env.DB.prepare(
+     `SELECT b.*,a.driver_id AS assigned_driver_id,u.display_name AS assigned_driver_name,
+      r.booking_id AS released,${routeSelect('b')} FROM bookings b
+      LEFT JOIN driver_assignments a ON a.booking_id=b.id
+      LEFT JOIN staff_users u ON u.id=a.driver_id
+      LEFT JOIN booking_dispatch_releases r ON r.booking_id=b.id
+      WHERE a.driver_id=? OR (b.status='requested' AND a.driver_id IS NULL
+        AND (?=1 OR ?=1 OR r.booking_id IS NOT NULL))
+      ORDER BY b.trip_date DESC,b.trip_time DESC LIMIT 200`
+   ).bind(actor.id,policy.canQuoteAll?1:0,policy.canRelease?1:0).all();
    scheduleMissingRoutes(env,ctx,rows.results);
-   return send(rows.results.map(operatorRow))
+   return send(rows.results.map(r=>{
+     const assigned=r.assigned_driver_id===actor.id;
+     const data=operatorRow(r);
+     if(!assigned){
+       // No exponer datos personales de pasajeros a todos los conductores.
+       data.name=null;data.phone=null;data.email=null;
+     }
+     data.canQuote=r.status==='requested'&&
+       (assigned||(!r.assigned_driver_id&&(policy.canQuoteAll||Boolean(r.released))));
+     data.canRelease=r.status==='requested'&&!r.assigned_driver_id&&
+       policy.canRelease&&!r.released;
+     data.released=Boolean(r.released);
+     return data;
+   }));
+  }
+  const guideMatch=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)\/price-guide$/);
+  if(guideMatch&&req.method==='GET'){
+    const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
+    const result=await guideForBooking(env,actor,guideMatch[1]);
+    return result.error?err(result.error,result.status):send(result);
+  }
+  const releaseMatch=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)\/release$/);
+  if(releaseMatch&&req.method==='POST'){
+    const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
+    const result=await releaseBooking(env,actor,releaseMatch[1]);
+    return result.error?err(result.error,result.status):send(result);
   }
   const op=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)$/);
   if(op&&req.method==='PATCH'){
    const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
    const id=op[1],body=await req.json();
-   if(actor.role!=='admin'){
+   if(actor.role!=='admin'&&body?.status!=='quoted'){
      const assignment=await env.DB.prepare('SELECT driver_id FROM driver_assignments WHERE booking_id=?').bind(id).first();
      if(assignment?.driver_id!==actor.id)return err('Este viaje no te fue asignado',403);
    }
    const row=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings WHERE id=?`).bind(id).first();
    if(!row)return err('Solicitud no encontrada',404);
-   const to=body?.status;if(!validTransition(row.status,to)||to==='accepted')return err('Cambio no permitido',409);
-   let price=null;if(to==='quoted'){price=Number(body?.price);if(!Number.isInteger(price)||price<1||price>10000000)return err('Importe inválido')}
-   if(!await transition(env,id,row.status,to,'operator',price))return err('Reserva modificada',409);
+   const to=body?.status;
+   if(to==='quoted'){
+     const amount=Number(body?.price);
+     const outcome=await quoteBooking(env,actor,id,amount);
+     if(outcome.error)return err(outcome.error,outcome.status);
+     const updated=await env.DB.prepare(
+       `SELECT ${OP_FIELDS},${routeSelect('bookings')},
+       (SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,
+       (SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id
+        WHERE a.booking_id=bookings.id) AS assigned_driver_name
+       FROM bookings WHERE id=?`
+     ).bind(id).first();
+     return send({...operatorRow(updated),selfAssigned:true,
+       quoteFinancials:{grossUyu:outcome.grossUyu,
+         commissionUyu:outcome.commissionUyu,driverNetUyu:outcome.driverNetUyu}});
+   }
+   if(!validTransition(row.status,to)||to==='accepted')return err('Cambio no permitido',409);
+   if(!await transition(env,id,row.status,to,'operator',null))return err('Reserva modificada',409);
    const updated=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings WHERE id=?`).bind(id).first();
    return send(operatorRow(updated))
   }

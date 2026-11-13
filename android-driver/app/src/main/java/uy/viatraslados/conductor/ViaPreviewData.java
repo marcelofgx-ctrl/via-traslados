@@ -47,6 +47,59 @@ public final class ViaPreviewData {
 
     private static final java.util.Map<String,String> statuses=new java.util.HashMap<>();
     private static final java.util.Map<String,Integer> prices=new java.util.HashMap<>();
+    private static final java.util.Set<String> releasedDemo=new java.util.HashSet<>();
+    private static final java.util.Map<String,String> assignedDemo=new java.util.HashMap<>();
+    private static final java.util.Map<String,JSONObject> commercialDemo=new java.util.HashMap<>();
+    private static final java.util.Map<String,Integer> priceConfig=new java.util.HashMap<>();
+    private static boolean commissionExamplePaid=false;
+    static {
+        priceConfig.put("baseUyu",300);priceConfig.put("perKmUyu",25);
+        priceConfig.put("perMinuteUyu",4);priceConfig.put("minTargetUyu",850);
+        priceConfig.put("minFloorUyu",650);priceConfig.put("lowFactorBps",7500);
+        priceConfig.put("highFactorBps",15500);
+    }
+
+    private static int round10(double amount){return (int)(Math.round(amount/10.0)*10);}
+    private static String getBusinessId(String path){
+        String prefix="/api/admin/drivers/";
+        if(path.startsWith(prefix))
+            return path.substring(prefix.length()).split("/")[0];
+        return "";
+    }
+    private static JSONObject demoGuide(JSONObject booking){
+        JSONObject doc=new JSONObject();
+        try{
+            JSONObject route=booking.optJSONObject("route");
+            if(route==null)return doc;
+            double kms=route.optDouble("distanceKm",0);
+            double mins=route.optDouble("durationMinutes",0);
+            int basic=round10(Math.max(priceConfig.get("minTargetUyu"),
+                priceConfig.get("baseUyu")+kms*priceConfig.get("perKmUyu")+
+                mins*priceConfig.get("perMinuteUyu")));
+            int low=round10(Math.max(priceConfig.get("minFloorUyu"),
+                basic*priceConfig.get("lowFactorBps")/10000.0));
+            int high=round10(Math.max(basic,
+                basic*priceConfig.get("highFactorBps")/10000.0));
+            doc.put("currency","UYU").put("minimum",low)
+                .put("suggested",basic).put("maximum",high);
+        }catch(Exception ignored){}
+        return doc;
+    }
+    private static JSONObject commercialDriver(JSONObject driver) {
+        String id=driver.optString("id","");
+        JSONObject remembered=commercialDemo.get(id);
+        JSONObject result=new JSONObject();
+        try{
+            result.put("id",id).put("name",driver.optString("name"))
+                .put("status",driver.optString("status","approved"))
+                .put("mode",remembered==null?"contractor":remembered.optString("mode","contractor"))
+                .put("canQuoteAll",remembered!=null&&remembered.optBoolean("canQuoteAll"))
+                .put("canRelease",remembered!=null&&remembered.optBoolean("canRelease"))
+                .put("commissionBps",remembered==null?2500:remembered.optInt("commissionBps",2500));
+        }catch(Exception ignored){}
+        return result;
+    }
+
 
     private static JSONObject sample(String id,String date,String time,String from,
             String to,int pax,int luggage,double km,int minutes,String state,int price,
@@ -60,8 +113,14 @@ public final class ViaPreviewData {
             item.put("status",statuses.containsKey(id)?statuses.get(id):state);
             item.put("price",prices.containsKey(id)?prices.get(id):price);
             item.put("created_at",createdAt);
-            item.put("assignedDriverId",JSONObject.NULL);
-            item.put("assignedDriverName",JSONObject.NULL);
+            item.put("assignedDriverId",assignedDemo.containsKey(id)?
+                "11111111-1111-4111-8111-111111111111":JSONObject.NULL);
+            item.put("assignedDriverName",assignedDemo.containsKey(id)?
+                assignedDemo.get(id):JSONObject.NULL);
+            item.put("canQuote","requested".equals(item.optString("status")));
+            item.put("canRelease","requested".equals(item.optString("status"))&&
+                !releasedDemo.contains(id));
+            item.put("released",releasedDemo.contains(id));
             item.put("notes","Datos inventados para probar la pantalla, sin reservas reales.");
             item.put("route",new JSONObject().put("distanceKm",km)
                 .put("durationMinutes",minutes).put("source","simulated"));
@@ -147,6 +206,93 @@ public final class ViaPreviewData {
             return new Reply(200,requests());
         if("GET".equals(method)&&"/api/admin/drivers".equals(path))
             return new Reply(200,wrap("drivers",drivers()));
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"GET".equals(method)
+            &&path.endsWith("/price-guide")){
+            String id=bookingId(path);
+            JSONArray rows=requests();
+            for(int i=0;i<rows.length();i++){
+                JSONObject b=rows.optJSONObject(i);
+                if(b!=null&&id.equals(b.optString("id"))){
+                    JSONObject response=new JSONObject();
+                    try{
+                        JSONObject guide=demoGuide(b);
+                        int target=guide.optInt("suggested",850);
+                        response.put("guide",guide).put("canQuote",
+                            "requested".equals(b.optString("status")))
+                            .put("canRelease",b.optBoolean("canRelease"))
+                            .put("exampleAtSuggested",new JSONObject()
+                                .put("grossUyu",target).put("commissionBps",0)
+                                .put("commissionUyu",0).put("driverNetUyu",target));
+                    }catch(Exception ignored){}
+                    return new Reply(200,response);
+                }
+            }
+            return fail(404,"Viaje ficticio no encontrado");
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"POST".equals(method)
+            &&path.endsWith("/release")){
+            releasedDemo.add(bookingId(path));
+            JSONObject response=new JSONObject();
+            try{response.put("released",true);}catch(Exception ignored){}
+            return new Reply(200,response);
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"GET".equals(method)
+            &&"/api/admin/commercial-drivers".equals(path)){
+            JSONArray all=drivers();
+            JSONArray list=new JSONArray();
+            for(int i=0;i<all.length();i++)
+                list.put(commercialDriver(all.optJSONObject(i)));
+            return new Reply(200,wrap("drivers",list));
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"PATCH".equals(method)
+            &&path.endsWith("/commercial")){
+            commercialDemo.put(getBusinessId(path),payload);
+            JSONObject response=new JSONObject();
+            try{response.put("updated",true);}catch(Exception ignored){}
+            return new Reply(200,response);
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW
+            &&"GET".equals(method)&&"/api/admin/commissions".equals(path)){
+            JSONArray list=new JSONArray();
+            JSONObject example=new JSONObject();
+            try{
+                example.put("bookingId","VIA-COMISION-DEMO").put("driverId",DRIVER_2)
+                    .put("driverName","Carlos Pereira")
+                    .put("grossUyu",5500).put("rateBps",2500)
+                    .put("commissionUyu",1375.0)
+                    .put("paymentStatus",commissionExamplePaid?"paid":"pending")
+                    .put("reference",commissionExamplePaid?"TRANSFERENCIA-DEMO":"");
+                list.put(example);
+            }catch(Exception ignored){}
+            return new Reply(200,wrap("items",list));
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"PATCH".equals(method)
+            &&path.startsWith("/api/admin/commissions/")){
+            commissionExamplePaid=true;
+            JSONObject response=new JSONObject();
+            try{response.put("status","paid");}catch(Exception ignored){}
+            return new Reply(200,response);
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"/api/admin/pricing".equals(path)){
+            if("PATCH".equals(method)){
+                if(payload==null)return fail(400,"Faltan los parámetros");
+                for(String key:new String[]{"baseUyu","perKmUyu","perMinuteUyu",
+                    "minTargetUyu","minFloorUyu","lowFactorBps","highFactorBps"})
+                    priceConfig.put(key,payload.optInt(key,priceConfig.get(key)));
+            }
+            JSONObject config=new JSONObject();
+            for(java.util.Map.Entry<String,Integer> entry:priceConfig.entrySet()){
+                try{config.put(entry.getKey(),entry.getValue());}catch(Exception ignored){}
+            }
+            return new Reply(200,wrap("config",config));
+        }
+
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"GET".equals(method)
+            &&"/api/admin/team".equals(path)){
+            JSONObject response=wrap("admins",new JSONArray());
+            try{response.put("canManageRoles",true);}catch(Exception ignored){}
+            return new Reply(200,response);
+        }
         if("GET".equals(method)&&"/api/admin/settings".equals(path)){
             JSONObject settings=new JSONObject();
             try{settings.put("publicEnabled",true).put("drivers",new JSONArray());}
@@ -184,6 +330,12 @@ public final class ViaPreviewData {
         }
         if("PATCH".equals(method)&&path.contains("/api/operator/requests/")){
             String id=bookingId(path);
+            if(BuildConfig.VIA_BUSINESS_PREVIEW && payload!=null
+                &&"quoted".equals(payload.optString("status"))){
+                if(assignedDemo.containsKey(id)||"quoted".equals(statuses.get(id)))
+                    return fail(409,"La oferta fue tomada por otro conductor.");
+                assignedDemo.put(id,"Administrador de demostración");
+            }
             if(payload!=null){
                 String next=payload.optString("status","");
                 if(!next.isEmpty()){
@@ -203,6 +355,12 @@ public final class ViaPreviewData {
             return fail(404,"Solicitud ficticia no encontrada");
         }
         return fail(400,"Modo demostración: operación sin servidor.");
+    }
+
+    private static JSONObject wrap(String key,JSONObject value){
+        JSONObject result=new JSONObject();
+        try{result.put(key,value);}catch(Exception ignored){}
+        return result;
     }
 
     private static JSONObject wrap(String key,JSONArray value){

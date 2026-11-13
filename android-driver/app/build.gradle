@@ -4,14 +4,15 @@ android {
     namespace 'uy.viatraslados.conductor'
     compileSdk 35
     defaultConfig {
-        applicationId project.hasProperty('viaDensePreview') ? 'uy.viatraslados.conductor.v28preview' : (project.hasProperty('viaPreview') ? 'uy.viatraslados.conductor.v27preview' : 'uy.viatraslados.conductor.autoprecalcqa')
+        applicationId project.hasProperty('viaBusinessPreview') ? 'uy.viatraslados.conductor.v29preview' : (project.hasProperty('viaDensePreview') ? 'uy.viatraslados.conductor.v28preview' : (project.hasProperty('viaPreview') ? 'uy.viatraslados.conductor.v27preview' : 'uy.viatraslados.conductor.autoprecalcqa'))
         minSdk 26
         targetSdk 35
-        versionCode project.hasProperty('viaDensePreview') ? 28 : (project.hasProperty('viaPreview') ? 27 : 10)
-        versionName project.hasProperty('viaDensePreview') ? '0.28.0-preview' : (project.hasProperty('viaPreview') ? '0.27.0-preview' : '1.0.0-auto-precalc-qa')
-        buildConfigField 'boolean', 'VIA_PREVIEW', (project.hasProperty('viaPreview') || project.hasProperty('viaDensePreview')) ? 'true' : 'false'
+        versionCode project.hasProperty('viaBusinessPreview') ? 29 : (project.hasProperty('viaDensePreview') ? 28 : (project.hasProperty('viaPreview') ? 27 : 10))
+        versionName project.hasProperty('viaBusinessPreview') ? '0.29.0-preview' : (project.hasProperty('viaDensePreview') ? '0.28.0-preview' : (project.hasProperty('viaPreview') ? '0.27.0-preview' : '1.0.0-auto-precalc-qa'))
+        buildConfigField 'boolean', 'VIA_PREVIEW', (project.hasProperty('viaPreview') || project.hasProperty('viaDensePreview') || project.hasProperty('viaBusinessPreview')) ? 'true' : 'false'
         buildConfigField 'boolean', 'VIA_DENSE_PREVIEW', project.hasProperty('viaDensePreview') ? 'true' : 'false'
-        manifestPlaceholders = [appLabel: project.hasProperty('viaDensePreview') ? 'Vía Traslados V28 Demo' : (project.hasProperty('viaPreview') ? 'Vía Traslados V27 Demo' : 'Vía Traslados QA 1.0')]
+        buildConfigField 'boolean', 'VIA_BUSINESS_PREVIEW', project.hasProperty('viaBusinessPreview') ? 'true' : 'false'
+        manifestPlaceholders = [appLabel: project.hasProperty('viaBusinessPreview') ? 'Vía Traslados V29 Demo' : (project.hasProperty('viaDensePreview') ? 'Vía Traslados V28 Demo' : (project.hasProperty('viaPreview') ? 'Vía Traslados V27 Demo' : 'Vía Traslados QA 1.0'))]
     }
     buildFeatures { buildConfig true }
     compileOptions {

@@ -4,6 +4,7 @@
 import {normalizeEmail} from './auth.js';
 import {normalizeStaffPhone as normalizeFounderPhone} from './staff-phone.js';
 import {ASSIGNABLE_STATUSES,assignmentError,occupiedInterval,scheduleConflicts} from './assignment-rules.js';
+import {pricingSettings,savePricingSettings} from './dispatch-ops.js';
 
 const TE=new TextEncoder();
 const HEX=a=>Array.from(new Uint8Array(a)).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -162,6 +163,93 @@ export async function staffRoutes(req,env,path,send,err){
   ]);
   await audit(env,actor,'team-role',target.id,target.role+' -> '+p.role);
   return send({id:target.id,role:p.role,requiresNewLogin:true});
+ }
+ // Configuración comercial confidencial: nunca se incorpora a /api/staff/me
+ // ni a los listados operativos que ven los conductores.
+ if(path==='/api/admin/commissions'&&req.method==='GET'){
+   if(!await founderAuthorized())return err('Solo administración puede consultar comisiones',403);
+   const result=await env.DB.prepare(
+     "SELECT l.booking_id,l.driver_id,u.display_name AS driver_name,"+
+     "l.fare_uyu,l.rate_bps,l.commission_cents,l.payment_status,l.payment_reference,"+
+     "l.completed_at,l.paid_at FROM booking_commission_ledger l "+
+     "JOIN staff_users u ON u.id=l.driver_id "+
+     "ORDER BY l.completed_at DESC LIMIT 250"
+   ).all();
+   return send({currency:'UYU',items:result.results.map(x=>({
+     bookingId:x.booking_id,driverId:x.driver_id,driverName:x.driver_name,
+     grossUyu:x.fare_uyu,rateBps:x.rate_bps,commissionUyu:x.commission_cents/100,
+     paymentStatus:x.payment_status,reference:x.payment_reference,
+     completedAt:x.completed_at,paidAt:x.paid_at
+   }))});
+ }
+ const settlement=path.match(/^\/api\/admin\/commissions\/([A-Z0-9-]+)$/);
+ if(settlement&&req.method==='PATCH'){
+   if(!await founderAuthorized())return err('Solo administración puede registrar liquidaciones',403);
+   let p;try{p=await bodyLimit(req)}catch{return err('Liquidación inválida',400)}
+   if(p.status!=='paid'||typeof p.reference!=='string'||
+      p.reference.trim().length<3||p.reference.trim().length>120)
+     return err('Indicá una referencia de pago verificable',400);
+   const updated=await env.DB.prepare(
+     "UPDATE booking_commission_ledger SET payment_status='paid',"+
+     "payment_reference=?,paid_at=unixepoch() "+
+     "WHERE booking_id=? AND payment_status='pending'"
+   ).bind(p.reference.trim(),settlement[1]).run();
+   if(updated.meta?.changes!==1)return err('La comisión no está pendiente o ya fue liquidada',409);
+   await audit(env,actor,'commission-paid',settlement[1],
+     'Pago marcado como verificado por administrador');
+   return send({bookingId:settlement[1],status:'paid'});
+ }
+ if(path==='/api/admin/pricing'&&req.method==='GET'){
+   if(!await founderAuthorized())return err('Solo el administrador fundador puede editar las tarifas',403);
+   return send({currency:'UYU',config:await pricingSettings(env),advisory:true});
+ }
+ if(path==='/api/admin/pricing'&&req.method==='PATCH'){
+   if(!await founderAuthorized())return err('Solo el administrador fundador puede editar las tarifas',403);
+   let p;try{p=await bodyLimit(req)}catch{return err('Datos incorrectos',400)}
+   const result=await savePricingSettings(env,p,actor);
+   if(result.error)return err(result.error,result.status);
+   await audit(env,actor,'pricing-settings','via-pricing','Modelo de tarifa orientativa actualizado');
+   return send(result);
+ }
+ if(path==='/api/admin/commercial-drivers'&&req.method==='GET'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede ver estas modalidades',403);
+  const data=await env.DB.prepare(
+    "SELECT u.id,u.display_name,u.status,p.mode,p.can_quote_all,p.can_release,p.commission_bps "+
+    "FROM staff_users u LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id "+
+    "WHERE u.role='driver' ORDER BY u.display_name COLLATE NOCASE"
+  ).all();
+  return send({drivers:data.results.map(x=>({
+    id:x.id,name:x.display_name,status:x.status,
+    mode:x.mode||'contractor',canQuoteAll:Boolean(x.can_quote_all),
+    canRelease:Boolean(x.can_release),commissionBps:x.commission_bps??2500
+  }))});
+ }
+ const commercial=path.match(/^\/api\/admin\/drivers\/([a-f0-9-]{36})\/commercial$/i);
+ if(commercial&&req.method==='PATCH'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede modificar condiciones comerciales',403);
+  let p;try{p=await bodyLimit(req)}catch{return err('Condiciones inválidas',400)}
+  if(!['partner','contractor'].includes(p.mode)
+    ||typeof p.canQuoteAll!=='boolean'||typeof p.canRelease!=='boolean')
+    return err('Modo o permisos comerciales inválidos',400);
+  if(!Number.isInteger(p.commissionBps)||p.commissionBps<0||p.commissionBps>5000)
+    return err('Comisión fuera de rango',400);
+  if(p.mode==='partner'&&p.commissionBps!==0)
+    return err('Los socios no pagan comisión interna',400);
+  if(p.mode==='contractor'&&p.canRelease)
+    return err('Liberar solicitudes queda reservado a socios autorizados',400);
+  const target=await env.DB.prepare(
+    "SELECT id,status FROM staff_users WHERE id=? AND role='driver'"
+  ).bind(commercial[1]).first();
+  if(!target)return err('Conductor no encontrado',404);
+  await env.DB.prepare(
+    "INSERT INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps) "+
+    "VALUES(?,?,?,?,?) ON CONFLICT(staff_id) DO UPDATE SET mode=excluded.mode,"+
+    "can_quote_all=excluded.can_quote_all,can_release=excluded.can_release,"+
+    "commission_bps=excluded.commission_bps,updated_at=unixepoch()"
+  ).bind(target.id,p.mode,p.canQuoteAll?1:0,p.canRelease?1:0,p.commissionBps).run();
+  await audit(env,actor,'commercial-profile',target.id,
+    'Permisos comerciales modificados por administrador fundador');
+  return send({id:target.id,updated:true});
  }
  if(path==='/api/admin/drivers'&&req.method==='GET'){
    const users=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at,v.license_plate,v.make,v.model,v.passenger_capacity,v.luggage_capacity FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE u.role='driver' ORDER BY CASE u.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,u.created_at DESC LIMIT 250").all();

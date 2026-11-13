@@ -1,0 +1,54 @@
+name: Vía Traslados V29 — despacho comercial QA
+on:
+  push:
+    branches: [via-despacho-socios-tarifas-v29-qa-20261113]
+    paths:
+      - "backend/**"
+      - "android-driver/**"
+      - "tests/**"
+      - "scripts/v29-dispatch-sql-test.py"
+      - ".github/workflows/via-v29-dispatch-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v29-dispatch-qa
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pruebas unitarias y verificación de sintaxis
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/dispatch-business.js
+          node --check backend/dispatch-ops.js
+          node --check backend/worker.js
+          node --check backend/staff.js
+      - name: SQLite QA real — cotización atómica y comisión
+        run: |
+          set -euo pipefail
+          python3 scripts/v26-assignment-sql-test.py
+          python3 scripts/v29-dispatch-sql-test.py
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Preparar Android SDK
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar demo Android QA sin desplegarla
+        run: |
+          gradle -p android-driver :app:assembleDebug -PviaDensePreview=true --no-daemon
+          test -s android-driver/app/build/outputs/apk/debug/app-debug.apk
