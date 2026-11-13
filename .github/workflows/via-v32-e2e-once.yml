@@ -1,4 +1,4 @@
-name: Vía Traslados V32 — circuito real E2E aislado
+name: Vía Traslados V32 — diagnóstico E2E de estados D1 QA
 on:
   push:
     branches: [via-qa-online-v32-20261113]
