@@ -44,4 +44,12 @@ assert c.execute("SELECT commission_bps FROM booking_quotes WHERE booking_id='VI
 c.execute("INSERT INTO driver_vehicle_profiles(staff_id,passenger_capacity,luggage_capacity) VALUES('backup',1,0)")
 c.execute("INSERT INTO booking_dispatch_releases(booking_id,released_by) VALUES('VIA-FOUR','owner')")
 must_fail(c,'VIA-FOUR','backup','Capacidad de equipaje insuficiente')
-print('OK: reglas D1 de visibilidad/cotización, asignación atómica, tarifa, comisión, conflicto y categoría')
+# La comisión se devenga después del servicio completado, nunca al cotizar.
+assert c.execute("SELECT COUNT(*) FROM booking_commission_ledger").fetchone()[0]==0
+c.execute("UPDATE bookings SET status='completed' WHERE id='VIA-ONE'")
+c.execute("UPDATE bookings SET status='completed' WHERE id='VIA-TWO'")
+assert c.execute("SELECT rate_bps,commission_cents,payment_status FROM booking_commission_ledger WHERE booking_id='VIA-ONE'").fetchone()==(0,0,'waived')
+assert c.execute("SELECT rate_bps,commission_cents,payment_status FROM booking_commission_ledger WHERE booking_id='VIA-TWO'").fetchone()==(2500,150000,'pending')
+c.execute("UPDATE bookings SET status='completed' WHERE id='VIA-TWO'")
+assert c.execute("SELECT COUNT(*) FROM booking_commission_ledger WHERE booking_id='VIA-TWO'").fetchone()[0]==1
+print('OK: D1 atómico, comisión 25% solo al completar viaje, liquidación sin duplicados')
