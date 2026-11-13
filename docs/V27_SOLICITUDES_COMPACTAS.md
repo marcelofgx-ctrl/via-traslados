@@ -35,3 +35,19 @@ La pantalla es para la APK del conductor/administrador. No modifica la web públ
 ## Pendientes fuera del alcance
 - Posición GPS/ETA de conductores, notificaciones push con app cerrada.
 - Publicación operativa V26/V27, firma digital estable y migración de la ficha de vehículo al D1 QA.
+
+
+## Entrega y verificación pública
+
+- **Centro de descargas QA:** https://via-conductor-apk-qa.vercel.app/
+- **Página V27 Demo:** https://via-conductor-apk-qa.vercel.app/v27-preview/
+- **APK directa:** https://via-conductor-apk-qa.vercel.app/v27-preview/via-conductor-v27-demo.apk
+- **Tamaño:** 1 421 653 bytes.
+- **SHA-256:** `99ae6de72d0f707bd6655732606f37dd093e557508c13a741fe4b07d0dcb5039`.
+- **Paquete:** `uy.viatraslados.conductor.v27preview`, `versionCode=27`, firma de pruebas.
+- QA funcional/Android compilada: GitHub Actions `43355814444`, **success**.
+- Build + copia a descargas: `43355863233`, **success**.
+- Publicación Vercel de rama QA: `dpl_EoMzmDDZqH6i4DCoxE5ZeTRwCb1s`, READY.
+- Comprobación externa anónima de la portada, subpágina, APK y SHA-256: `43356251674`, **success**.
+- La distribución V27 es **solo una simulación offline**, no sustituye la app operativa, no requiere credenciales y no toca producción de Cloudflare.
+- Se conservan V26 Demo y la APK operativa anterior como descargas independientes.
