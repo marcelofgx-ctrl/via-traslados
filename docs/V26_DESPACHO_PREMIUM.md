@@ -36,3 +36,20 @@ Workflow `Via Traslados - V26 despacho premium QA` ejecuta `npm test`, `npm run 
 - Horarios de trabajo declarados, aceptación explícita del conductor de nuevas asignaciones, push remotas cuando APK cerrada.
 - Prueba real de concurrencia con 2 administradores sobre D1 QA.
 - Mejoras visuales finales de acuerdo con capturas de Android y accesibilidad.
+
+
+## APK V26 Demo independiente, lista para evaluación visual
+
+- **Página de descargas:** https://via-conductor-apk-qa.vercel.app/
+- **Página de V26:** https://via-conductor-apk-qa.vercel.app/v26-preview/
+- **APK directa:** https://via-conductor-apk-qa.vercel.app/v26-preview/via-conductor-v26-demo.apk
+- **Identificador:** `uy.viatraslados.conductor.v26preview`, distinto de la aplicación operativa `uy.viatraslados.conductor.autoprecalcqa`.
+- **Versión:** `0.26.0-preview`, `versionCode=26`.
+- **SHA-256:** `a25bdb15008c42bba0bcee3f5680be3c73fdf31bdefc858c7e23cb2abf1e9af0`.
+- **Contenido:** `ViaPreviewData.java` intercepta internamente las llamadas API y devuelve información ficticia. No crea ni edita reservas, conductores ni cuentas reales. La instalación se realiza junto a la versión anterior.
+- **Validaciones:** compilación Android, `apksigner verify`, identificador de aplicación, versión, integridad del ZIP, comprobación anónima del portal y descarga pública con checksum SHA-256.
+- **GitHub Actions:** publicación `43337294678` correcta, smoke público `43337900078` correcto.
+- **Motor real:** prueba de D1/SQL `43337582146` correcta, después de corregir la conversión numérica en comparaciones de `strftime`. La demo se compiló antes de esta corrección porque usa el motor de datos local, no el backend.
+- **Importante:** no confundir la demo con la aplicación operativa ni anunciarla en `latest.json` del actualizador. La clave debug es efímera y no debe usarse como cadena de actualizaciones permanente.
+
+Siguiente integración: aplicar la tabla `driver_vehicle_profiles` en un entorno D1 QA aislado y ensayar asignación concurrente en el Worker QA, antes de publicar backend y APK operativos con firma persistente.
