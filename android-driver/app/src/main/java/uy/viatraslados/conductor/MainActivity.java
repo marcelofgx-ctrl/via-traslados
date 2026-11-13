@@ -262,16 +262,41 @@ public final class MainActivity extends Activity {
             InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,true);
         spacer(page,8);
         addLine(page,"DATOS DEL VEHÍCULO",11,TEAL_DARK,true,13);
-        EditText make=authField(page,"MARCA","Geely",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS,false);
-        EditText model=authField(page,"MODELO","EX5 Max",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS,false);
-        EditText year=authField(page,"AÑO DEL VEHÍCULO","2027",
-            InputType.TYPE_CLASS_NUMBER,false);
+        // Selecciones buscables: la marca filtra modelos, pero ninguna lista
+        // impide escribir vehículos nuevos que todavía no figuren en QA.
+        android.widget.AutoCompleteTextView make=qaChoiceField(page,"MARCA",
+            "Elegí o escribí una marca",ViaVehicleCatalog.brands(),
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        android.widget.AutoCompleteTextView model=qaChoiceField(page,"MODELO",
+            "Elegí primero la marca",ViaVehicleCatalog.modelsFor(""),
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        model.setEnabled(false);
+        final String[] previousMake={""};
+        make.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence text,int start,int before,int count){
+                String selected=text.toString().trim();
+                if(selected.equalsIgnoreCase(previousMake[0]))return;
+                previousMake[0]=selected;
+                model.setText("",false);
+                model.setEnabled(!selected.isEmpty());
+                model.setHint(selected.isEmpty()?"Elegí primero la marca":
+                    "Elegí o escribí un modelo");
+                qaChoiceOptions(model,ViaVehicleCatalog.modelsFor(selected));
+            }
+            public void afterTextChanged(android.text.Editable e){}
+        });
+        qaAllowOther(make,"Escribí la marca que falta");
+        qaAllowOther(model,"Escribí el modelo que falta");
+        android.widget.AutoCompleteTextView year=qaChoiceField(page,
+            "AÑO DEL VEHÍCULO","Elegí el año",ViaVehicleCatalog.years(),
+            InputType.TYPE_CLASS_NUMBER);
         EditText plate=authField(page,"MATRÍCULA FICTICIA","QA1234",
             InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS,false);
-        EditText color=authField(page,"COLOR","Blanco",
-            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS,false);
+        android.widget.AutoCompleteTextView color=qaChoiceField(page,"COLOR",
+            "Elegí o escribí un color",ViaVehicleCatalog.colors(),
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        qaAllowOther(color,"Escribí el color que falta");
         LinearLayout capacity=row();
         EditText passengers=authFieldColumn("PASAJEROS","4",capacity);
         EditText bags=authFieldColumn("VALIJAS","2",capacity);
@@ -715,6 +740,61 @@ public final class MainActivity extends Activity {
             new LinearLayout.LayoutParams(-1, dp(52)));
         spacer(page, 15);
         return input;
+    }
+
+    // Menú de sugerencias con búsqueda y escritura manual. Reutiliza la
+    // apariencia de los campos premium y no requiere acceso a internet.
+    private android.widget.AutoCompleteTextView qaChoiceField(
+            LinearLayout page,String label,String hint,String[] options,int type){
+        TextView caption=text(label,11,MUTED,true);
+        caption.setLetterSpacing(0.10f);
+        page.addView(caption);
+        spacer(page,7);
+        android.widget.AutoCompleteTextView input=
+            new android.widget.AutoCompleteTextView(this);
+        input.setHint(hint);
+        input.setInputType(type);
+        input.setThreshold(1);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        input.setDropDownHeight(dp(288));
+        input.setDropDownBackgroundDrawable(bg(Color.WHITE,12,BORDER));
+        qaChoiceOptions(input,options);
+        LinearLayout shell=inputShell("·",input,false);
+        TextView arrow=actionText("▾",TEAL_DARK,v->{
+            input.requestFocus();
+            input.showDropDown();
+        });
+        arrow.setTextSize(23);
+        arrow.setGravity(Gravity.CENTER);
+        arrow.setContentDescription("Mostrar opciones de "+label.toLowerCase(
+            java.util.Locale.ROOT));
+        shell.addView(arrow,new LinearLayout.LayoutParams(dp(34),dp(48)));
+        page.addView(shell,new LinearLayout.LayoutParams(-1,dp(52)));
+        input.setOnClickListener(v->input.showDropDown());
+        spacer(page,15);
+        return input;
+    }
+
+    private void qaChoiceOptions(android.widget.AutoCompleteTextView field,
+            String[] values){
+        field.setAdapter(new android.widget.ArrayAdapter<String>(this,
+            android.R.layout.simple_dropdown_item_1line,values));
+    }
+
+    private void qaAllowOther(android.widget.AutoCompleteTextView field,
+            String placeholder){
+        field.setOnItemClickListener((parent,view,position,id)->{
+            if(!ViaVehicleCatalog.OTHER.equals(
+                String.valueOf(parent.getItemAtPosition(position))))return;
+            field.setText("",false);
+            field.setHint(placeholder);
+            field.requestFocus();
+            android.view.inputmethod.InputMethodManager keyboard=
+                (android.view.inputmethod.InputMethodManager)
+                getSystemService(INPUT_METHOD_SERVICE);
+            if(keyboard!=null)keyboard.showSoftInput(field,
+                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        });
     }
 
     private LinearLayout authWaiting(LinearLayout page) {
