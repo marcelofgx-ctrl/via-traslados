@@ -888,7 +888,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text("V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
+            TextView demo=text(BuildConfig.VIA_DENSE_PREVIEW ?
+                "V28 · DEMO PREMIUM COMPACTA · SIN PRODUCCIÓN" :
+                "V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
                 10,TEAL_DARK,true);
             demo.setGravity(Gravity.CENTER);
             demo.setPadding(dp(8),dp(7),dp(8),dp(7));
