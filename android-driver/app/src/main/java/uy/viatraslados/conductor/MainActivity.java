@@ -888,7 +888,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text("V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
+            TextView demo=text(BuildConfig.VIA_DENSE_PREVIEW ?
+                "V28 · DEMO PREMIUM COMPACTA · SIN PRODUCCIÓN" :
+                "V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
                 10,TEAL_DARK,true);
             demo.setGravity(Gravity.CENTER);
             demo.setPadding(dp(8),dp(7),dp(8),dp(7));
@@ -903,7 +905,7 @@ public final class MainActivity extends Activity {
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout content = column();
-        content.setPadding(dp(17),dp(12),dp(17),dp(12));
+        content.setPadding(dp("solicitudes".equals(tab)?13:17),dp(10),dp("solicitudes".equals(tab)?13:17),dp(12));
         scroll.addView(content);
         if ("administrar".equals(tab)) manage(content);
         else if ("ajustes".equals(tab)) settings(content);
@@ -1031,7 +1033,7 @@ public final class MainActivity extends Activity {
 
     private void lists(LinearLayout body, String mode) {
         if("solicitudes".equals(mode)){
-            addLine(body,"Solicitudes",21,INK,true,8);
+            addLine(body,"Solicitudes",20,INK,true,7);
             LinearLayout tabs=row();
             tabs.setPadding(dp(3),dp(3),dp(3),dp(3));
             tabs.setBackground(bg(Color.rgb(231,241,239),12,0));
@@ -1055,7 +1057,7 @@ public final class MainActivity extends Activity {
                 tabs.addView(button,part);
             }
             body.addView(tabs,new LinearLayout.LayoutParams(-1,dp(46)));
-            spacer(body,10);
+            spacer(body,7);
 
             LinearLayout toolbar=row();
             TextView order=requestControl("↕  "+
@@ -1109,7 +1111,7 @@ public final class MainActivity extends Activity {
                 showBookings(results,mode);
                 return;
             }
-            spacer(body,10);
+            spacer(body,8);
         }else if("viajes".equals(mode)){
             addLine(body,"Mis viajes",22,INK,true,4);
             addLine(body,"Aceptados, confirmados y en curso",12,MUTED,false,12);
@@ -1281,7 +1283,7 @@ public final class MainActivity extends Activity {
         final String status=item.optString("status","");
         final String id=item.optString("id","");
         LinearLayout tile=column();
-        tile.setPadding(dp(13),dp(12),dp(13),dp(11));
+        tile.setPadding(dp(12),dp(11),dp(12),dp(11));
         tile.setBackground(bg(Color.WHITE,15,BORDER));
         tile.setClickable(true);
         tile.setFocusable(true);
@@ -1319,12 +1321,12 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams secondParams=new LinearLayout.LayoutParams(-1,-2);
         secondParams.topMargin=dp(3);
         tile.addView(second,secondParams);
-        spacer(tile,9);
+        spacer(tile,7);
 
         compactRouteRow(tile,"A",item.optString("origin",""),true);
-        spacer(tile,5);
+        spacer(tile,4);
         compactRouteRow(tile,"B",item.optString("destination",""),false);
-        spacer(tile,9);
+        spacer(tile,8);
 
         LinearLayout metrics=row();
         LinearLayout distanceGroup=row();
@@ -1383,30 +1385,33 @@ public final class MainActivity extends Activity {
             attribution.setVisibility(View.GONE);
             routeValue.setText("Ruta pendiente");
         }
-        spacer(tile,9);
-        View separator=new View(this);
-        separator.setBackgroundColor(BORDER);
-        tile.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
-        spacer(tile,6);
-
-        LinearLayout actions=row();
-        TextView see=actionText("Ver detalles  ›",TEAL_DARK,v->details(item));
-        see.setTextSize(12);
-        see.setMinHeight(dp(42));
-        see.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-        see.setPadding(dp(1),dp(4),0,dp(4));
-        actions.addView(see,new LinearLayout.LayoutParams(0,dp(42),1));
+        // En todas las tarjetas se puede tocar cualquier zona para abrir el detalle.
+        // En las cotizadas no duplicamos esa acción en una fila de 42 dp.
         if("requested".equals(status)){
+            spacer(tile,9);
+            View separator=new View(this);
+            separator.setBackgroundColor(BORDER);
+            tile.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
+            spacer(tile,5);
+            LinearLayout actions=row();
+            TextView see=actionText("Ver detalle  ›",TEAL_DARK,v->details(item));
+            see.setTextSize(12);
+            see.setMinHeight(dp(42));
+            see.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            see.setPadding(dp(1),0,0,0);
+            actions.addView(see,new LinearLayout.LayoutParams(0,dp(42),1));
             Button quoteButton=button("Sugerir precio",true,v->quote(item));
             quoteButton.setTextSize(12);
             quoteButton.setMinHeight(0);
+            quoteButton.setMinimumHeight(0);
+            quoteButton.setPadding(dp(9),0,dp(9),0);
             LinearLayout.LayoutParams quoteParams=
-                new LinearLayout.LayoutParams(dp(133),dp(42));
+                new LinearLayout.LayoutParams(dp(130),dp(42));
             quoteParams.leftMargin=dp(6);
             actions.addView(quoteButton,quoteParams);
+            tile.addView(actions);
         }
-        tile.addView(actions);
-        appendCard(parent,tile,8);
+        appendCard(parent,tile,7);
     }
 
     private static String statusName(String state) {
@@ -1436,7 +1441,7 @@ public final class MainActivity extends Activity {
         page.setBackgroundColor(LIGHT);
         LinearLayout header=row();
         header.setBackgroundColor(Color.WHITE);
-        header.setPadding(dp(13),dp(10),dp(17),dp(10));
+        header.setPadding(dp(12),dp(7),dp(14),dp(7));
         TextView back=actionText("‹",TEAL_DARK,v->dialog.dismiss());
         back.setTextSize(28);
         back.setContentDescription("Volver al panel");
@@ -1461,18 +1466,18 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
         LinearLayout body=column();
-        body.setPadding(dp(17),dp(16),dp(17),dp(25));
+        body.setPadding(dp(14),dp(12),dp(14),dp(14));
         if(eyebrow!=null&&!eyebrow.isEmpty()){
             TextView over=text(eyebrow,10,TEAL_DARK,true);
             over.setLetterSpacing(0.13f);
             body.addView(over);
-            spacer(body,13);
+            spacer(body,10);
         }
         scroll.addView(body);
         page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout footer=column();
         footer.setBackgroundColor(Color.WHITE);
-        footer.setPadding(dp(17),dp(9),dp(17),dp(14));
+        footer.setPadding(dp(14),dp(8),dp(14),dp(10));
         sections[0]=body;
         sections[1]=footer;
         page.addView(footer,new LinearLayout.LayoutParams(-1,-2));
@@ -1500,6 +1505,7 @@ public final class MainActivity extends Activity {
         addLine(parent,value,important?15:13,important?INK:MUTED,important,11);
     }
 
+    // Vista V28: detalles completos en menos tarjetas sin ocultar información útil.
     private void details(JSONObject item) {
         final String id=item.optString("id","");
         final String state=item.optString("status","");
@@ -1509,102 +1515,138 @@ public final class MainActivity extends Activity {
 
         LinearLayout facts=row();
         LinearLayout date=column();
-        date.setPadding(dp(13),dp(12),dp(13),dp(12));
-        date.setBackground(bg(SOFT,13,0));
-        addLine(date,"FECHA Y HORA",10,MUTED,true,6);
+        date.setPadding(dp(12),dp(10),dp(10),dp(10));
+        date.setBackground(bg(SOFT,12,0));
+        addLine(date,"FECHA Y HORA",10,MUTED,true,5);
         addLine(date,compactDate(item.optString("date"))+" · "+item.optString("time"),14,INK,true,0);
         facts.addView(date,new LinearLayout.LayoutParams(0,-2,1));
         JSONObject route=routeResults.get(id);
         if(route==null)route=item.optJSONObject("route");
         final JSONObject measured=route;
         LinearLayout metric=column();
-        metric.setPadding(dp(13),dp(12),dp(13),dp(12));
-        metric.setBackground(bg(SOFT,13,0));
-        addLine(metric,"DISTANCIA / TIEMPO",10,MUTED,true,6);
+        metric.setPadding(dp(12),dp(10),dp(10),dp(10));
+        metric.setBackground(bg(SOFT,12,0));
+        addLine(metric,"DISTANCIA / TIEMPO",10,MUTED,true,5);
         addLine(metric,measured==null?"Pendiente":routeMetrics(measured),14,
             measured==null?MUTED:TEAL_DARK,true,0);
         LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(0,-2,1);
         mp.leftMargin=dp(7);
         facts.addView(metric,mp);
         body.addView(facts);
-        spacer(body,12);
+        spacer(body,10);
 
         LinearLayout itinerary=card();
-        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,14);
-        premiumKeyValue(itinerary,"●   ORIGEN",prettyAddress(item.optString("origin")),true);
-        premiumKeyValue(itinerary,"◆   DESTINO",prettyAddress(item.optString("destination")),true);
-        View line=new View(this);line.setBackgroundColor(BORDER);
-        itinerary.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));
-        spacer(itinerary,12);
-        String info=item.optInt("passengers",1)+" pasajero(s) · "+
-            item.optInt("bags",0)+" valija(s)";
-        if(item.optInt("price",0)>0)info+=" · $ "+item.optInt("price")+" UYU";
-        addLine(itinerary,info,13,INK,true,7);
-        // Atribución obligatoria visible, pero subordinada a los datos del viaje.
+        itinerary.setPadding(dp(13),dp(13),dp(13),dp(11));
+        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,9);
+        addLine(itinerary,"●  ORIGEN",10,MUTED,true,4);
+        addLine(itinerary,prettyAddress(item.optString("origin")),14,INK,true,10);
+        addLine(itinerary,"◆  DESTINO",10,MUTED,true,4);
+        addLine(itinerary,prettyAddress(item.optString("destination")),14,INK,true,11);
+        View routeSeparator=new View(this);
+        routeSeparator.setBackgroundColor(BORDER);
+        itinerary.addView(routeSeparator,new LinearLayout.LayoutParams(-1,dp(1)));
+        spacer(itinerary,9);
+        int passengerCount=item.optInt("passengers",1),luggageCount=item.optInt("bags",0);
+        String paxText=passengerCount+" "+(passengerCount==1?"pasajero":"pasajeros");
+        String luggageText=luggageCount+" "+(luggageCount==1?"valija":"valijas");
+        String serviceSummary=paxText+" · "+luggageText;
+        if(item.optInt("price",0)>0)
+            serviceSummary+=" · $ "+String.format(new java.util.Locale("es","UY"),
+                "%,d",item.optInt("price"))+" UYU";
+        addLine(itinerary,serviceSummary,12,INK,true,7);
         if(measured!=null){
-            TextView credit=text(BuildConfig.VIA_PREVIEW?
-                "Ruta ilustrativa · sin servicios externos":
-                "Powered by Geoapify · © OpenStreetMap contributors",10,MUTED,false);
-            credit.setOnClickListener(v->{
-                try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")));}
-                catch(Exception ignored){}
-            });
+            TextView credit=text("",9,MUTED,false);
+            if(BuildConfig.VIA_PREVIEW){
+                credit.setText("Ruta ilustrativa · sin servicios externos");
+            }else{
+                String attribution="Powered by Geoapify · © OpenStreetMap contributors";
+                android.text.SpannableString license=new android.text.SpannableString(attribution);
+                int geo=attribution.indexOf("Geoapify");
+                int osm=attribution.indexOf("© OpenStreetMap");
+                license.setSpan(new android.text.style.URLSpan("https://www.geoapify.com/"),
+                    geo,geo+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                license.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
+                    osm,attribution.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                credit.setText(license);
+                credit.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+            }
             itinerary.addView(credit);
         }
-        appendCard(body,itinerary,12);
+        TextView maps=actionText("↗  Abrir ruta",TEAL_DARK,v->openMaps(item));
+        maps.setTextSize(12);
+        maps.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        maps.setPadding(0,0,0,0);
+        itinerary.addView(maps,new LinearLayout.LayoutParams(-1,dp(38)));
+        appendCard(body,itinerary,10);
 
-        LinearLayout passenger=card();
-        addLine(passenger,"PASAJERO",10,TEAL_DARK,true,10);
-        addLine(passenger,item.optString("name","Sin nombre"),16,INK,true,5);
-        addLine(passenger,item.optString("phone",""),13,MUTED,false,3);
-        addLine(passenger,item.optString("email",""),12,MUTED,false,9);
-        LinearLayout shortcuts=row();
+        // Pasajero y asignación comparten una sola tarjeta de operaciones.
+        LinearLayout people=card();
+        people.setPadding(dp(13),dp(13),dp(13),dp(11));
+        LinearLayout customerHeader=row();
+        TextView customerTag=text("PASAJERO",10,TEAL_DARK,true);
+        customerTag.setGravity(Gravity.CENTER_VERTICAL);
+        customerHeader.addView(customerTag,new LinearLayout.LayoutParams(0,dp(30),1));
         String phone=item.optString("phone","");
         TextView call=actionText("☎  Llamar",TEAL_DARK,v->{
             if(BuildConfig.VIA_PREVIEW){message("Demo: no se realizan llamadas.");return;}
             try{startActivity(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(phone))));}
             catch(Exception e){message("No se pudo abrir el teléfono.");}
         });
-        call.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        call.setTextSize(12);
+        call.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        call.setPadding(dp(8),0,0,0);
         call.setEnabled(!phone.isEmpty());
-        shortcuts.addView(call,new LinearLayout.LayoutParams(0,dp(42),1));
-        TextView maps=actionText("↗  Abrir ruta",TEAL_DARK,v->openMaps(item));
-        maps.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        shortcuts.addView(maps,new LinearLayout.LayoutParams(0,dp(42),1));
-        passenger.addView(shortcuts);
-        appendCard(body,passenger,12);
-
+        customerHeader.addView(call,new LinearLayout.LayoutParams(-2,dp(38)));
+        people.addView(customerHeader);
+        addLine(people,item.optString("name","Sin nombre"),15,INK,true,4);
+        if(!phone.isEmpty())addLine(people,phone,12,MUTED,false,3);
+        String email=item.optString("email","");
+        if(!email.isEmpty())addLine(people,email,12,MUTED,false,9);
+        spacer(people,7);
+        View peopleLine=new View(this);
+        peopleLine.setBackgroundColor(BORDER);
+        people.addView(peopleLine,new LinearLayout.LayoutParams(-1,dp(1)));
+        spacer(people,12);
+        addLine(people,"CONDUCTOR",10,TEAL_DARK,true,7);
         final boolean assignable="admin".equals(staffRole)&&(
             "requested".equals(state)||"quoted".equals(state)||
             "accepted".equals(state)||"confirmed".equals(state));
         String assigned=item.optString("assignedDriverName","");
         if("null".equals(assigned))assigned="";
         final boolean hasDriver=!assigned.isEmpty();
-        LinearLayout driver=card();
-        addLine(driver,"CONDUCTOR ASIGNADO",10,TEAL_DARK,true,9);
-        addLine(driver,hasDriver?assigned:"Sin asignar",16,INK,true,5);
-        addLine(driver,hasDriver?"Asignación registrada · disponibilidad GPS no verificada":
-            "Elegí un conductor habilitado y sin conflictos conocidos",12,MUTED,false,8);
+        addLine(people,hasDriver?assigned:"Sin asignar",15,INK,true,4);
+        addLine(people,hasDriver?
+            "Asignado · ubicación no verificada":
+            "Pendiente de seleccionar un conductor habilitado",11,MUTED,false,0);
         if(assignable&&hasDriver){
             TextView change=actionText("Cambiar conductor  ›",TEAL_DARK,v->{
                 panel.dismiss();driverAssignmentDialog(item);
             });
-            change.setGravity(Gravity.LEFT);
-            driver.addView(change,new LinearLayout.LayoutParams(-1,dp(40)));
+            change.setTextSize(12);
+            change.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            change.setPadding(0,0,0,0);
+            people.addView(change,new LinearLayout.LayoutParams(-1,dp(38)));
         }
-        appendCard(body,driver,12);
+        appendCard(body,people,10);
+
         String notes=item.optString("notes","");
         if(!notes.isEmpty()&&!"null".equals(notes)){
-            LinearLayout extra=card();
-            addLine(extra,"INDICACIONES",10,MUTED,true,8);
-            addLine(extra,notes,13,INK,false,0);
-            appendCard(body,extra,11);
+            LinearLayout extra=column();
+            extra.setPadding(dp(5),dp(2),dp(5),dp(7));
+            addLine(extra,"INDICACIONES",10,MUTED,true,5);
+            addLine(extra,notes,12,INK,false,0);
+            body.addView(extra);
+            spacer(body,7);
         }
 
         if("requested".equals(state)){
-            TextView quoteAction=actionText("Sugerir precio  ›",TEAL_DARK,v->{panel.dismiss();quote(item);});
-            quoteAction.setGravity(Gravity.LEFT);
-            body.addView(quoteAction,new LinearLayout.LayoutParams(-1,dp(42)));
+            TextView quoteAction=actionText("Sugerir precio  ›",TEAL_DARK,v->{
+                panel.dismiss();quote(item);
+            });
+            quoteAction.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            quoteAction.setTextSize(12);
+            quoteAction.setPadding(dp(4),0,0,0);
+            body.addView(quoteAction,new LinearLayout.LayoutParams(-1,dp(38)));
         }
         if("requested".equals(state)||"quoted".equals(state)||
            "accepted".equals(state)||"confirmed".equals(state)||
@@ -1612,8 +1654,10 @@ public final class MainActivity extends Activity {
             TextView cancel=actionText("Cancelar solicitud",ORANGE,v->{
                 panel.dismiss();confirmStatus(item,"cancelled","Cancelar solicitud");
             });
-            cancel.setGravity(Gravity.LEFT);
-            body.addView(cancel,new LinearLayout.LayoutParams(-1,dp(42)));
+            cancel.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            cancel.setTextSize(12);
+            cancel.setPadding(dp(4),0,0,0);
+            body.addView(cancel,new LinearLayout.LayoutParams(-1,dp(38)));
         }
 
         String next="",nextTitle="";
@@ -1629,8 +1673,9 @@ public final class MainActivity extends Activity {
                 panel.dismiss();driverAssignmentDialog(item);
             }),new LinearLayout.LayoutParams(-1,dp(46)));
         }else if("requested".equals(state)){
-            footer.addView(button("Sugerir precio   →",true,v->{panel.dismiss();quote(item);}),
-                new LinearLayout.LayoutParams(-1,dp(46)));
+            footer.addView(button("Sugerir precio   →",true,v->{
+                panel.dismiss();quote(item);
+            }),new LinearLayout.LayoutParams(-1,dp(46)));
         }else if(!next.isEmpty()){
             final String finalState=next,finalTitle=nextTitle;
             footer.addView(button(finalTitle+"   →",true,v->{
