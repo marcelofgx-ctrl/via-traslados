@@ -1,4 +1,4 @@
-name: Vía Traslados V29 — demo de socios y tarifas
+name: Vía Traslados V29 — demo final de socios, tarifas y comisiones
 on:
   push:
     branches: [via-despacho-socios-tarifas-v29-qa-20261113]
