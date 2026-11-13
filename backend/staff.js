@@ -4,6 +4,7 @@
 import {normalizeEmail} from './auth.js';
 import {normalizeStaffPhone as normalizeFounderPhone} from './staff-phone.js';
 import {ASSIGNABLE_STATUSES,assignmentError,occupiedInterval,scheduleConflicts} from './assignment-rules.js';
+import {pricingSettings,savePricingSettings} from './dispatch-ops.js';
 
 const TE=new TextEncoder();
 const HEX=a=>Array.from(new Uint8Array(a)).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -165,6 +166,18 @@ export async function staffRoutes(req,env,path,send,err){
  }
  // Configuración comercial confidencial: nunca se incorpora a /api/staff/me
  // ni a los listados operativos que ven los conductores.
+ if(path==='/api/admin/pricing'&&req.method==='GET'){
+   if(!await founderAuthorized())return err('Solo el administrador fundador puede editar las tarifas',403);
+   return send({currency:'UYU',config:await pricingSettings(env),advisory:true});
+ }
+ if(path==='/api/admin/pricing'&&req.method==='PATCH'){
+   if(!await founderAuthorized())return err('Solo el administrador fundador puede editar las tarifas',403);
+   let p;try{p=await bodyLimit(req)}catch{return err('Datos incorrectos',400)}
+   const result=await savePricingSettings(env,p,actor);
+   if(result.error)return err(result.error,result.status);
+   await audit(env,actor,'pricing-settings','via-pricing','Modelo de tarifa orientativa actualizado');
+   return send(result);
+ }
  if(path==='/api/admin/commercial-drivers'&&req.method==='GET'){
   if(!await founderAuthorized())return err('Solo el administrador fundador puede ver estas modalidades',403);
   const data=await env.DB.prepare(
