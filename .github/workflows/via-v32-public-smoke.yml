@@ -1,0 +1,36 @@
+name: Vía Traslados V32 — descarga pública y SHA256
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths: [".github/workflows/via-v32-public-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Confirmar inicio de descargas V32 desde Internet
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          ready=0
+          for n in $(seq 1 15); do
+            code=$(curl -sSL --max-time 15 -o /tmp/via-home -w '%{http_code}' "$BASE/" || true)
+            if [ "$code" = 200 ] && grep -q 'Descargar V32 Online QA' /tmp/via-home; then ready=1;break;fi
+            sleep 3
+          done
+          test "$ready" -eq 1
+          curl -fLsS --retry 3 "$BASE/v32-online-qa/" -o /tmp/via-qa-page
+          grep -q 'Cloudflare Worker' /tmp/via-qa-page
+      - name: Descargar APK y verificar integridad exacta
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          curl -fLsS --retry 4 --max-time 180 "$BASE/v32-online-qa/via-conductor-v32-online-qa.apk" -o /tmp/via-v32.apk
+          test "$(stat -c%s /tmp/via-v32.apk)" -eq 1439425
+          echo "f7bf47dba0605b60a7c47e04f79dcfc26b5a3372021d3f34693d401917270351  /tmp/via-v32.apk" | sha256sum -c -
+          unzip -t /tmp/via-v32.apk | tail -2
+          curl -fLsS "$BASE/v31-preview/SHA256SUMS.txt" | grep -q 'via-conductor-v31-demo.apk'
+          curl -fLsS "$BASE/v30-preview/SHA256SUMS.txt" | grep -q 'via-conductor-v30-demo.apk'
