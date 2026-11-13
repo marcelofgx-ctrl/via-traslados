@@ -23,7 +23,7 @@ jobs:
           done
           test "$success" -eq 1
           curl -fLsS --retry 3 "$BASE/v27-preview/" -o /tmp/via-v27-page.html
-          grep -q 'datos ficticios' /tmp/via-v27-page.html
+          grep -q 'Descargar APK V27 Demo' /tmp/via-v27-page.html
       - name: Verificar APK V27 anónima y checksum de publicación QA
         run: |
           set -euo pipefail
