@@ -1713,11 +1713,13 @@ public final class MainActivity extends Activity {
             BuildConfig.VIA_PREVIEW||"admin".equals(staffRole));
         final boolean canRelease="requested".equals(state)&&
             item.optBoolean("canRelease",false)&&!hasDriver;
-        final boolean cancellable="admin".equals(staffRole)&&(
+        final boolean assignedToViewer=!item.isNull("assignedDriverId")&&
+            staffUserId.equals(item.optString("assignedDriverId",""));
+        final boolean cancellable=("admin".equals(staffRole)||assignedToViewer)&&(
             "requested".equals(state)||"quoted".equals(state)||
             "accepted".equals(state)||"confirmed".equals(state)||
             "en_route".equals(state)||"arrived".equals(state));
-        if((assignable||canRelease||cancellable)&&"admin".equals(staffRole)){
+        if(assignable||canRelease||cancellable){
             LinearLayout operations=column();
             operations.setPadding(dp(11),dp(7),dp(11),dp(7));
             operations.setBackground(bg(Color.WHITE,13,BORDER));
