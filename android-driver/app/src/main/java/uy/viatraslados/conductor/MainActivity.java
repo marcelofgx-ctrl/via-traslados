@@ -1561,6 +1561,7 @@ public final class MainActivity extends Activity {
         LinearLayout shortcuts=row();
         String phone=item.optString("phone","");
         TextView call=actionText("☎  Llamar",TEAL_DARK,v->{
+            if(BuildConfig.VIA_PREVIEW){message("Demo: no se realizan llamadas.");return;}
             try{startActivity(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(phone))));}
             catch(Exception e){message("No se pudo abrir el teléfono.");}
         });
@@ -1642,6 +1643,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openMaps(JSONObject item) {
+        if(BuildConfig.VIA_PREVIEW){message("Demo: no se abre navegación real.");return;}
         try {
             String origin=URLEncoder.encode(item.optString("origin"),"UTF-8");
             String dest=URLEncoder.encode(item.optString("destination"),"UTF-8");
