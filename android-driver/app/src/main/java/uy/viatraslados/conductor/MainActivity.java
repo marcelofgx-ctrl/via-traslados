@@ -1699,32 +1699,151 @@ public final class MainActivity extends Activity {
     }
 
     private void quote(JSONObject item) {
-        EditText price = new EditText(this);
+        if(!item.optBoolean("canQuote",BuildConfig.VIA_PREVIEW||
+            "admin".equals(staffRole))) {
+            message("Esta solicitud aún no está habilitada para tu cuenta.");
+            return;
+        }
+        String id=item.optString("id","");
+        LinearLayout[] views=new LinearLayout[2];
+        Dialog panel=premiumPage("PRESUPUESTO ORIENTATIVO","Cotizar traslado",
+            id,"Tomar viaje",views);
+        LinearLayout body=views[0],footer=views[1];
+        LinearLayout route=card();
+        addLine(route,"RECORRIDO",10,TEAL_DARK,true,8);
+        addLine(route,prettyAddress(item.optString("origin")),14,INK,true,5);
+        addLine(route,"→  "+prettyAddress(item.optString("destination")),14,INK,true,10);
+        JSONObject measured=routeResults.get(id);
+        if(measured==null)measured=item.optJSONObject("route");
+        addLine(route,measured==null?"Ruta pendiente de cálculo":
+            routeMetrics(measured)+" · sin tráfico en vivo",12,MUTED,false,0);
+        appendCard(body,route,11);
+        addLine(body,"TARIFA DE REFERENCIA",10,TEAL_DARK,true,10);
+        addLine(body,"Son valores orientativos. Elegí uno o escribí tu oferta en pesos uruguayos.",
+            12,MUTED,false,10);
+        LinearLayout bands=row();
+        body.addView(bands);
+        TextView info=text("Consultando tarifa orientativa…",12,MUTED,false);
+        LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,-2);
+        ip.topMargin=dp(10);
+        body.addView(info,ip);
+        spacer(body,13);
+        LinearLayout amountBox=card();
+        addLine(amountBox,"IMPORTE AL PASAJERO · UYU",10,MUTED,true,9);
+        EditText price=new EditText(this);
         price.setInputType(InputType.TYPE_CLASS_NUMBER);
         price.setSingleLine(true);
-        price.setTextSize(20);
-        price.setHint("Importe en UYU");
-        LinearLayout wrap=column();
-        wrap.setPadding(dp(23),dp(10),dp(23),dp(5));
-        JSONObject measured=routeResults.get(item.optString("id"));
-        addLine(wrap,measured==null?"El cálculo de ruta aún no está disponible · Podés cotizar manualmente":
-            "Ruta estimada: "+routeMetrics(measured)+" · sin tráfico en vivo",
-            13,measured==null?MUTED:TEAL_DARK,false,14);
-        wrap.addView(price);
-        new AlertDialog.Builder(this).setTitle("Sugerir precio")
-          .setMessage("El pasajero recibirá una propuesta para decidir si la acepta. No se cobra comisión.")
-          .setView(wrap)
-          .setNegativeButton("Cancelar",null)
-          .setPositiveButton("Enviar propuesta",(dialog,which)->{
-              try {
-                  long value=Long.parseLong(price.getText().toString().trim());
-                  if (value<1 || value>10000000) { message("Importe fuera de rango."); return; }
-                  JSONObject patch=new JSONObject();
-                  patch.put("status","quoted");
-                  patch.put("price",value);
-                  change(item,patch);
-              }catch(Exception e){message("Ingresá un importe válido en pesos uruguayos.");}
-          }).show();
+        price.setTextSize(22);
+        price.setHint("$ 0");
+        price.setTextColor(INK);
+        amountBox.addView(price,new LinearLayout.LayoutParams(-1,dp(52)));
+        appendCard(body,amountBox,10);
+        TextView financials=text("",12,TEAL_DARK,false);
+        body.addView(financials);
+        addLine(body,"Al enviar la propuesta, el viaje se asignará a tu cuenta. "+
+            "El pasajero deberá aceptarla y luego se confirmará el servicio.",
+            12,MUTED,false,0);
+
+        Button submit=button("Enviar propuesta y tomar viaje  →",true,null);
+        footer.addView(submit,new LinearLayout.LayoutParams(-1,dp(46)));
+        final int[] feeBps={0};
+        final boolean[] guideReady={false};
+        price.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence s,int start,int before,int count){
+                try{
+                    long value=Long.parseLong(s.toString());
+                    long fee=Math.round(value*feeBps[0]/10000.0);
+                    financials.setText("Importe neto estimado para vos: $ "+
+                        String.format(new java.util.Locale("es","UY"),"%,d",value-fee)+
+                        " UYU · comisión $ "+
+                        String.format(new java.util.Locale("es","UY"),"%,d",fee));
+                }catch(Exception ignored){financials.setText("Ingresá un importe en UYU.");}
+            }
+            public void afterTextChanged(android.text.Editable s){}
+        });
+        api("GET","/api/operator/requests/"+Uri.encode(id)+"/price-guide",null,
+            (status,response,error)->{
+            if(!panel.isShowing())return;
+            bands.removeAllViews();
+            if(status!=200){
+                info.setText("No hay guía disponible. Podés cotizar manualmente.");
+                return;
+            }
+            try{
+                JSONObject payload=new JSONObject(response);
+                JSONObject guide=payload.optJSONObject("guide");
+                if(!payload.optBoolean("canQuote",true)){
+                    submit.setEnabled(false);
+                    info.setText("Esta solicitud ya no se puede cotizar.");
+                    return;
+                }
+                JSONObject example=payload.optJSONObject("exampleAtSuggested");
+                if(example!=null)feeBps[0]=example.optInt("commissionBps",0);
+                if(guide==null){
+                    info.setText("Todavía no está calculada la ruta. Ingresá una tarifa manual.");
+                    return;
+                }
+                int[] values={guide.optInt("minimum"),guide.optInt("suggested"),
+                    guide.optInt("maximum")};
+                String[] labels={"MÍNIMO","SUGERIDO","MÁXIMO"};
+                for(int i=0;i<3;i++){
+                    final int value=values[i];
+                    LinearLayout box=column();
+                    box.setPadding(dp(7),dp(9),dp(7),dp(9));
+                    box.setBackground(ripple(i==1?SOFT:Color.WHITE,BORDER,12));
+                    TextView title=text(labels[i],9,MUTED,true);
+                    title.setGravity(Gravity.CENTER);
+                    box.addView(title);
+                    spacer(box,5);
+                    TextView sum=text("$ "+
+                        String.format(new java.util.Locale("es","UY"),"%,d",value),
+                        15,i==1?TEAL_DARK:INK,true);
+                    sum.setGravity(Gravity.CENTER);
+                    box.addView(sum);
+                    box.setContentDescription(labels[i]+": "+value+" pesos. Usar esta tarifa.");
+                    box.setOnClickListener(v->price.setText(String.valueOf(value)));
+                    LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(62),1);
+                    if(i>0)p.leftMargin=dp(7);
+                    bands.addView(box,p);
+                }
+                price.setText(String.valueOf(values[1]));
+                guideReady[0]=true;
+                info.setText("Guía Vía Traslados · no incluye peajes, esperas ni regreso vacío.");
+            }catch(Exception e){info.setText("No se pudo interpretar la guía. Cotizá manualmente.");}
+        });
+        submit.setOnClickListener(v->{
+            final int value;
+            try{
+                value=Integer.parseInt(price.getText().toString().trim());
+                if(value<1||value>10000000)throw new IllegalArgumentException();
+            }catch(Exception e){message("Ingresá una tarifa válida en pesos uruguayos.");return;}
+            new AlertDialog.Builder(this)
+                .setTitle("Confirmar propuesta")
+                .setMessage("Ofertar $ "+String.format(new java.util.Locale("es","UY"),"%,d",value)+
+                    " UYU y adjudicarte este viaje. El pasajero todavía deberá aceptar tu propuesta.")
+                .setNegativeButton("Volver",null)
+                .setPositiveButton("Enviar y tomar",(dialog,which)->{
+                    submit.setEnabled(false);
+                    try{
+                        JSONObject patch=new JSONObject().put("status","quoted").put("price",value);
+                        api("PATCH","/api/operator/requests/"+Uri.encode(id),patch,
+                            (status,result,error)->{
+                            if(status==200){
+                                panel.dismiss();
+                                message("Propuesta enviada. El viaje quedó asignado a tu cuenta.");
+                                fetchBookings(true);
+                            }else{
+                                submit.setEnabled(true);
+                                message(error.isEmpty()?
+                                    "No se pudo cotizar. Puede haber sido tomado por otro conductor.":
+                                    error);
+                                fetchBookings(false);
+                            }
+                        });
+                    }catch(Exception e){submit.setEnabled(true);message("No se pudo enviar la cotización.");}
+                }).show();
+        });
     }
 
     private void confirmStatus(JSONObject item,String next,String title) {
