@@ -10,6 +10,7 @@ android {
         versionCode project.hasProperty('viaDensePreview') ? 28 : (project.hasProperty('viaPreview') ? 27 : 10)
         versionName project.hasProperty('viaDensePreview') ? '0.28.0-preview' : (project.hasProperty('viaPreview') ? '0.27.0-preview' : '1.0.0-auto-precalc-qa')
         buildConfigField 'boolean', 'VIA_PREVIEW', (project.hasProperty('viaPreview') || project.hasProperty('viaDensePreview')) ? 'true' : 'false'
+        buildConfigField 'boolean', 'VIA_DENSE_PREVIEW', project.hasProperty('viaDensePreview') ? 'true' : 'false'
         manifestPlaceholders = [appLabel: project.hasProperty('viaDensePreview') ? 'Vía Traslados V28 Demo' : (project.hasProperty('viaPreview') ? 'Vía Traslados V27 Demo' : 'Vía Traslados QA 1.0')]
     }
     buildFeatures { buildConfig true }
