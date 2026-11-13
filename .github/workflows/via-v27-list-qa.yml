@@ -52,7 +52,8 @@ jobs:
           name: via-conductor-v27-compact-list-demo
           path: android-driver/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
-      - name: Publicar únicamente APK demo en rama web QA, sin modificar producción
+      - name: Publicación pausada: V27 paralela ya existe y fue verificada
+        if: false
         run: |
           set -euo pipefail
           git fetch --no-tags origin via-apk-descarga-qa-20261112
