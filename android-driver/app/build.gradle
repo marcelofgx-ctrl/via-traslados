@@ -4,13 +4,14 @@ android {
     namespace 'uy.viatraslados.conductor'
     compileSdk 35
     defaultConfig {
-        applicationId project.hasProperty('viaPreview') ? 'uy.viatraslados.conductor.v26preview' : 'uy.viatraslados.conductor.autoprecalcqa'
+        applicationId project.hasProperty('viaListPreview') ? 'uy.viatraslados.conductor.v27preview' : (project.hasProperty('viaPreview') ? 'uy.viatraslados.conductor.v26preview' : 'uy.viatraslados.conductor.autoprecalcqa')
         minSdk 26
         targetSdk 35
-        versionCode project.hasProperty('viaPreview') ? 26 : 10
-        versionName project.hasProperty('viaPreview') ? '0.26.0-preview' : '1.0.0-auto-precalc-qa'
-        buildConfigField 'boolean', 'VIA_PREVIEW', project.hasProperty('viaPreview') ? 'true' : 'false'
-        manifestPlaceholders = [appLabel: project.hasProperty('viaPreview') ? 'Vía Traslados V26 Demo' : 'Vía Traslados QA 1.0']
+        versionCode project.hasProperty('viaListPreview') ? 27 : (project.hasProperty('viaPreview') ? 26 : 10)
+        versionName project.hasProperty('viaListPreview') ? '0.27.0-preview' : (project.hasProperty('viaPreview') ? '0.26.0-preview' : '1.0.0-auto-precalc-qa')
+        buildConfigField 'boolean', 'VIA_PREVIEW', (project.hasProperty('viaPreview') || project.hasProperty('viaListPreview')) ? 'true' : 'false'
+        buildConfigField 'boolean', 'VIA_LIST_PREVIEW', project.hasProperty('viaListPreview') ? 'true' : 'false'
+        manifestPlaceholders = [appLabel: project.hasProperty('viaListPreview') ? 'Vía Traslados V27 Demo' : (project.hasProperty('viaPreview') ? 'Vía Traslados V26 Demo' : 'Vía Traslados QA 1.0')]
     }
     buildFeatures { buildConfig true }
     compileOptions {
