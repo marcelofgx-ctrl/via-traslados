@@ -1,4 +1,4 @@
-name: Vía Traslados V33 — alta de conductores y revisión QA
+name: Vía Traslados V33 — foto JPEG válida y registro QA
 on:
   push:
     branches: [via-registro-conductores-v33-qa-20261113]
