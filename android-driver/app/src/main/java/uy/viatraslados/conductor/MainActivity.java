@@ -275,6 +275,7 @@ public final class MainActivity extends Activity {
         LinearLayout capacity=row();
         EditText passengers=authFieldColumn("PASAJEROS","4",capacity);
         EditText bags=authFieldColumn("VALIJAS","2",capacity);
+        page.addView(capacity,new LinearLayout.LayoutParams(-1,-2));
         passengers.setInputType(InputType.TYPE_CLASS_NUMBER);
         bags.setInputType(InputType.TYPE_CLASS_NUMBER);
         spacer(page,14);
@@ -2900,6 +2901,18 @@ public final class MainActivity extends Activity {
             if (status != 200) { message(error.isEmpty()?"No se pudieron consultar conductores":error); return; }
             try { managedDrivers = new JSONObject(result).getJSONArray("drivers"); }
             catch (Exception e) { message("Lista de conductores inválida"); return; }
+            if(BuildConfig.VIA_ONBOARD_QA&&"admin".equals(staffRole)){
+                api("GET","/api/qa/driver-applications",null,
+                    (code,body,problem)->{
+                        if(code==200)try{
+                            int next=new JSONObject(body).optInt("pending",0);
+                            boolean changed=qaPendingCount!=next;
+                            qaPendingCount=next;
+                            if(changed&&"administrar".equals(tab)&&adminLoaded)
+                                dashboard();
+                        }catch(Exception ignored){}
+                    });
+            }
             api("GET", "/api/admin/settings", null, (code, data, err) -> {
                 if (code != 200) { message(err.isEmpty()?"No se pudo consultar configuración":err); return; }
                 try {
@@ -2957,6 +2970,29 @@ public final class MainActivity extends Activity {
         second.leftMargin=dp(8);
         stats.addView(statTile(String.valueOf(approved),"Habilitados",false),second);
         content.addView(stats);
+        if(BuildConfig.VIA_ONBOARD_QA){
+            spacer(content,11);
+            LinearLayout intake=card();
+            LinearLayout top=row();
+            TextView title=text("Inscripciones de conductores",16,INK,true);
+            top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+            TextView counter=text(qaPendingCount+" pendiente"+(qaPendingCount==1?"":"s"),
+                11,qaPendingCount>0?ORANGE:TEAL_DARK,true);
+            counter.setPadding(dp(10),dp(6),dp(10),dp(6));
+            counter.setBackground(bg(qaPendingCount>0?
+                Color.rgb(255,245,234):SOFT,13,0));
+            top.addView(counter);
+            intake.addView(top);
+            spacer(intake,8);
+            addLine(intake,"Revisá identidad ficticia, vehículo y fotografía "+
+                "antes de habilitar un nuevo conductor.",12,MUTED,false,12);
+            intake.addView(button("Abrir bandeja de solicitudes",true,
+                v->openQaApplications()),new LinearLayout.LayoutParams(-1,dp(46)));
+            spacer(intake,8);
+            intake.addView(button("Configurar formulario de inscripción",false,
+                v->configureQaEnrollment()),new LinearLayout.LayoutParams(-1,dp(44)));
+            appendCard(content,intake,17);
+        }
         spacer(content,18);
 
         LinearLayout service=card();
@@ -3087,6 +3123,198 @@ public final class MainActivity extends Activity {
         spacer(content,5);
         addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
             12,MUTED,false,13);
+    }
+
+    // V33: bandeja de aprobación. Solo se usa en D1 QA con identidades ficticias.
+    private void openQaApplications(){
+        if(!BuildConfig.VIA_ONBOARD_QA||!"admin".equals(staffRole))return;
+        LinearLayout[] panels=new LinearLayout[2];
+        Dialog dialog=premiumPage("ADMISIÓN DE CONDUCTORES",
+            "Solicitudes pendientes","Fotos y vehículos de ensayo","QA",panels);
+        LinearLayout list=panels[0];
+        addLine(list,"Consultando registros de prueba…",12,MUTED,false,0);
+        api("GET","/api/qa/driver-applications",null,(status,result,error)->{
+            if(!dialog.isShowing())return;
+            list.removeAllViews();
+            if(status!=200){
+                addLine(list,error.isEmpty()?"No se pudo consultar la bandeja.":error,
+                    13,ORANGE,false,0);
+                return;
+            }
+            try{
+                JSONObject answer=new JSONObject(result);
+                JSONArray items=answer.getJSONArray("items");
+                qaPendingCount=answer.optInt("pending",0);
+                addLine(list,qaPendingCount+" solicitud(es) por revisar",
+                    14,qaPendingCount>0?TEAL_DARK:MUTED,true,14);
+                for(int i=0;i<items.length();i++){
+                    JSONObject entry=items.optJSONObject(i);
+                    if(entry==null)continue;
+                    JSONObject car=entry.optJSONObject("vehicle");
+                    String name=entry.optString("name","Conductor QA");
+                    boolean pending="pending".equals(entry.optString("status"));
+                    LinearLayout tile=card();
+                    LinearLayout heading=row();
+                    TextView person=text(name,15,INK,true);
+                    heading.addView(person,new LinearLayout.LayoutParams(0,-2,1));
+                    TextView badge=text(pending?"PENDIENTE":
+                        "approved".equals(entry.optString("status"))?"APROBADO":"RECHAZADO",
+                        10,pending?ORANGE:TEAL_DARK,true);
+                    heading.addView(badge);
+                    tile.addView(heading);
+                    spacer(tile,8);
+                    addLine(tile,car==null?"Sin vehículo":
+                        car.optString("make")+" "+car.optString("model")+" · "+
+                        car.optInt("year")+" · "+car.optString("plate"),
+                        12,TEAL_DARK,true,6);
+                    addLine(tile,entry.optString("email"),11,MUTED,false,10);
+                    tile.addView(button("Ver solicitud y fotografía",false,
+                        v->openQaApplication(entry)),new LinearLayout.LayoutParams(-1,dp(44)));
+                    appendCard(list,tile,10);
+                }
+                if(items.length()==0)addLine(list,"No hay solicitudes registradas.",
+                    13,MUTED,false,0);
+            }catch(Exception e){
+                addLine(list,"No se pudo interpretar la bandeja.",13,ORANGE,false,0);
+            }
+        });
+    }
+
+    private void openQaApplication(JSONObject entry){
+        if(!BuildConfig.VIA_ONBOARD_QA||!"admin".equals(staffRole))return;
+        String id=entry.optString("id"),name=entry.optString("name","Conductor");
+        JSONObject car=entry.optJSONObject("vehicle");
+        LinearLayout[] panels=new LinearLayout[2];
+        Dialog dialog=premiumPage("REVISIÓN DE INSCRIPCIÓN",
+            name,"Datos y fotografía del vehículo","QA",panels);
+        LinearLayout body=panels[0],footer=panels[1];
+        addLine(body,"DATOS DE CONTACTO",10,TEAL_DARK,true,10);
+        LinearLayout personal=card();
+        addLine(personal,entry.optString("email"),13,INK,true,6);
+        addLine(personal,entry.optString("phone"),12,MUTED,false,0);
+        appendCard(body,personal,13);
+        addLine(body,"VEHÍCULO SOLICITADO",10,TEAL_DARK,true,10);
+        LinearLayout vehicle=card();
+        if(car!=null){
+            addLine(vehicle,car.optString("make")+" "+car.optString("model"),
+                18,INK,true,8);
+            addLine(vehicle,"Año "+car.optInt("year")+" · Matrícula "+
+                car.optString("plate"),13,TEAL_DARK,true,5);
+            addLine(vehicle,"Color: "+car.optString("color")+
+                " · "+car.optInt("passengers")+" pasajeros · "+
+                car.optInt("bags")+" valijas",12,MUTED,false,10);
+        }
+        ImageView image=new ImageView(this);
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setContentDescription("Fotografía del vehículo de prueba");
+        image.setBackground(bg(SOFT,12,BORDER));
+        vehicle.addView(image,new LinearLayout.LayoutParams(-1,dp(190)));
+        appendCard(body,vehicle,14);
+        if(car!=null&&car.optBoolean("hasPhoto",false)){
+            api("GET","/api/qa/driver-applications/"+Uri.encode(id)+"/photo",
+                null,(status,result,error)->{
+                    if(!dialog.isShowing())return;
+                    if(status==200)try{
+                        String photo=new JSONObject(result).optString("jpegBase64","");
+                        byte[] bytes=Base64.decode(photo,Base64.DEFAULT);
+                        Bitmap bmp=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                        if(bmp!=null)image.setImageBitmap(bmp);
+                    }catch(Exception ignored){}
+                });
+        }else addLine(body,"Sin fotografía adjunta.",12,MUTED,false,7);
+        if("pending".equals(entry.optString("status"))){
+            LinearLayout actions=row();
+            Button reject=button("Rechazar",false,
+                v->qaDecide(id,"reject",name,dialog));
+            actions.addView(reject,new LinearLayout.LayoutParams(0,dp(46),1));
+            Button approve=button("Aprobar inscripción",true,
+                v->qaDecide(id,"approve",name,dialog));
+            LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(46),1);
+            p.leftMargin=dp(9);
+            actions.addView(approve,p);
+            footer.addView(actions);
+        }else addLine(body,"Solicitud "+entry.optString("status")+
+            ". No se puede modificar una solicitud ya procesada.",
+            12,MUTED,false,0);
+    }
+
+    private void qaDecide(String id,String action,String name,Dialog parent){
+        boolean approve="approve".equals(action);
+        LinearLayout form=formContainer();
+        EditText note=formInput(form,"Nota de revisión (opcional)",
+            InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+            .setTitle(approve?"Aprobar conductor":"Rechazar solicitud")
+            .setMessage(approve?
+                "¿Confirmás que "+name+" podrá ingresar y, según sus permisos, "+
+                    "ver solicitudes liberadas?":
+                "El conductor no podrá ingresar mientras su solicitud esté rechazada.")
+            .setView(form)
+            .setNegativeButton("Volver",null)
+            .setPositiveButton(approve?"Aprobar":"Rechazar",(dialog,which)->{
+                JSONObject p=new JSONObject();
+                try{p.put("action",action).put("note",
+                    note.getText().toString().trim());}catch(Exception ignored){}
+                api("PATCH","/api/qa/driver-applications/"+Uri.encode(id),
+                    p,(status,result,error)->{
+                        if(status==200){
+                            parent.dismiss();
+                            message(approve?"Inscripción aprobada en QA.":
+                                "Solicitud rechazada en QA.");
+                            loadAdmin();
+                            openQaApplications();
+                        }else message(error.isEmpty()?
+                            "No se pudo procesar la solicitud.":error);
+                    });
+            }).show();
+    }
+
+    private void configureQaEnrollment(){
+        if(!BuildConfig.VIA_ONBOARD_QA||!"admin".equals(staffRole))return;
+        LinearLayout[] panels=new LinearLayout[2];
+        Dialog dialog=premiumPage("FORMULARIO DE INSCRIPCIÓN",
+            "Configuración de altas","Solo entornos QA","Admin",panels);
+        LinearLayout body=panels[0],footer=panels[1];
+        addLine(body,"El administrador controla si se reciben nuevas solicitudes "+
+            "y si debe adjuntarse una fotografía.",13,MUTED,false,13);
+        android.widget.CheckBox open=new android.widget.CheckBox(this);
+        open.setText("Permitir nuevas inscripciones");
+        open.setTextColor(INK);
+        open.setTextSize(14);
+        open.setChecked(true);
+        body.addView(open);
+        android.widget.CheckBox photo=new android.widget.CheckBox(this);
+        photo.setText("Exigir fotografía del vehículo");
+        photo.setTextColor(INK);
+        photo.setTextSize(14);
+        photo.setChecked(true);
+        body.addView(photo);
+        spacer(body,14);
+        addLine(body,"Siempre obligatorios: nombre, celular, correo, "+
+            "contraseña, marca, modelo, año, matrícula y capacidad.",
+            12,MUTED,false,14);
+        api("GET","/api/qa/driver-form",null,(status,result,error)->{
+            if(status==200)try{
+                JSONObject config=new JSONObject(result).getJSONObject("config");
+                open.setChecked(config.optBoolean("open",true));
+                photo.setChecked(config.optBoolean("photoRequired",true));
+            }catch(Exception ignored){}
+        });
+        Button save=button("Guardar configuración",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            JSONObject p=new JSONObject();
+            try{p.put("open",open.isChecked())
+                .put("photoRequired",photo.isChecked());}catch(Exception ignored){}
+            save.setEnabled(false);
+            api("PATCH","/api/qa/driver-form",p,(status,result,error)->{
+                save.setEnabled(true);
+                if(status==200){dialog.dismiss();
+                    message("Formulario de inscripción actualizado.");}
+                else message(error.isEmpty()?
+                    "No se pudo guardar la configuración.":error);
+            });
+        });
     }
 
     // Modalidad comercial visible exclusivamente al administrador fundador.
