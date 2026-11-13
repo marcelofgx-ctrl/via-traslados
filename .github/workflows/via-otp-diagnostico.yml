@@ -36,6 +36,13 @@ jobs:
             console.log('VIA_OTP_GLOBAL_COUNT:',row?.attempts??0);
             console.log('VIA_OTP_GLOBAL_REMAINING_SECONDS:',row?.segundos_restantes??0);
             console.log('VIA_OTP_GLOBAL_BLOCKED:',Boolean(row&&row.segundos_restantes>0&&row.attempts>=25));
+            const sample=await fetch(root+'/d1/database/'+db[0].uuid+'/query',{method:'POST',headers:auth,body:JSON.stringify({sql:'SELECT COUNT(*) AS almacenados,SUM(CASE WHEN sent_at>=unixepoch()-3600 THEN 1 ELSE 0 END) AS ultima_hora, MAX(sent_at) AS ultimo_envio FROM email_otp_codes'})});
+            const sampled=await sample.json();
+            if(!sample.ok||!sampled.success)throw Error('Falla en agregado de envíos OTP');
+            const counts=sampled.result?.[0]?.results?.[0]||{};
+            console.log('VIA_OTP_STORED:',counts.almacenados??0);
+            console.log('VIA_OTP_RECENT_1H:',counts.ultima_hora??0);
+            console.log('VIA_OTP_LAST_SENT_AGE_SEC:',counts.ultimo_envio?Math.floor(Date.now()/1000)-counts.ultimo_envio:'none');
             const health=await fetch('https://via-traslados-api.marcelof-gx.workers.dev/api/health',{headers:{Origin:'https://viatraslados.com'}});
             const h=await health.json();
             console.log('VIA_OTP_HEALTH_HTTP:',health.status,'AVAILABLE:',h.otpAvailable===true);
