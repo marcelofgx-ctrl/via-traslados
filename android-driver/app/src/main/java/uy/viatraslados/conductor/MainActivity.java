@@ -706,6 +706,7 @@ public final class MainActivity extends Activity {
     // Aviso visible solamente mientras la APK está abierta. No es push FCM.
     // Conserva solo el identificador de la aceptación ya anunciada, nunca las credenciales.
     private void notifyAcceptedProposals(JSONArray rows) {
+        if (BuildConfig.VIA_PREVIEW) return;
         if (!visible || rows==null || (operatorKey==null && staffToken==null)) return;
         if (acceptanceDialog!=null) {
             boolean stillPending=false;
