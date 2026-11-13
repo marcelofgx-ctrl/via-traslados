@@ -1,5 +1,8 @@
 name: Vía Traslados V26 — publicar APK demo aislada
 on:
+  push:
+    branches: [via-despacho-premium-v26-qa-20261112]
+    paths: [".github/workflows/via-v26-demo-publish.yml"]
   workflow_dispatch:
 permissions:
   contents: write
