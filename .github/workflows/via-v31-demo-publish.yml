@@ -1,4 +1,4 @@
-name: Vía Traslados V31 — ficha premium compacta por estados
+name: Vía Traslados V31 — ficha premium y controles revisados
 on:
   push:
     branches: [via-ficha-operativa-premium-v31-qa-20261113]
