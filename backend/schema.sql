@@ -87,6 +87,86 @@ CREATE TABLE IF NOT EXISTS driver_vehicle_profiles (
  luggage_capacity INTEGER CHECK(luggage_capacity BETWEEN 0 AND 10),
  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+-- V29: contratos comerciales invisibles en las respuestas operativas normales.
+-- Solo el administrador fundador puede cambiar la modalidad y los porcentajes.
+CREATE TABLE IF NOT EXISTS driver_commercial_profiles (
+ staff_id TEXT PRIMARY KEY REFERENCES staff_users(id) ON DELETE CASCADE,
+ mode TEXT NOT NULL DEFAULT 'contractor' CHECK(mode IN ('partner','contractor')),
+ can_quote_all INTEGER NOT NULL DEFAULT 0 CHECK(can_quote_all IN (0,1)),
+ can_release INTEGER NOT NULL DEFAULT 0 CHECK(can_release IN (0,1)),
+ commission_bps INTEGER NOT NULL DEFAULT 2500 CHECK(commission_bps BETWEEN 0 AND 5000),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS booking_dispatch_releases (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ released_by TEXT NOT NULL,
+ released_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS booking_quotes (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ driver_id TEXT NOT NULL REFERENCES staff_users(id),
+ price_uyu INTEGER NOT NULL CHECK(price_uyu BETWEEN 1 AND 10000000),
+ commission_bps INTEGER NOT NULL CHECK(commission_bps BETWEEN 0 AND 5000),
+ created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS booking_quotes_by_driver ON booking_quotes(driver_id,created_at);
+
+-- Un solo INSERT de cotización ejecuta reglas, asignación y cambio de estado.
+-- Un RAISE aborta toda la transacción de SQLite/D1 (no hay doble asignación).
+CREATE TRIGGER IF NOT EXISTS via_quote_guard BEFORE INSERT ON booking_quotes
+BEGIN
+ SELECT RAISE(ABORT,'VIA_QUOTE_STATUS')
+   WHERE NOT EXISTS(SELECT 1 FROM bookings WHERE id=NEW.booking_id AND status='requested');
+ SELECT RAISE(ABORT,'VIA_QUOTE_AUTH')
+   WHERE NOT EXISTS(
+     SELECT 1 FROM staff_users u
+     JOIN staff_contacts c ON c.staff_id=u.id
+     LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id
+     WHERE u.id=NEW.driver_id AND u.status='approved' AND u.role IN ('admin','driver')
+       AND c.email_verified_at IS NOT NULL
+       AND (u.role='admin' OR p.can_quote_all=1 OR
+           EXISTS(SELECT 1 FROM booking_dispatch_releases r WHERE r.booking_id=NEW.booking_id))
+   );
+ SELECT RAISE(ABORT,'VIA_QUOTE_ASSIGNED_OTHER')
+   WHERE EXISTS(SELECT 1 FROM driver_assignments
+     WHERE booking_id=NEW.booking_id AND driver_id<>NEW.driver_id);
+ SELECT RAISE(ABORT,'VIA_QUOTE_CAPACITY')
+   WHERE EXISTS(
+     SELECT 1 FROM driver_vehicle_profiles v JOIN bookings b ON b.id=NEW.booking_id
+     WHERE v.staff_id=NEW.driver_id AND
+     ((v.passenger_capacity IS NOT NULL AND v.passenger_capacity<b.passengers)
+       OR (v.luggage_capacity IS NOT NULL AND v.luggage_capacity<b.bags))
+   );
+ SELECT RAISE(ABORT,'VIA_QUOTE_OVERLAP')
+   WHERE EXISTS(
+     SELECT 1 FROM bookings target
+     JOIN driver_assignments a ON a.driver_id=NEW.driver_id
+     JOIN bookings other ON other.id=a.booking_id
+     LEFT JOIN booking_routes tr ON tr.booking_id=target.id
+     LEFT JOIN booking_routes othr ON othr.booking_id=other.id
+     WHERE target.id=NEW.booking_id AND other.id<>target.id
+       AND other.status NOT IN ('cancelled','completed')
+       AND CAST(strftime('%s',other.trip_date||' '||other.trip_time) AS INTEGER) <
+         CAST(strftime('%s',target.trip_date||' '||target.trip_time) AS INTEGER)+
+         MAX(3600,COALESCE(tr.duration_s,0))+1800
+       AND CAST(strftime('%s',other.trip_date||' '||other.trip_time) AS INTEGER)+
+         MAX(3600,COALESCE(othr.duration_s,0))+1800 >
+         CAST(strftime('%s',target.trip_date||' '||target.trip_time) AS INTEGER)
+   );
+END;
+CREATE TRIGGER IF NOT EXISTS via_quote_commit AFTER INSERT ON booking_quotes
+BEGIN
+ INSERT INTO driver_assignments(booking_id,driver_id,assigned_by)
+ VALUES(NEW.booking_id,NEW.driver_id,NEW.driver_id)
+ ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,
+     assigned_by=excluded.assigned_by,assigned_at=unixepoch()
+ WHERE driver_assignments.driver_id=excluded.driver_id;
+ UPDATE bookings SET status='quoted',price_uyu=NEW.price_uyu,updated_at=datetime('now')
+ WHERE id=NEW.booking_id AND status='requested';
+ INSERT INTO booking_events(booking_id,old_status,new_status,actor)
+ VALUES(NEW.booking_id,'requested','quoted','driver-quote:'||NEW.driver_id);
+END;
+
 CREATE TABLE IF NOT EXISTS admin_audit (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  actor_id TEXT NOT NULL,
