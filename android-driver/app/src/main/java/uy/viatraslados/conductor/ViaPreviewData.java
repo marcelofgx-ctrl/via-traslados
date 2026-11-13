@@ -264,6 +264,12 @@ public final class ViaPreviewData {
             return new Reply(200,wrap("config",config));
         }
 
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"GET".equals(method)
+            &&"/api/admin/team".equals(path)){
+            JSONObject response=wrap("admins",new JSONArray());
+            try{response.put("canManageRoles",true);}catch(Exception ignored){}
+            return new Reply(200,response);
+        }
         if("GET".equals(method)&&"/api/admin/settings".equals(path)){
             JSONObject settings=new JSONObject();
             try{settings.put("publicEnabled",true).put("drivers",new JSONArray());}
@@ -326,6 +332,12 @@ public final class ViaPreviewData {
             return fail(404,"Solicitud ficticia no encontrada");
         }
         return fail(400,"Modo demostración: operación sin servidor.");
+    }
+
+    private static JSONObject wrap(String key,JSONObject value){
+        JSONObject result=new JSONObject();
+        try{result.put(key,value);}catch(Exception ignored){}
+        return result;
     }
 
     private static JSONObject wrap(String key,JSONArray value){
