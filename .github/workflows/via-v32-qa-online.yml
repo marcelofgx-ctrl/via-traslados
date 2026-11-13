@@ -1,4 +1,4 @@
-name: Vía Traslados V32 — circuito real corregido y APK online
+name: Vía Traslados V32 — validar estados D1 y publicar QA
 on:
   push:
     branches: [via-qa-online-v32-20261113]
