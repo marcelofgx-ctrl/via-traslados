@@ -145,6 +145,9 @@ public final class MainActivity extends Activity {
         staffName="";
         staffUserId="";
         canManageRoles=false;
+        loading=false;
+        lastPayload="";
+        routeResults.clear();
         root.removeAllViews();
         root.setBackgroundColor(LIGHT);
         LinearLayout loading=column();
@@ -774,21 +777,30 @@ public final class MainActivity extends Activity {
                     notifyAcceptedProposals(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
-                    if (login) loginScreen();
+                    if(login){
+                        if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
+                        else loginScreen();
+                    }
                 }
             } else if (status == 401 || status == 403) {
-                if (login) {
+                if(BuildConfig.VIA_ONLINE_QA){
+                    message("La sesión QA expiró. Volviendo a conectar.");
+                    startQaSession("admin");
+                }else if(login){
                     loginScreen();
                     new AlertDialog.Builder(this).setTitle("No se pudo ingresar")
                       .setMessage("Clave incorrecta o acceso no autorizado.")
                       .setPositiveButton("Entendido", null).show();
-                } else {
+                }else{
                     message("La sesión dejó de estar autorizada.");
                     loginScreen();
                 }
             } else {
                 message(error.isEmpty() ? "No fue posible actualizar las solicitudes." : error);
-                if (login) loginScreen();
+                if(login){
+                    if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
+                    else loginScreen();
+                }
             }
         });
     }
