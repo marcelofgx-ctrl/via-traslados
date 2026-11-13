@@ -10,6 +10,7 @@ android {
         versionCode project.hasProperty('viaPreview') ? 26 : 10
         versionName project.hasProperty('viaPreview') ? '0.26.0-preview' : '1.0.0-auto-precalc-qa'
         buildConfigField 'boolean', 'VIA_PREVIEW', project.hasProperty('viaPreview') ? 'true' : 'false'
+        manifestPlaceholders = [appLabel: project.hasProperty('viaPreview') ? 'Vía Traslados V26 Demo' : 'Vía Traslados QA 1.0']
     }
     buildFeatures { buildConfig true }
     compileOptions {
