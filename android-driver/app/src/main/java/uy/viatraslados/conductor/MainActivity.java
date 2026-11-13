@@ -892,7 +892,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_LAYOUT_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_OPERATION_PREVIEW ?
+                "V31 · FICHA OPERATIVA PREMIUM · DEMO AISLADA" :
+                BuildConfig.VIA_LAYOUT_PREVIEW ?
                 "V30 · DETALLE Y COTIZACIÓN · DEMO SIN PRODUCCIÓN" :
                 BuildConfig.VIA_BUSINESS_PREVIEW ?
                 "V29 · SOCIOS Y TARIFAS · DEMO SIN PRODUCCIÓN" :
@@ -1536,12 +1538,12 @@ public final class MainActivity extends Activity {
         final String id=item.optString("id","");
         final String state=item.optString("status","");
         LinearLayout[] views=new LinearLayout[2];
-        Dialog panel=premiumPage("DETALLE DEL SERVICIO","Detalle del traslado",id,statusName(state),views);
+        Dialog panel=premiumPage("","Detalle del traslado",id,statusName(state),views);
         LinearLayout body=views[0],footer=views[1];
 
         LinearLayout facts=row();
         LinearLayout date=column();
-        date.setPadding(dp(12),dp(10),dp(10),dp(10));
+        date.setPadding(dp(12),dp(9),dp(10),dp(10));
         date.setBackground(bg(SOFT,12,0));
         addLine(date,"FECHA Y HORA",10,MUTED,true,5);
         addLine(date,compactDate(item.optString("date"))+" · "+item.optString("time"),14,INK,true,0);
@@ -1550,7 +1552,7 @@ public final class MainActivity extends Activity {
         if(route==null)route=item.optJSONObject("route");
         final JSONObject measured=route;
         LinearLayout metric=column();
-        metric.setPadding(dp(12),dp(10),dp(10),dp(10));
+        metric.setPadding(dp(12),dp(9),dp(10),dp(10));
         metric.setBackground(bg(SOFT,12,0));
         addLine(metric,"DISTANCIA / TIEMPO",10,MUTED,true,5);
         addLine(metric,measured==null?"Pendiente":routeMetrics(measured),14,
@@ -1563,11 +1565,11 @@ public final class MainActivity extends Activity {
 
         LinearLayout itinerary=card();
         itinerary.setPadding(dp(13),dp(13),dp(13),dp(11));
-        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,12);
+        addLine(itinerary,"TU RECORRIDO",10,TEAL_DARK,true,12);
         routePoint(itinerary,"A","ORIGEN",item.optString("origin"),true);
-        spacer(itinerary,13);
+        spacer(itinerary,10);
         routePoint(itinerary,"B","DESTINO",item.optString("destination"),false);
-        spacer(itinerary,12);
+        spacer(itinerary,10);
         View routeSeparator=new View(this);
         routeSeparator.setBackgroundColor(BORDER);
         itinerary.addView(routeSeparator,new LinearLayout.LayoutParams(-1,dp(1)));
@@ -1581,24 +1583,34 @@ public final class MainActivity extends Activity {
         TextView baggage=text(luggageText,12,INK,true);
         serviceData.addView(baggage);
         itinerary.addView(serviceData);
-        if(item.optInt("price",0)>0){
-            spacer(itinerary,10);
-            LinearLayout fare=row();
-            fare.setGravity(Gravity.CENTER_VERTICAL);
-            fare.setPadding(dp(11),dp(10),dp(11),dp(10));
-            fare.setBackground(bg(SOFT,11,0));
-            TextView fareLabel=text("IMPORTE OFERTADO",10,MUTED,true);
-            fareLabel.setGravity(Gravity.CENTER_VERTICAL);
-            fare.addView(fareLabel,new LinearLayout.LayoutParams(0,-2,1));
-            TextView total=text("$ "+String.format(new java.util.Locale("es","UY"),
-                "%,d",item.optInt("price"))+" UYU",16,TEAL_DARK,true);
-            total.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-            total.setSingleLine(true);
-            fare.addView(total,new LinearLayout.LayoutParams(-2,-2));
-            itinerary.addView(fare,new LinearLayout.LayoutParams(-1,-2));
-        }
-        spacer(itinerary,7);
-        if(measured!=null){
+        // La tarjeta mantiene la misma estructura tanto antes como después de cotizar.
+        // El precio es un dato central; nunca queda escondido dentro de textos corridos.
+        spacer(itinerary,10);
+        LinearLayout fare=row();
+        fare.setGravity(Gravity.CENTER_VERTICAL);
+        fare.setPadding(dp(12),dp(11),dp(12),dp(11));
+        fare.setBackground(bg(item.optInt("price",0)>0?SOFT:
+            Color.rgb(247,249,249),12,0));
+        LinearLayout fareInfo=column();
+        addLine(fareInfo,item.optInt("price",0)>0?
+            "OFERTA ENVIADA":"PRESUPUESTO",10,
+            item.optInt("price",0)>0?TEAL_DARK:MUTED,true,3);
+        addLine(fareInfo,item.optInt("price",0)>0?
+            "Esperando respuesta del pasajero":"Pendiente de cotización",
+            11,MUTED,false,0);
+        fare.addView(fareInfo,new LinearLayout.LayoutParams(0,-2,1));
+        TextView fareAmount=text(item.optInt("price",0)>0?
+            "$ "+String.format(new java.util.Locale("es","UY"),
+                "%,d",item.optInt("price"))+" UYU":"Sin precio",16,
+            item.optInt("price",0)>0?TEAL_DARK:INK,true);
+        fareAmount.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        fareAmount.setSingleLine(true);
+        LinearLayout.LayoutParams priceParams=new LinearLayout.LayoutParams(-2,-2);
+        priceParams.leftMargin=dp(10);
+        fare.addView(fareAmount,priceParams);
+        itinerary.addView(fare,new LinearLayout.LayoutParams(-1,-2));
+        if(!BuildConfig.VIA_PREVIEW)spacer(itinerary,7);
+        if(measured!=null&&!BuildConfig.VIA_PREVIEW){
             TextView credit=text("",9,MUTED,false);
             if(BuildConfig.VIA_PREVIEW){
                 credit.setText("Ruta ilustrativa · sin servicios externos");
@@ -1627,7 +1639,7 @@ public final class MainActivity extends Activity {
 
         // Pasajero y asignación comparten una sola tarjeta de operaciones.
         LinearLayout people=card();
-        people.setPadding(dp(13),dp(13),dp(13),dp(11));
+        people.setPadding(dp(13),dp(11),dp(13),dp(11));
         LinearLayout customerHeader=row();
         TextView customerTag=text("PASAJERO",10,TEAL_DARK,true);
         customerTag.setGravity(Gravity.CENTER_VERTICAL);
@@ -1653,7 +1665,7 @@ public final class MainActivity extends Activity {
         peopleLine.setBackgroundColor(BORDER);
         people.addView(peopleLine,new LinearLayout.LayoutParams(-1,dp(1)));
         spacer(people,12);
-        addLine(people,"CONDUCTOR",10,TEAL_DARK,true,7);
+        addLine(people,"CONDUCTOR ASIGNADO",10,TEAL_DARK,true,7);
         final boolean assignable="admin".equals(staffRole)&&(
             "requested".equals(state)||"quoted".equals(state)||
             "accepted".equals(state)||"confirmed".equals(state));
@@ -1662,74 +1674,88 @@ public final class MainActivity extends Activity {
         final boolean hasDriver=!assigned.isEmpty();
         addLine(people,hasDriver?assigned:"Sin asignar",15,INK,true,4);
         addLine(people,hasDriver?
-            "Asignado · ubicación no verificada":
-            "Pendiente de seleccionar un conductor habilitado",11,MUTED,false,0);
-        if(assignable&&hasDriver){
-            TextView change=actionText("Cambiar conductor  ›",TEAL_DARK,v->{
-                panel.dismiss();driverAssignmentDialog(item);
-            });
-            change.setTextSize(12);
-            change.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-            change.setPadding(0,0,0,0);
-            people.addView(change,new LinearLayout.LayoutParams(-1,dp(38)));
-        }
+            "Adjudicado al traslado · ubicación aún no verificada":
+            "Pendiente de adjudicación",11,MUTED,false,0);
         appendCard(body,people,10);
 
         String notes=item.optString("notes","");
-        if(!notes.isEmpty()&&!"null".equals(notes)){
+        if(!notes.isEmpty()&&!"null".equals(notes)&&
+            !(BuildConfig.VIA_PREVIEW&&notes.startsWith("Datos inventados"))){
             LinearLayout extra=column();
-            extra.setPadding(dp(5),dp(2),dp(5),dp(7));
-            addLine(extra,"INDICACIONES",10,MUTED,true,5);
+            extra.setPadding(dp(12),dp(10),dp(12),dp(10));
+            extra.setBackground(bg(Color.WHITE,12,BORDER));
+            addLine(extra,"INDICACIONES DEL PASAJERO",10,TEAL_DARK,true,6);
             addLine(extra,notes,12,INK,false,0);
-            body.addView(extra);
-            spacer(body,7);
+            appendCard(body,extra,10);
         }
 
-        // Cotizar es la acción principal del pie. La asignación manual queda
-        // como operación secundaria exclusiva del administrador.
+        // La actividad comercial tiene un único CTA en el pie. Las operaciones
+        // de administración se agrupan y están cerradas por defecto.
         final boolean canQuote="requested".equals(state)&&item.optBoolean("canQuote",
             BuildConfig.VIA_PREVIEW||"admin".equals(staffRole));
-        if(assignable&&!hasDriver){
-            TextView manual=actionText("Asignar otro conductor manualmente  ›",
-                TEAL_DARK,v->{
-                    panel.dismiss();driverAssignmentDialog(item);
-                });
-            manual.setTextSize(12);
-            manual.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-            manual.setPadding(dp(4),0,0,0);
-            body.addView(manual,new LinearLayout.LayoutParams(-1,dp(40)));
-        }
-        if("requested".equals(state)&&item.optBoolean("canRelease",false)
-            &&!hasDriver){
-            TextView release=actionText("Liberar solicitud a conductores  ›",
-                TEAL_DARK,v->new AlertDialog.Builder(this)
-                    .setTitle("Liberar solicitud")
-                    .setMessage("La solicitud será visible para los conductores contratados habilitados. "+
-                        "El primero que envíe una propuesta válida quedará asignado.")
-                    .setNegativeButton("Volver",null)
-                    .setPositiveButton("Liberar",(dialog,which)->api("POST",
-                        "/api/operator/requests/"+Uri.encode(id)+"/release",
-                        new JSONObject(),(status,result,error)->{
-                            if(status==200){
-                                panel.dismiss();
-                                message("Solicitud liberada.");
-                                fetchBookings(true);
-                            }else message(error.isEmpty()?"No se pudo liberar la solicitud.":error);
-                        })).show());
-            release.setTextSize(12);
-            release.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-            body.addView(release,new LinearLayout.LayoutParams(-1,dp(40)));
-        }
-        if("requested".equals(state)||"quoted".equals(state)||
-           "accepted".equals(state)||"confirmed".equals(state)||
-           "en_route".equals(state)||"arrived".equals(state)){
-            TextView cancel=actionText("Cancelar solicitud",ORANGE,v->{
-                panel.dismiss();confirmStatus(item,"cancelled","Cancelar solicitud");
+        final boolean canRelease="requested".equals(state)&&
+            item.optBoolean("canRelease",false)&&!hasDriver;
+        final boolean cancellable="admin".equals(staffRole)&&(
+            "requested".equals(state)||"quoted".equals(state)||
+            "accepted".equals(state)||"confirmed".equals(state)||
+            "en_route".equals(state)||"arrived".equals(state));
+        if((assignable||canRelease||cancellable)&&"admin".equals(staffRole)){
+            LinearLayout operations=column();
+            operations.setPadding(dp(11),dp(7),dp(11),dp(7));
+            operations.setBackground(bg(Color.WHITE,13,BORDER));
+            LinearLayout actions=column();
+            actions.setVisibility(View.GONE);
+            TextView expand=actionText("GESTIONAR SOLICITUD     ▾",TEAL_DARK,null);
+            expand.setTextSize(11);
+            expand.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            expand.setContentDescription("Mostrar opciones administrativas del traslado");
+            expand.setOnClickListener(v->{
+                boolean open=actions.getVisibility()!=View.VISIBLE;
+                actions.setVisibility(open?View.VISIBLE:View.GONE);
+                expand.setText(open?"OCULTAR OPCIONES     ▴":"GESTIONAR SOLICITUD     ▾");
+                expand.setContentDescription(open?
+                    "Ocultar opciones administrativas":"Mostrar opciones administrativas");
             });
-            cancel.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-            cancel.setTextSize(12);
-            cancel.setPadding(dp(4),0,0,0);
-            body.addView(cancel,new LinearLayout.LayoutParams(-1,dp(38)));
+            operations.addView(expand,new LinearLayout.LayoutParams(-1,dp(44)));
+            if(assignable){
+                TextView assign=actionText(hasDriver?
+                    "Cambiar conductor   ›":"Asignar conductor manualmente   ›",
+                    TEAL_DARK,v->{panel.dismiss();driverAssignmentDialog(item);});
+                assign.setTextSize(12);
+                assign.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+                actions.addView(assign,new LinearLayout.LayoutParams(-1,dp(43)));
+            }
+            if(canRelease){
+                TextView release=actionText("Liberar para otros conductores   ›",
+                    TEAL_DARK,v->new AlertDialog.Builder(this)
+                        .setTitle("Liberar solicitud")
+                        .setMessage("El viaje se publicará para los conductores contratados habilitados. "+
+                            "El primero que envíe una oferta válida quedará adjudicado.")
+                        .setNegativeButton("Volver",null)
+                        .setPositiveButton("Liberar",(dialog,which)->api("POST",
+                            "/api/operator/requests/"+Uri.encode(id)+"/release",
+                            new JSONObject(),(status,result,error)->{
+                                if(status==200){
+                                    panel.dismiss();
+                                    message("Solicitud liberada.");
+                                    fetchBookings(true);
+                                }else message(error.isEmpty()?
+                                    "No se pudo liberar la solicitud.":error);
+                            })).show());
+                release.setTextSize(12);
+                release.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+                actions.addView(release,new LinearLayout.LayoutParams(-1,dp(43)));
+            }
+            if(cancellable){
+                TextView cancel=actionText("Cancelar solicitud",ORANGE,v->{
+                    panel.dismiss();confirmStatus(item,"cancelled","Cancelar solicitud");
+                });
+                cancel.setTextSize(12);
+                cancel.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+                actions.addView(cancel,new LinearLayout.LayoutParams(-1,dp(43)));
+            }
+            operations.addView(actions);
+            appendCard(body,operations,10);
         }
 
         String next="",nextTitle="";
@@ -1754,8 +1780,9 @@ public final class MainActivity extends Activity {
                 panel.dismiss();confirmStatus(item,finalState,finalTitle);
             }),new LinearLayout.LayoutParams(-1,dp(46)));
         }else{
-            footer.addView(button("Volver al panel",false,v->panel.dismiss()),
-                new LinearLayout.LayoutParams(-1,dp(46)));
+            // En una oferta enviada no hay una acción inmediata: el regreso
+            // siempre está disponible desde la flecha del encabezado.
+            footer.setVisibility(View.GONE);
         }
     }
 
@@ -3252,7 +3279,9 @@ public final class MainActivity extends Activity {
             addLine(tip,"Sin llamadas, cobros, correos ni conexión al servidor.",
                 12,MUTED,false,0);
             appendCard(body,tip,12);
-            addLine(body,BuildConfig.VIA_LAYOUT_PREVIEW?
+            addLine(body,BuildConfig.VIA_OPERATION_PREVIEW?
+                "Versión V31 Demo · Ficha operativa premium":
+                BuildConfig.VIA_LAYOUT_PREVIEW?
                 "Versión V30 Demo · Corrección de detalle y ajustes":
                 "Versión de demostración · sin producción",
                 11,MUTED,false,0);
