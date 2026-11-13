@@ -176,7 +176,7 @@ export async function staffRoutes(req,env,path,send,err){
      return err('Completá matrícula, marca y modelo con texto válido',400);
    const plate=p.plate.trim().toUpperCase(),make=p.make.trim(),model=p.model.trim();
    if(!/^[A-Z0-9 -]{0,12}$/.test(plate) || make.length>45||model.length>45 ||
-      /[\\r\\n]/.test(make+model))return err('Datos de vehículo fuera de formato',400);
+      /[\r\n]/.test(make+model))return err('Datos de vehículo fuera de formato',400);
    const seats=p.passengerCapacity===null?null:p.passengerCapacity;
    const bags=p.luggageCapacity===null?null:p.luggageCapacity;
    if(seats!==null&&(!Number.isInteger(seats)||seats<1||seats>8))
