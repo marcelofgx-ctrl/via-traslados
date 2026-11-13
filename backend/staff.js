@@ -3,6 +3,7 @@
 // Nunca se devuelve un hash, sal ni token de otras personas.
 import {normalizeEmail} from './auth.js';
 import {normalizeStaffPhone as normalizeFounderPhone} from './staff-phone.js';
+import {ASSIGNABLE_STATUSES,assignmentError,occupiedInterval,scheduleConflicts} from './assignment-rules.js';
 
 const TE=new TextEncoder();
 const HEX=a=>Array.from(new Uint8Array(a)).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -198,23 +199,85 @@ export async function staffRoutes(req,env,path,send,err){
    await audit(env,actor,'public-web-switch','viatraslados.com',before+' -> '+p.publicEnabled);
    return send({publicEnabled:p.publicEnabled});
  }
+
+ // Estado de asignación sin GPS inventado: muestra únicamente conflictos de agenda.
+ const options=path.match(/^\/api\/admin\/requests\/([A-Z0-9-]+)\/assignment-options$/);
  const assign=path.match(/^\/api\/admin\/requests\/([A-Z0-9-]+)\/assign$/);
+ async function readAssignmentContext(id) {
+   const booking=await env.DB.prepare(
+     "SELECT b.id,b.status,b.trip_date,b.trip_time,COALESCE(r.duration_s,0) AS duration_s FROM bookings b LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.id=?"
+   ).bind(id).first();
+   if(!booking)return null;
+   const current=await env.DB.prepare("SELECT a.driver_id,u.display_name AS driver_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=?").bind(id).first();
+   const slots=await env.DB.prepare(
+     "SELECT a.driver_id,b.id,b.trip_date,b.trip_time,b.status,COALESCE(r.duration_s,0) AS duration_s FROM driver_assignments a JOIN bookings b ON b.id=a.booking_id LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.status NOT IN ('cancelled','completed') AND b.id<>? AND b.trip_date BETWEEN date(?, '-1 day') AND date(?, '+1 day')"
+   ).bind(id,booking.trip_date,booking.trip_date).all();
+   return {booking,current,slots:slots.results};
+ }
+ if(options&&req.method==='GET'){
+   const context=await readAssignmentContext(options[1]);
+   if(!context)return err('Solicitud no encontrada',404);
+   const drivers=await env.DB.prepare(
+     "SELECT u.id,u.display_name,u.status,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE u.role='driver' AND u.status='approved' ORDER BY u.display_name COLLATE NOCASE LIMIT 250"
+   ).all();
+   return send({
+     bookingId:context.booking.id,bookingStatus:context.booking.status,
+     assignable:ASSIGNABLE_STATUSES.includes(context.booking.status),
+     assignedDriverId:context.current?.driver_id||null,
+     assignedDriverName:context.current?.driver_name||null,
+     availabilitySource:'schedule-only',gpsAvailable:false,
+     drivers:drivers.results.map(user=>({
+       id:user.id,name:user.display_name,status:user.status,
+       emailVerified:Boolean(user.email_verified_at),
+       conflicts:scheduleConflicts(context.booking,context.slots,user.id)
+     }))
+   });
+ }
  if(assign&&req.method==='POST'){
-   let p;try{p=await bodyLimit(req)}catch{return err('Datos inválidos')}
-   const booking=await env.DB.prepare("SELECT id,status FROM bookings WHERE id=?").bind(assign[1]).first();
-   if(!booking)return err('Solicitud no encontrada',404);
-   if(!['requested','quoted'].includes(booking.status))return err('Solo se puede asignar antes de la aceptación',409);
+   let p;try{p=await bodyLimit(req)}catch{return err('Datos inválidos',400)}
+   const context=await readAssignmentContext(assign[1]);
+   if(!context)return err('Solicitud no encontrada',404);
+   const reason=assignmentError(context.booking,context.booking.status);
+   if(reason)return err(reason,409);
+   const previous=context.current?.driver_id||null;
+   if(Object.prototype.hasOwnProperty.call(p,'expectedDriverId') &&
+      p.expectedDriverId!==previous)return err('La asignación cambió. Actualizá la pantalla y volvé a intentar.',409);
    if(p.driverId===null){
-     await env.DB.prepare('DELETE FROM driver_assignments WHERE booking_id=?').bind(assign[1]).run();
-     await audit(env,actor,'unassign',assign[1]);
+     if(!previous)return send({bookingId:assign[1],driverId:null,unchanged:true});
+     const removal=await env.DB.prepare('DELETE FROM driver_assignments WHERE booking_id=? AND driver_id=?')
+       .bind(assign[1],previous).run();
+     if(removal.meta?.changes!==1)return err('Asignación modificada. Volvé a consultar.',409);
+     await audit(env,actor,'unassign',assign[1],previous);
      return send({bookingId:assign[1],driverId:null});
    }
-   if(typeof p.driverId!=='string')return err('Conductor inválido');
-   const user=await env.DB.prepare("SELECT id FROM staff_users WHERE id=? AND role='driver' AND status='approved'").bind(p.driverId).first();
+   if(typeof p.driverId!=='string'||!(/^[a-f0-9-]{36}$/i.test(p.driverId)))return err('Conductor inválido',400);
+   const user=await env.DB.prepare(
+     "SELECT u.id FROM staff_users u WHERE u.id=? AND u.role='driver' AND u.status='approved'"
+   ).bind(p.driverId).first();
    if(!user)return err('Conductor no aprobado',409);
-   await env.DB.prepare('INSERT INTO driver_assignments(booking_id,driver_id,assigned_by) VALUES (?,?,?) ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,assigned_by=excluded.assigned_by,assigned_at=unixepoch()').bind(assign[1],user.id,actor.id).run();
-   await audit(env,actor,'assign',assign[1],user.id);
-   return send({bookingId:assign[1],driverId:user.id});
+   if(previous===user.id)return send({bookingId:assign[1],driverId:user.id,unchanged:true});
+   const conflicts=scheduleConflicts(context.booking,context.slots,user.id);
+   if(conflicts.length)return err('El conductor ya tiene un traslado que se cruza con este horario.',409);
+   const window=occupiedInterval(context.booking);
+   if(!window)return err('Horario de traslado inválido',409);
+   // Inserción atómica: evita pisar una asignación que otro administrador cambió
+   // y vuelve a validar agenda dentro de una única operación SQL sobre D1.
+   const sql="INSERT INTO driver_assignments(booking_id,driver_id,assigned_by) "+
+    "SELECT ?,?,? WHERE COALESCE((SELECT driver_id FROM driver_assignments WHERE booking_id=?),'')=? "+
+    "AND EXISTS(SELECT 1 FROM bookings WHERE id=? AND status IN ('requested','quoted','accepted','confirmed')) "+
+    "AND NOT EXISTS(SELECT 1 FROM driver_assignments a JOIN bookings b ON b.id=a.booking_id "+
+    "LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE a.driver_id=? AND a.booking_id<>? "+
+    "AND b.status NOT IN ('cancelled','completed') "+
+    "AND strftime('%s',b.trip_date||' '||b.trip_time) < ? "+
+    "AND strftime('%s',b.trip_date||' '||b.trip_time)+MAX(3600,COALESCE(r.duration_s,0))+1800 > ?) "+
+    "ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,assigned_by=excluded.assigned_by,assigned_at=unixepoch() "+
+    "WHERE driver_assignments.driver_id=?";
+   const changed=await env.DB.prepare(sql)
+     .bind(assign[1],user.id,actor.id,assign[1],previous||'',assign[1],user.id,assign[1],
+       window.end,window.start,previous||'').run();
+   if(changed.meta?.changes!==1)return err('La agenda o la asignación cambió. Revisá el conductor seleccionado.',409);
+   await audit(env,actor,'assign',assign[1],(previous||'sin asignar')+' -> '+user.id);
+   return send({bookingId:assign[1],driverId:user.id,assigned:true});
  }
  if(path==='/api/admin/audit'&&req.method==='GET'){
    // La bitácora contiene identificadores internos y eventos del fundador:
