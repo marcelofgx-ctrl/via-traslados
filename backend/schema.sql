@@ -164,7 +164,7 @@ BEGIN
  UPDATE bookings SET status='quoted',price_uyu=NEW.price_uyu,updated_at=datetime('now')
  WHERE id=NEW.booking_id AND status='requested';
  INSERT INTO booking_events(booking_id,old_status,new_status,actor)
- VALUES(NEW.booking_id,'requested','quoted','driver-quote:'||NEW.driver_id);
+ VALUES(NEW.booking_id,'requested','quoted','operator');
 END;
 
 CREATE TABLE IF NOT EXISTS admin_audit (
