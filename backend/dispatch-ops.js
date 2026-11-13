@@ -1,4 +1,45 @@
-import {priceGuide,commissionBps,mayQuoteAll,mayRelease,hasQuoteAccess,quoteBreakdown} from './dispatch-business.js';
+import {priceGuide,DEFAULT_GUIDE,commissionBps,mayQuoteAll,mayRelease,hasQuoteAccess,quoteBreakdown} from './dispatch-business.js';
+
+const RATE_KEYS={
+ baseUyu:'via_pricing_base',perKmUyu:'via_pricing_km',
+ perMinuteUyu:'via_pricing_minute',minTargetUyu:'via_pricing_minimum',
+ minFloorUyu:'via_pricing_floor',lowFactorBps:'via_pricing_low_bps',
+ highFactorBps:'via_pricing_high_bps'
+};
+export function validRateSettings(raw){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))return false;
+ const bounds={
+  baseUyu:[0,5000],perKmUyu:[1,500],perMinuteUyu:[0,100],
+  minTargetUyu:[100,15000],minFloorUyu:[100,15000],
+  lowFactorBps:[5000,10000],highFactorBps:[10000,30000]
+ };
+ return Object.entries(bounds).every(([key,[min,max]])=>
+   Number.isInteger(raw[key])&&raw[key]>=min&&raw[key]<=max
+ )&&raw.minFloorUyu<=raw.minTargetUyu;
+}
+export async function pricingSettings(env){
+ const rows=await env.DB.prepare(
+   "SELECT setting_key,setting_value FROM service_settings WHERE setting_key LIKE 'via_pricing_%'"
+ ).all();
+ const config={...DEFAULT_GUIDE};
+ for(const item of rows.results||[]){
+   const match=Object.entries(RATE_KEYS).find(([,value])=>value===item.setting_key);
+   if(match)config[match[0]]=Number(item.setting_value);
+ }
+ return validRateSettings(config)?config:{...DEFAULT_GUIDE};
+}
+export async function savePricingSettings(env,config,actor){
+ if(!validRateSettings(config))return {status:400,error:'Parámetros de tarifa fuera de rango'};
+ const statements=Object.entries(RATE_KEYS).map(([key,settingKey])=>
+   env.DB.prepare(
+     "INSERT INTO service_settings(setting_key,setting_value,updated_by) VALUES(?,?,?) "+
+     "ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,"+
+     "updated_by=excluded.updated_by,updated_at=unixepoch()"
+   ).bind(settingKey,String(config[key]),actor.id)
+ );
+ await env.DB.batch(statements);
+ return {status:200,config};
+}
 
 export async function driverPolicy(env,actor){
  if(!actor||!['admin','driver'].includes(actor.role)||actor.status!=='approved')
@@ -91,7 +132,8 @@ export async function guideForBooking(env,actor,id){
    "FROM bookings b LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.id=?"
  ).bind(id).first();
  if(!route)return {status:404,error:'Solicitud no encontrada'};
- const guide=priceGuide(Number(route.distance_m)/1000,Number(route.duration_s)/60);
+ const params=await pricingSettings(env);
+ const guide=priceGuide(Number(route.distance_m)/1000,Number(route.duration_s)/60,params);
  return {status:200,guide,
   canQuote:visibility.mayQuote,
   canRelease:visibility.mayRelease,
