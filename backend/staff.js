@@ -296,8 +296,8 @@ export async function staffRoutes(req,env,path,send,err){
     "AND NOT EXISTS(SELECT 1 FROM driver_assignments a JOIN bookings b ON b.id=a.booking_id "+
     "LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE a.driver_id=? AND a.booking_id<>? "+
     "AND b.status NOT IN ('cancelled','completed') "+
-    "AND strftime('%s',b.trip_date||' '||b.trip_time) < ? "+
-    "AND strftime('%s',b.trip_date||' '||b.trip_time)+MAX(3600,COALESCE(r.duration_s,0))+1800 > ?) "+
+    "AND CAST(strftime('%s',b.trip_date||' '||b.trip_time) AS INTEGER) < ? "+
+    "AND CAST(strftime('%s',b.trip_date||' '||b.trip_time) AS INTEGER)+MAX(3600,COALESCE(r.duration_s,0))+1800 > ?) "+
     "ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,assigned_by=excluded.assigned_by,assigned_at=unixepoch() "+
     "WHERE driver_assignments.driver_id=?";
    const changed=await env.DB.prepare(sql)
