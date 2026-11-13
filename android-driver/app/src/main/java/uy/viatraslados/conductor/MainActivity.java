@@ -85,7 +85,22 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(LIGHT);
         setContentView(root);
-        loginScreen();
+        if (BuildConfig.VIA_PREVIEW) {
+            // APK independiente, solo datos ficticios; no accede al Worker ni a D1.
+            staffRole = "admin";
+            staffName = "Administrador de demostración";
+            operatorKey = "PREVIEW_LOCAL_NO_NETWORK";
+            adminLoaded = true;
+            managedDrivers = ViaPreviewData.drivers();
+            bookings = new JSONArray().put(ViaPreviewData.booking());
+            tab = "viajes";
+            dashboard();
+            handler.post(() -> {
+                if (!isFinishing()) details(ViaPreviewData.booking());
+            });
+        } else {
+            loginScreen();
+        }
     }
 
     @Override protected void onResume() {
@@ -581,6 +596,19 @@ public final class MainActivity extends Activity {
 
     private interface Done { void call(int status, String body, String error); }
     private void api(String method, String path, JSONObject payload, Done done) {
+        if (BuildConfig.VIA_PREVIEW) {
+            handler.post(() -> {
+                if (isFinishing()) return;
+                ViaPreviewData.Reply reply = ViaPreviewData.request(method,path,payload);
+                String error = "";
+                if (reply.status >= 400) {
+                    try { error = new JSONObject(reply.body).optString("error","Sin conexión en demo"); }
+                    catch(Exception ignored) { error = "Modo demostración"; }
+                }
+                done.call(reply.status,reply.body,error);
+            });
+            return;
+        }
         final String key = operatorKey;
         final String token = staffToken;
         executor.execute(() -> {
@@ -857,6 +885,14 @@ public final class MainActivity extends Activity {
             header.addView(badge,badgeParams);
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
+        if (BuildConfig.VIA_PREVIEW) {
+            TextView demo=text("V26 · VISTA DE PRUEBA · SIN CONEXIÓN A PRODUCCIÓN",
+                10,TEAL_DARK,true);
+            demo.setGravity(Gravity.CENTER);
+            demo.setPadding(dp(8),dp(7),dp(8),dp(7));
+            demo.setBackgroundColor(SOFT);
+            root.addView(demo,new LinearLayout.LayoutParams(-1,-2));
+        }
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
