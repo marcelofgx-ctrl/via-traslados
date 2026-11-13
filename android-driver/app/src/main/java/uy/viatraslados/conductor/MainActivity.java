@@ -2340,6 +2340,10 @@ public final class MainActivity extends Activity {
                         "Vehículo y matrícula: pendiente de registrar":
                         (make+" "+model+" · "+plate).trim();
                     addLine(tile,vehicleLabel,12,MUTED,false,5);
+                    String contact=driver.optString("phone","");
+                    if(!contact.isEmpty()&&!"null".equals(contact)){
+                        addLine(tile,"Celular · "+contact,12,MUTED,false,4);
+                    }
                     if(vehicle!=null){
                         int seats=vehicle.optInt("passengerCapacity",-1);
                         int bags=vehicle.optInt("luggageCapacity",-1);
