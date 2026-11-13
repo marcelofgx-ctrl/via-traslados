@@ -1760,7 +1760,7 @@ public final class MainActivity extends Activity {
         customerHeader.addView(customerTag,new LinearLayout.LayoutParams(0,dp(30),1));
         String phone=item.optString("phone","");
         TextView call=actionText("☎  Llamar",TEAL_DARK,v->{
-            if(BuildConfig.VIA_PREVIEW){message("Demo: no se realizan llamadas.");return;}
+            if(BuildConfig.VIA_PREVIEW||BuildConfig.VIA_ONLINE_QA){message("QA: números sintéticos, sin llamadas.");return;}
             try{startActivity(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(phone))));}
             catch(Exception e){message("No se pudo abrir el teléfono.");}
         });
