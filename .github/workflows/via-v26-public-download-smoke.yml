@@ -1,0 +1,35 @@
+name: Vía Traslados — verificar descarga pública V26
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths: [".github/workflows/via-v26-public-download-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke-anonymous:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Comprobar las páginas desde fuera sin cuenta GitHub
+        run: |
+          set -euo pipefail
+          BASE="https://via-conductor-apk-qa.vercel.app"
+          for i in $(seq 1 15); do
+            code=$(curl -sSL --max-time 15 -o /tmp/via-home.html -w '%{http_code}' "$BASE/" || true)
+            if [ "$code" = "200" ] && grep -q 'Descargar V26 Demo' /tmp/via-home.html; then break; fi
+            echo "Reintento $i: HTTP $code"
+            sleep 4
+          done
+          grep -q 'Descargar V26 Demo' /tmp/via-home.html
+          curl -fsSL --retry 4 "$BASE/v26-preview/" -o /tmp/via-preview.html
+          grep -q 'datos ficticios' /tmp/via-preview.html
+      - name: Comprobar APK pública de 1.4 MB y checksum conocido
+        run: |
+          set -euo pipefail
+          URL="https://via-conductor-apk-qa.vercel.app/v26-preview/via-conductor-v26-demo.apk"
+          curl -fLsS --retry 4 --retry-delay 2 --max-time 120 "$URL" -o /tmp/via-v26-demo.apk
+          test "$(stat -c%s /tmp/via-v26-demo.apk)" -gt 1000000
+          echo "a25bdb15008c42bba0bcee3f5680be3c73fdf31bdefc858c7e23cb2abf1e9af0  /tmp/via-v26-demo.apk" | sha256sum -c -
+          unzip -t /tmp/via-v26-demo.apk | tail -2
+          file /tmp/via-v26-demo.apk
