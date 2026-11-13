@@ -59,3 +59,25 @@ de protección de datos. No desplegar esta versión a producción.
 
 Este documento es un checkpoint de continuidad, no prueba de que el
 flujo V33 haya terminado exitosamente.
+
+## Iteración siguiente: V34 QA, catálogo del vehículo (2026-11-13)
+- Archivo nuevo `android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java`.
+- 32 marcas de referencia, modelos asociados y colores habituales; también
+  años ordenados (año actual + 2 hasta 1990).
+- En la inscripción, marca/modelo/color/año tienen búsqueda y desplegable.
+  Al cambiar la marca se limpia el modelo y se actualizan las sugerencias.
+- La opción `Otro (escribir)` deja registrar marcas, modelos y colores no listados;
+  el backend recibe los valores escritos, sin listas obligatorias.
+- Se reutiliza el diseño del formulario V33, sin más pasos ni cambios en D1.
+- Nueva variante `-PviaCatalogQa=true`: paquete Android separado
+  `uy.viatraslados.conductor.v34catalogqa`, versión 34. Puede instalarse
+  al lado de V33 para no interferir con APK QA anteriormente instalado.
+- Prueba de catálogos Java pura: `tests/ViaVehicleCatalogTest.java`.
+- El workflow `.github/workflows/via-v33-onboarding-qa.yml` fue adaptado
+  para construir la V34 y publicarla en la rama de descargas, ruta
+  `qa-apk-download/v34-catalogo-qa/` [corregir según ruta real abajo].
+- Ruta real prevista: `qa-apk-download/v34-catalog-qa/` y URL
+  https://via-conductor-apk-qa.vercel.app/v34-catalog-qa/
+- Importante: el código y la automatización fueron guardados, pero confirmar
+  que el nuevo flujo Android compiló, que se publicó el APK y que la
+  descarga se abre en un teléfono antes de marcar V34 como probada.
