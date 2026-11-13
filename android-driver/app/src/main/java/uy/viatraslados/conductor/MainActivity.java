@@ -2520,6 +2520,9 @@ public final class MainActivity extends Activity {
             spacer(commercial,8);
             commercial.addView(button("Parámetros de precios sugeridos",false,
                 v->openPricingSettings()),new LinearLayout.LayoutParams(-1,dp(44)));
+            spacer(commercial,8);
+            commercial.addView(button("Comisiones devengadas y liquidaciones",false,
+                v->openCommissionLedger()),new LinearLayout.LayoutParams(-1,dp(44)));
             appendCard(content,commercial,13);
             spacer(content,18);
             addLine(content,"Administradores",21,INK,true,5);
@@ -2677,6 +2680,95 @@ public final class MainActivity extends Activity {
                 });
             }catch(Exception ex){error.setText("Ingresá una comisión válida entre 0 y 50%.");}
         });
+    }
+
+    private void openCommissionLedger(){
+        if(!canManageRoles||staffToken==null)return;
+        LinearLayout[] sections=new LinearLayout[2];
+        Dialog panel=premiumPage("SOLO ADMINISTRACIÓN","Comisiones",
+            "Viajes completados · pesos uruguayos","Interno",sections);
+        LinearLayout body=sections[0];
+        addLine(body,"Las comisiones se registran al completar los viajes. "+
+            "Marcar una liquidación no realiza transferencias ni cobros automáticos.",
+            12,MUTED,false,12);
+        LinearLayout list=column();
+        body.addView(list);
+        addLine(list,"Consultando liquidaciones…",13,MUTED,false,0);
+        api("GET","/api/admin/commissions",null,(status,result,error)->{
+            if(!panel.isShowing())return;
+            list.removeAllViews();
+            if(status!=200){
+                addLine(list,error.isEmpty()?"Sin acceso al registro de comisiones.":error,
+                    13,ORANGE,false,0);
+                return;
+            }
+            try{
+                JSONArray entries=new JSONObject(result).getJSONArray("items");
+                double total=0;
+                for(int i=0;i<entries.length();i++){
+                    JSONObject entry=entries.optJSONObject(i);
+                    if(entry==null)continue;
+                    String state=entry.optString("paymentStatus");
+                    if("pending".equals(state))total+=entry.optDouble("commissionUyu",0);
+                }
+                addLine(list,"Pendiente: $ "+String.format(new java.util.Locale("es","UY"),
+                    "%,.2f",total)+" UYU",18,TEAL_DARK,true,14);
+                for(int i=0;i<entries.length();i++){
+                    JSONObject entry=entries.optJSONObject(i);
+                    if(entry==null)continue;
+                    LinearLayout tile=card();
+                    addLine(tile,entry.optString("driverName","Conductor"),
+                        15,INK,true,5);
+                    addLine(tile,entry.optString("bookingId",""),11,MUTED,false,8);
+                    addLine(tile,"Comisión: $ "+String.format(
+                        new java.util.Locale("es","UY"),"%,.2f",
+                        entry.optDouble("commissionUyu",0))+" · "+
+                        ("paid".equals(entry.optString("paymentStatus"))?"Pagada":
+                          "waived".equals(entry.optString("paymentStatus"))?
+                          "Sin comisión":"Pendiente"),
+                        13,TEAL_DARK,true,8);
+                    if("pending".equals(entry.optString("paymentStatus"))){
+                        String id=entry.optString("bookingId","");
+                        tile.addView(button("Registrar pago recibido",false,v->
+                            confirmCommissionPayment(id,entry.optString("driverName"),panel)),
+                            new LinearLayout.LayoutParams(-1,dp(44)));
+                    }
+                    appendCard(list,tile,9);
+                }
+                if(entries.length()==0)
+                    addLine(list,"No hay viajes completados con comisión registrada.",
+                        13,MUTED,false,0);
+            }catch(Exception ex){
+                addLine(list,"No se pudo leer el registro de comisiones.",13,ORANGE,false,0);
+            }
+        });
+    }
+
+    private void confirmCommissionPayment(String id,String name,Dialog parent){
+        LinearLayout form=formContainer();
+        EditText reference=formInput(form,"Referencia del pago recibido",
+            InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+            .setTitle("Registrar liquidación")
+            .setMessage("Confirmá que recibiste la comisión de "+name+
+                ". Esta acción únicamente registra el pago; no mueve dinero.")
+            .setView(form)
+            .setNegativeButton("Volver",null)
+            .setPositiveButton("Registrar",(dialog,which)->{
+                String ref=reference.getText().toString().trim();
+                if(ref.length()<3){message("Ingresá una referencia verificable.");return;}
+                try{
+                    JSONObject patch=new JSONObject().put("status","paid").put("reference",ref);
+                    api("PATCH","/api/admin/commissions/"+Uri.encode(id),patch,
+                        (status,result,error)->{
+                            if(status==200){
+                                parent.dismiss();
+                                message("Liquidación registrada.");
+                                openCommissionLedger();
+                            }else message(error.isEmpty()?"No se pudo registrar el pago.":error);
+                        });
+                }catch(Exception e){message("No se pudo preparar la liquidación.");}
+            }).show();
     }
 
     private void openPricingSettings(){
