@@ -21,10 +21,25 @@ try{
   vehicle:{make:'Geely QA',model:'EX5 Demo',year:2027,
    plate:'QA'+nonce,passengers:4,bags:2,color:'Blanco de ensayo'},
   photoJpegBase64:"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDIooopnzx//9k="};
+ // Comprobaciones de seguridad antes de persistir: inscripciones cerradas,
+ // fotografía obligatoria y validación estricta del archivo de prueba.
+ await request('/api/qa/driver-form',{method:'PATCH',token:admin,
+  data:{open:false,photoRequired:true}});
+ await request('/api/qa/driver-applications',{
+  method:'POST',data,expected:403});
+ await request('/api/qa/driver-form',{method:'PATCH',token:admin,
+  data:{open:true,photoRequired:true}});
+ await request('/api/qa/driver-applications',{
+  method:'POST',data:{...data,photoJpegBase64:''},expected:400});
+ await request('/api/qa/driver-applications',{
+  method:'POST',data:{...data,photoJpegBase64:'IMAGEN_INVALIDA'},expected:400});
  const result=await request('/api/qa/driver-applications',{
   method:'POST',data,expected:201});
  id=result.id;
  assert.equal(result.status,'pending');
+ // La misma identidad no debe generar dos expedientes.
+ await request('/api/qa/driver-applications',{
+  method:'POST',data,expected:409});
  await request('/api/qa/driver-login',{
   method:'POST',data:{email:data.email,password:data.password},expected:403});
  const listing=await request('/api/qa/driver-applications',{token:admin});
@@ -41,12 +56,19 @@ try{
  const logged=await request('/api/qa/driver-login',{
   method:'POST',data:{email:data.email,password:data.password}});
  assert.equal(logged.user.role,'driver');
+ // Un conductor aprobado no puede gestionar formularios ni aprobar su propia alta.
+ await request('/api/qa/driver-form',{method:'PATCH',token:logged.token,
+  data:{open:false,photoRequired:false},expected:403});
+ await request('/api/qa/driver-applications/'+id,{method:'PATCH',token:logged.token,
+  data:{action:'approve'},expected:403});
+ await request('/api/qa/driver-applications/'+id,{method:'PATCH',token:admin,
+  data:{action:'approve'},expected:409});
  const rows=await request('/api/operator/requests',{token:logged.token});
  assert(Array.isArray(rows),'No se pudo consultar solicitudes tras aprobar');
  assert(rows.every(x=>x.status==='requested'&&x.released===true),
   'El contratado recién aprobado no debe acceder a solicitudes generales sin liberar');
  passed=true;
- console.log('OK V33: inscripción, foto JPEG, bandeja, bloqueo, aprobación, login y permisos');
+ console.log('OK V33: foto JPEG, alta, antifraude, permisos, aprobación, login y bloqueo de cambios no autorizados');
 }finally{
  if(id){
   await request('/api/qa/driver-applications/'+id,{
