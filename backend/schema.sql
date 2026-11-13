@@ -167,6 +167,49 @@ BEGIN
  VALUES(NEW.booking_id,'requested','quoted','operator');
 END;
 
+-- Cuenta por cobrar interna: se devenga SOLO cuando el traslado se completa.
+-- No procesa tarjetas, débito bancario ni factura automáticamente.
+CREATE TABLE IF NOT EXISTS booking_commission_ledger (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ driver_id TEXT NOT NULL REFERENCES staff_users(id),
+ fare_uyu INTEGER NOT NULL CHECK(fare_uyu>0),
+ rate_bps INTEGER NOT NULL CHECK(rate_bps BETWEEN 0 AND 5000),
+ commission_cents INTEGER NOT NULL CHECK(commission_cents>=0),
+ payment_status TEXT NOT NULL CHECK(payment_status IN ('pending','paid','waived')),
+ payment_reference TEXT NOT NULL DEFAULT '',
+ completed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ paid_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS commission_ledger_driver
+ ON booking_commission_ledger(driver_id,payment_status,completed_at);
+
+CREATE TRIGGER IF NOT EXISTS via_commission_on_completion
+ AFTER UPDATE OF status ON bookings
+ WHEN NEW.status='completed' AND OLD.status<>'completed'
+      AND NEW.price_uyu IS NOT NULL
+BEGIN
+ INSERT OR IGNORE INTO booking_commission_ledger
+   (booking_id,driver_id,fare_uyu,rate_bps,commission_cents,payment_status)
+ SELECT NEW.id,a.driver_id,NEW.price_uyu,
+   CASE WHEN q.driver_id=a.driver_id THEN q.commission_bps
+        WHEN u.role='admin' OR p.mode='partner' THEN 0
+        ELSE COALESCE(p.commission_bps,2500) END,
+   CAST(ROUND(NEW.price_uyu*
+     (CASE WHEN q.driver_id=a.driver_id THEN q.commission_bps
+       WHEN u.role='admin' OR p.mode='partner' THEN 0
+       ELSE COALESCE(p.commission_bps,2500) END)/100.0) AS INTEGER),
+   CASE WHEN
+     (CASE WHEN q.driver_id=a.driver_id THEN q.commission_bps
+        WHEN u.role='admin' OR p.mode='partner' THEN 0
+        ELSE COALESCE(p.commission_bps,2500) END)=0
+     THEN 'waived' ELSE 'pending' END
+ FROM driver_assignments a
+ JOIN staff_users u ON u.id=a.driver_id
+ LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id
+ LEFT JOIN booking_quotes q ON q.booking_id=NEW.id
+ WHERE a.booking_id=NEW.id;
+END;
+
 CREATE TABLE IF NOT EXISTS admin_audit (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  actor_id TEXT NOT NULL,
