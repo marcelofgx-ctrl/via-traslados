@@ -1815,11 +1815,11 @@ public final class MainActivity extends Activity {
             public void onTextChanged(CharSequence s,int start,int before,int count){
                 try{
                     long value=Long.parseLong(s.toString());
-                    long fee=Math.round(value*feeBps[0]/10000.0);
+                    double fee=value*feeBps[0]/10000.0;
                     financials.setText("Importe neto estimado para vos: $ "+
-                        String.format(new java.util.Locale("es","UY"),"%,d",value-fee)+
+                        String.format(new java.util.Locale("es","UY"),"%,.2f",value-fee)+
                         " UYU · comisión $ "+
-                        String.format(new java.util.Locale("es","UY"),"%,d",fee));
+                        String.format(new java.util.Locale("es","UY"),"%,.2f",fee));
                 }catch(Exception ignored){financials.setText("Ingresá un importe en UYU.");}
             }
             public void afterTextChanged(android.text.Editable s){}
