@@ -903,7 +903,7 @@ public final class MainActivity extends Activity {
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout content = column();
-        content.setPadding(dp(17),dp(12),dp(17),dp(12));
+        content.setPadding(dp("solicitudes".equals(tab)?13:17),dp(10),dp("solicitudes".equals(tab)?13:17),dp(12));
         scroll.addView(content);
         if ("administrar".equals(tab)) manage(content);
         else if ("ajustes".equals(tab)) settings(content);
@@ -1031,7 +1031,7 @@ public final class MainActivity extends Activity {
 
     private void lists(LinearLayout body, String mode) {
         if("solicitudes".equals(mode)){
-            addLine(body,"Solicitudes",21,INK,true,8);
+            addLine(body,"Solicitudes",20,INK,true,7);
             LinearLayout tabs=row();
             tabs.setPadding(dp(3),dp(3),dp(3),dp(3));
             tabs.setBackground(bg(Color.rgb(231,241,239),12,0));
@@ -1055,7 +1055,7 @@ public final class MainActivity extends Activity {
                 tabs.addView(button,part);
             }
             body.addView(tabs,new LinearLayout.LayoutParams(-1,dp(46)));
-            spacer(body,10);
+            spacer(body,7);
 
             LinearLayout toolbar=row();
             TextView order=requestControl("↕  "+
@@ -1109,7 +1109,7 @@ public final class MainActivity extends Activity {
                 showBookings(results,mode);
                 return;
             }
-            spacer(body,10);
+            spacer(body,8);
         }else if("viajes".equals(mode)){
             addLine(body,"Mis viajes",22,INK,true,4);
             addLine(body,"Aceptados, confirmados y en curso",12,MUTED,false,12);
@@ -1281,7 +1281,7 @@ public final class MainActivity extends Activity {
         final String status=item.optString("status","");
         final String id=item.optString("id","");
         LinearLayout tile=column();
-        tile.setPadding(dp(13),dp(12),dp(13),dp(11));
+        tile.setPadding(dp(12),dp(11),dp(12),dp(11));
         tile.setBackground(bg(Color.WHITE,15,BORDER));
         tile.setClickable(true);
         tile.setFocusable(true);
@@ -1319,12 +1319,12 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams secondParams=new LinearLayout.LayoutParams(-1,-2);
         secondParams.topMargin=dp(3);
         tile.addView(second,secondParams);
-        spacer(tile,9);
+        spacer(tile,7);
 
         compactRouteRow(tile,"A",item.optString("origin",""),true);
-        spacer(tile,5);
+        spacer(tile,4);
         compactRouteRow(tile,"B",item.optString("destination",""),false);
-        spacer(tile,9);
+        spacer(tile,8);
 
         LinearLayout metrics=row();
         LinearLayout distanceGroup=row();
@@ -1383,30 +1383,33 @@ public final class MainActivity extends Activity {
             attribution.setVisibility(View.GONE);
             routeValue.setText("Ruta pendiente");
         }
-        spacer(tile,9);
-        View separator=new View(this);
-        separator.setBackgroundColor(BORDER);
-        tile.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
-        spacer(tile,6);
-
-        LinearLayout actions=row();
-        TextView see=actionText("Ver detalles  ›",TEAL_DARK,v->details(item));
-        see.setTextSize(12);
-        see.setMinHeight(dp(42));
-        see.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-        see.setPadding(dp(1),dp(4),0,dp(4));
-        actions.addView(see,new LinearLayout.LayoutParams(0,dp(42),1));
+        // En todas las tarjetas se puede tocar cualquier zona para abrir el detalle.
+        // En las cotizadas no duplicamos esa acción en una fila de 42 dp.
         if("requested".equals(status)){
+            spacer(tile,9);
+            View separator=new View(this);
+            separator.setBackgroundColor(BORDER);
+            tile.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
+            spacer(tile,5);
+            LinearLayout actions=row();
+            TextView see=actionText("Ver detalle  ›",TEAL_DARK,v->details(item));
+            see.setTextSize(12);
+            see.setMinHeight(dp(42));
+            see.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            see.setPadding(dp(1),0,0,0);
+            actions.addView(see,new LinearLayout.LayoutParams(0,dp(42),1));
             Button quoteButton=button("Sugerir precio",true,v->quote(item));
             quoteButton.setTextSize(12);
             quoteButton.setMinHeight(0);
+            quoteButton.setMinimumHeight(0);
+            quoteButton.setPadding(dp(9),0,dp(9),0);
             LinearLayout.LayoutParams quoteParams=
-                new LinearLayout.LayoutParams(dp(133),dp(42));
+                new LinearLayout.LayoutParams(dp(130),dp(42));
             quoteParams.leftMargin=dp(6);
             actions.addView(quoteButton,quoteParams);
+            tile.addView(actions);
         }
-        tile.addView(actions);
-        appendCard(parent,tile,8);
+        appendCard(parent,tile,7);
     }
 
     private static String statusName(String state) {
