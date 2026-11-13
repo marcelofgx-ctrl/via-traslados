@@ -97,12 +97,20 @@ public final class MainActivity extends Activity {
             operatorKey = "PREVIEW_LOCAL_NO_NETWORK";
             adminLoaded = true;
             managedDrivers = ViaPreviewData.drivers();
-            bookings = new JSONArray().put(ViaPreviewData.booking());
-            tab = "viajes";
+            bookings = BuildConfig.VIA_LIST_PREVIEW ?
+                ViaPreviewData.listDemoBookings() : new JSONArray().put(ViaPreviewData.booking());
+            tab = BuildConfig.VIA_LIST_PREVIEW ? "solicitudes" : "viajes";
+            for(int i=0;i<bookings.length();i++){
+                JSONObject demo=bookings.optJSONObject(i);
+                if(demo!=null && demo.optJSONObject("route")!=null)
+                    routeResults.put(demo.optString("id"),demo.optJSONObject("route"));
+            }
             dashboard();
-            handler.post(() -> {
-                if (!isFinishing()) details(ViaPreviewData.booking());
-            });
+            if(!BuildConfig.VIA_LIST_PREVIEW){
+                handler.post(() -> {
+                    if (!isFinishing()) details(ViaPreviewData.booking());
+                });
+            }
         } else {
             loginScreen();
         }
@@ -892,7 +900,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text("V26 · VISTA DE PRUEBA · SIN CONEXIÓN A PRODUCCIÓN",
+            TextView demo=text(BuildConfig.VIA_LIST_PREVIEW ?
+                "V27 · DEMO DE SOLICITUDES · SIN CONEXIÓN A PRODUCCIÓN" :
+                "V26 · VISTA DE PRUEBA · SIN CONEXIÓN A PRODUCCIÓN",
                 10,TEAL_DARK,true);
             demo.setGravity(Gravity.CENTER);
             demo.setPadding(dp(8),dp(7),dp(8),dp(7));
