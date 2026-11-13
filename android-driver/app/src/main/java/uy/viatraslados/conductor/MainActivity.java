@@ -1513,6 +1513,23 @@ public final class MainActivity extends Activity {
     }
 
     // Vista V28: detalles completos en menos tarjetas sin ocultar información útil.
+    private void routePoint(LinearLayout parent,String marker,String label,String address,
+            boolean origin){
+        LinearLayout row=row();
+        row.setGravity(Gravity.TOP);
+        TextView pin=text(marker,11,origin?Color.WHITE:TEAL_DARK,true);
+        pin.setGravity(Gravity.CENTER);
+        pin.setBackground(bg(origin?TEAL_DARK:SOFT,22,0));
+        row.addView(pin,new LinearLayout.LayoutParams(dp(27),dp(27)));
+        LinearLayout content=column();
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);
+        lp.leftMargin=dp(10);
+        row.addView(content,lp);
+        addLine(content,label,10,MUTED,true,5);
+        addLine(content,prettyAddress(address),14,INK,true,0);
+        parent.addView(row);
+    }
+
     private void details(JSONObject item) {
         final String id=item.optString("id","");
         final String state=item.optString("status","");
@@ -1544,11 +1561,11 @@ public final class MainActivity extends Activity {
 
         LinearLayout itinerary=card();
         itinerary.setPadding(dp(13),dp(13),dp(13),dp(11));
-        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,9);
-        addLine(itinerary,"●  ORIGEN",10,MUTED,true,4);
-        addLine(itinerary,prettyAddress(item.optString("origin")),14,INK,true,10);
-        addLine(itinerary,"◆  DESTINO",10,MUTED,true,4);
-        addLine(itinerary,prettyAddress(item.optString("destination")),14,INK,true,11);
+        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,12);
+        routePoint(itinerary,"A","ORIGEN",item.optString("origin"),true);
+        spacer(itinerary,13);
+        routePoint(itinerary,"B","DESTINO",item.optString("destination"),false);
+        spacer(itinerary,12);
         View routeSeparator=new View(this);
         routeSeparator.setBackgroundColor(BORDER);
         itinerary.addView(routeSeparator,new LinearLayout.LayoutParams(-1,dp(1)));
@@ -1560,7 +1577,23 @@ public final class MainActivity extends Activity {
         if(item.optInt("price",0)>0)
             serviceSummary+=" · $ "+String.format(new java.util.Locale("es","UY"),
                 "%,d",item.optInt("price"))+" UYU";
-        addLine(itinerary,serviceSummary,12,INK,true,7);
+        LinearLayout serviceData=row();
+        TextView pax=text(paxText,12,INK,true);
+        serviceData.addView(pax,new LinearLayout.LayoutParams(0,-2,1));
+        TextView baggage=text(luggageText,12,INK,true);
+        serviceData.addView(baggage);
+        itinerary.addView(serviceData);
+        if(item.optInt("price",0)>0){
+            spacer(itinerary,8);
+            LinearLayout fare=row();
+            addLine(fare,"IMPORTE OFERTADO",10,MUTED,true,0);
+            TextView total=text("$ "+String.format(new java.util.Locale("es","UY"),
+                "%,d",item.optInt("price"))+" UYU",15,TEAL_DARK,true);
+            total.setGravity(Gravity.RIGHT);
+            fare.addView(total,new LinearLayout.LayoutParams(0,-2,1));
+            itinerary.addView(fare);
+        }
+        spacer(itinerary,7);
         if(measured!=null){
             TextView credit=text("",9,MUTED,false);
             if(BuildConfig.VIA_PREVIEW){
