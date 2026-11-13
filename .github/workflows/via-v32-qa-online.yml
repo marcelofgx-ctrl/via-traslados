@@ -1,4 +1,4 @@
-name: Vía Traslados V32 — backend QA listo y APK online
+name: Vía Traslados V32 — circuito real corregido y APK online
 on:
   push:
     branches: [via-qa-online-v32-20261113]
@@ -92,6 +92,8 @@ jobs:
           node -e "const x=require('/tmp/via-qa-requests.json');if(!Array.isArray(x)||x.length<5||x.some(v=>!v.id.startsWith('VIA-QA-')))process.exit(1);console.log('Solicitudes reales en D1 QA con datos sintéticos')"
           test "$(curl -sS -o /tmp/blocked -w '%{http_code}' "$BASE/api/staff/login-phone")" = "401"
           rm -f /tmp/via-qa-session.json /tmp/via-qa-requests.json
+      - name: Probar circuito real en QA y restaurar los datos al finalizar
+        run: node scripts/v32-online-e2e.mjs
   android:
     name: Generar instalador real conectado solo a QA
     needs: qa-backend
