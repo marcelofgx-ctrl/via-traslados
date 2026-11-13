@@ -163,6 +163,48 @@ export async function staffRoutes(req,env,path,send,err){
   await audit(env,actor,'team-role',target.id,target.role+' -> '+p.role);
   return send({id:target.id,role:p.role,requiresNewLogin:true});
  }
+ // Configuración comercial confidencial: nunca se incorpora a /api/staff/me
+ // ni a los listados operativos que ven los conductores.
+ if(path==='/api/admin/commercial-drivers'&&req.method==='GET'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede ver estas modalidades',403);
+  const data=await env.DB.prepare(
+    "SELECT u.id,u.display_name,u.status,p.mode,p.can_quote_all,p.can_release,p.commission_bps "+
+    "FROM staff_users u LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id "+
+    "WHERE u.role='driver' ORDER BY u.display_name COLLATE NOCASE"
+  ).all();
+  return send({drivers:data.results.map(x=>({
+    id:x.id,name:x.display_name,status:x.status,
+    mode:x.mode||'contractor',canQuoteAll:Boolean(x.can_quote_all),
+    canRelease:Boolean(x.can_release),commissionBps:x.commission_bps??2500
+  }))});
+ }
+ const commercial=path.match(/^\/api\/admin\/drivers\/([a-f0-9-]{36})\/commercial$/i);
+ if(commercial&&req.method==='PATCH'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede modificar condiciones comerciales',403);
+  let p;try{p=await bodyLimit(req)}catch{return err('Condiciones inválidas',400)}
+  if(!['partner','contractor'].includes(p.mode)
+    ||typeof p.canQuoteAll!=='boolean'||typeof p.canRelease!=='boolean')
+    return err('Modo o permisos comerciales inválidos',400);
+  if(!Number.isInteger(p.commissionBps)||p.commissionBps<0||p.commissionBps>5000)
+    return err('Comisión fuera de rango',400);
+  if(p.mode==='partner'&&p.commissionBps!==0)
+    return err('Los socios no pagan comisión interna',400);
+  if(p.mode==='contractor'&&p.canRelease)
+    return err('Liberar solicitudes queda reservado a socios autorizados',400);
+  const target=await env.DB.prepare(
+    "SELECT id,status FROM staff_users WHERE id=? AND role='driver'"
+  ).bind(commercial[1]).first();
+  if(!target)return err('Conductor no encontrado',404);
+  await env.DB.prepare(
+    "INSERT INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps) "+
+    "VALUES(?,?,?,?,?) ON CONFLICT(staff_id) DO UPDATE SET mode=excluded.mode,"+
+    "can_quote_all=excluded.can_quote_all,can_release=excluded.can_release,"+
+    "commission_bps=excluded.commission_bps,updated_at=unixepoch()"
+  ).bind(target.id,p.mode,p.canQuoteAll?1:0,p.canRelease?1:0,p.commissionBps).run();
+  await audit(env,actor,'commercial-profile',target.id,
+    'Permisos comerciales modificados por administrador fundador');
+  return send({id:target.id,updated:true});
+ }
  if(path==='/api/admin/drivers'&&req.method==='GET'){
    const users=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at,v.license_plate,v.make,v.model,v.passenger_capacity,v.luggage_capacity FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE u.role='driver' ORDER BY CASE u.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,u.created_at DESC LIMIT 250").all();
    return send({drivers:users.results.map(publicStaff)});
