@@ -1,0 +1,35 @@
+name: Vía Traslados V33 — descarga pública y firma de instalador
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths: [".github/workflows/via-v33-public-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Página V33 pública y sin cuenta GitHub
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          ready=0
+          for n in $(seq 1 15); do
+            code=$(curl -sSL --max-time 15 -o /tmp/via-home -w '%{http_code}' "$BASE/" || true)
+            if [ "$code" = "200" ] && grep -q 'Descargar V33 Registro QA' /tmp/via-home; then ready=1;break;fi
+            sleep 3
+          done
+          test "$ready" -eq 1
+          curl -fLsS --retry 3 "$BASE/v33-registration-qa/" -o /tmp/via-v33-page
+          grep -q 'V33 Registro QA' /tmp/via-v33-page
+      - name: Comprobar APK V33 SHA256, ZIP válido y V32 conservada
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          curl -fLsS --retry 4 --max-time 180 "$BASE/v33-registration-qa/via-conductor-v33-registration-qa.apk" -o /tmp/via-v33.apk
+          test "$(stat -c%s /tmp/via-v33.apk)" -eq 1453917
+          echo "b8c43d31d8c51901151ef7ff33fe029a93d7bce3bfe6129a40747103e3677b8b  /tmp/via-v33.apk" | sha256sum -c -
+          unzip -t /tmp/via-v33.apk | tail -2
+          curl -fLsS "$BASE/v32-online-qa/SHA256SUMS.txt" | grep -q 'via-conductor-v32-online-qa.apk'
