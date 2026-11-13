@@ -9,6 +9,8 @@ on:
       - "backend/qa-entry.js"
       - "backend/schema-qa-v33.sql"
       - "android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java"
+      - "android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java"
+      - "tests/ViaVehicleCatalogTest.java"
   workflow_dispatch:
 permissions:
   contents: write
@@ -129,6 +131,14 @@ jobs:
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Verificar catálogos de marcas, modelos, colores y años
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/via-catalog-v33
+          javac -encoding UTF-8 -d /tmp/via-catalog-v33 \
+            android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java \
+            tests/ViaVehicleCatalogTest.java
+          java -cp /tmp/via-catalog-v33 uy.viatraslados.conductor.ViaVehicleCatalogTest
       - name: Compilar APK V33 online y verificar aislamiento
         run: |
           set -euo pipefail
