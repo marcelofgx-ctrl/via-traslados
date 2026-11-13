@@ -51,6 +51,7 @@ public final class ViaPreviewData {
     private static final java.util.Map<String,String> assignedDemo=new java.util.HashMap<>();
     private static final java.util.Map<String,JSONObject> commercialDemo=new java.util.HashMap<>();
     private static final java.util.Map<String,Integer> priceConfig=new java.util.HashMap<>();
+    private static boolean commissionExamplePaid=false;
     static {
         priceConfig.put("baseUyu",300);priceConfig.put("perKmUyu",25);
         priceConfig.put("perMinuteUyu",4);priceConfig.put("minTargetUyu",850);
@@ -248,6 +249,28 @@ public final class ViaPreviewData {
             commercialDemo.put(getBusinessId(path),payload);
             JSONObject response=new JSONObject();
             try{response.put("updated",true);}catch(Exception ignored){}
+            return new Reply(200,response);
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW
+            &&"GET".equals(method)&&"/api/admin/commissions".equals(path)){
+            JSONArray list=new JSONArray();
+            JSONObject example=new JSONObject();
+            try{
+                example.put("bookingId","VIA-COMISION-DEMO").put("driverId",DRIVER_2)
+                    .put("driverName","Carlos Pereira")
+                    .put("grossUyu",5500).put("rateBps",2500)
+                    .put("commissionUyu",1375.0)
+                    .put("paymentStatus",commissionExamplePaid?"paid":"pending")
+                    .put("reference",commissionExamplePaid?"TRANSFERENCIA-DEMO":"");
+                list.put(example);
+            }catch(Exception ignored){}
+            return new Reply(200,wrap("items",list));
+        }
+        if(BuildConfig.VIA_BUSINESS_PREVIEW&&"PATCH".equals(method)
+            &&path.startsWith("/api/admin/commissions/")){
+            commissionExamplePaid=true;
+            JSONObject response=new JSONObject();
+            try{response.put("status","paid");}catch(Exception ignored){}
             return new Reply(200,response);
         }
         if(BuildConfig.VIA_BUSINESS_PREVIEW&&"/api/admin/pricing".equals(path)){
