@@ -2065,7 +2065,13 @@ public final class MainActivity extends Activity {
             c.addView(upper);
             spacer(c,8);
             addLine(c,driver.optString("phone","Sin celular"),13,INK,false,3);
-            addLine(c,driver.optString("email",""),12,MUTED,false,7);
+            addLine(c,driver.optString("email",""),12,MUTED,false,5);
+            JSONObject vehicle=driver.optJSONObject("vehicle");
+            if(vehicle!=null&&!vehicle.optString("plate","").isEmpty()&&
+                !"null".equals(vehicle.optString("plate"))){
+                addLine(c,vehicle.optString("make","")+" "+vehicle.optString("model","")+
+                    " · "+vehicle.optString("plate"),12,TEAL_DARK,true,8);
+            }else addLine(c,"Vehículo sin registrar",12,MUTED,false,8);
             addLine(c,verified?"✓ Correo verificado":"• Correo pendiente de verificación",
                 12,verified?TEAL:ORANGE,false,13);
             String target="approved".equals(status)?"blocked":"approved";
@@ -2082,6 +2088,11 @@ public final class MainActivity extends Activity {
                 Button delegate=button("Nombrar administrador",false,
                     v->confirmTeamRole(id,driver.optString("name"),"admin"));
                 c.addView(delegate,new LinearLayout.LayoutParams(-1,dp(44)));
+            }
+            if("approved".equals(status)){
+                spacer(c,8);
+                c.addView(button("Editar vehículo y capacidad",false,
+                    v->editDriverVehicle(driver)),new LinearLayout.LayoutParams(-1,dp(44)));
             }
             appendCard(content,c,10);
         }
@@ -2191,6 +2202,63 @@ public final class MainActivity extends Activity {
     }
 
     // Selector profesional: solo cuentas reales, sin simular GPS ni disponibilidad.
+    private void editDriverVehicle(JSONObject driver){
+        if(!"admin".equals(staffRole))return;
+        JSONObject vehicle=driver.optJSONObject("vehicle");
+        LinearLayout[] views=new LinearLayout[2];
+        Dialog dialog=premiumPage("FICHA OPERATIVA","Vehículo del conductor",
+            driver.optString("name","Conductor"),"Edición",views);
+        LinearLayout body=views[0],footer=views[1];
+        addLine(body,"Registrá datos verificados. La capacidad evitará asignar viajes incompatibles.",
+            13,MUTED,false,18);
+        EditText plate=authField(body,"MATRÍCULA","APP0061",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS,false);
+        EditText make=authField(body,"MARCA","Marca del vehículo",InputType.TYPE_CLASS_TEXT,false);
+        EditText model=authField(body,"MODELO","Modelo del vehículo",InputType.TYPE_CLASS_TEXT,false);
+        EditText seats=authField(body,"CAPACIDAD DE PASAJEROS","Ej.: 4",
+            InputType.TYPE_CLASS_NUMBER,false);
+        EditText bags=authField(body,"CAPACIDAD DE EQUIPAJE (VALIJAS)","Ej.: 3",
+            InputType.TYPE_CLASS_NUMBER,false);
+        if(vehicle!=null){
+            plate.setText(vehicle.optString("plate","").replace("null",""));
+            make.setText(vehicle.optString("make","").replace("null",""));
+            model.setText(vehicle.optString("model","").replace("null",""));
+            if(!vehicle.isNull("passengerCapacity"))
+                seats.setText(vehicle.optString("passengerCapacity",""));
+            if(!vehicle.isNull("luggageCapacity"))
+                bags.setText(vehicle.optString("luggageCapacity",""));
+        }
+        TextView error=text("",12,ORANGE,false);
+        footer.addView(error);
+        Button save=button("Guardar ficha  →",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            try{
+                JSONObject payload=new JSONObject()
+                    .put("plate",plate.getText().toString().trim())
+                    .put("make",make.getText().toString().trim())
+                    .put("model",model.getText().toString().trim())
+                    .put("passengerCapacity",seats.length()==0?JSONObject.NULL:
+                        Integer.parseInt(seats.getText().toString()))
+                    .put("luggageCapacity",bags.length()==0?JSONObject.NULL:
+                        Integer.parseInt(bags.getText().toString()));
+                save.setEnabled(false);
+                api("PATCH","/api/admin/drivers/"+
+                    Uri.encode(driver.optString("id"))+"/vehicle",payload,(status,response,reason)->{
+                    if(status==200){
+                        dialog.dismiss();
+                        message("Ficha del vehículo actualizada.");
+                        adminLoaded=false;
+                        loadAdmin();
+                    }else{
+                        save.setEnabled(true);
+                        error.setText(reason.isEmpty()?"No se pudo guardar la ficha.":reason);
+                    }
+                });
+            }catch(Exception ex){error.setText("Revisá matrícula y capacidades numéricas.");}
+        });
+    }
+
     private void driverAssignmentDialog(JSONObject booking) {
         if(!"admin".equals(staffRole))return;
         LinearLayout[] views=new LinearLayout[2];
@@ -2249,12 +2317,14 @@ public final class MainActivity extends Activity {
                     boolean verified=driver.optBoolean("emailVerified",false);
                     JSONArray problems=driver.optJSONArray("conflicts");
                     boolean conflict=problems!=null&&problems.length()>0;
+                    boolean capacityConflict=driver.optBoolean("capacityConflict",false);
                     boolean current=id.equals(expected);
                     LinearLayout tile=card();
                     LinearLayout header=row();
                     TextView driverName=text(name,16,INK,true);
                     header.addView(driverName,new LinearLayout.LayoutParams(0,-2,1));
                     TextView state=text(current?"ASIGNADO":conflict?"CRUCE DE AGENDA":
+                        capacityConflict?"CAPACIDAD INSUFICIENTE":
                         verified?"APROBADO":"CORREO PENDIENTE",10,
                         conflict?ORANGE:TEAL_DARK,true);
                     state.setPadding(dp(7),dp(5),dp(7),dp(5));
@@ -2262,11 +2332,26 @@ public final class MainActivity extends Activity {
                     header.addView(state);
                     tile.addView(header);
                     spacer(tile,8);
-                    addLine(tile,"Vehículo y matrícula: sin registrar",12,MUTED,false,5);
+                    JSONObject vehicle=driver.optJSONObject("vehicle");
+                    String plate=vehicle==null?"":vehicle.optString("plate","");
+                    String make=vehicle==null?"":vehicle.optString("make","");
+                    String model=vehicle==null?"":vehicle.optString("model","");
+                    String vehicleLabel=(plate.isEmpty()||"null".equals(plate))?
+                        "Vehículo y matrícula: pendiente de registrar":
+                        (make+" "+model+" · "+plate).trim();
+                    addLine(tile,vehicleLabel,12,MUTED,false,5);
+                    if(vehicle!=null){
+                        int seats=vehicle.optInt("passengerCapacity",-1);
+                        int bags=vehicle.optInt("luggageCapacity",-1);
+                        if(seats>0&&bags>=0)addLine(tile,
+                            "Capacidad: "+seats+" pasajero(s) · "+bags+" valija(s)",
+                            11,MUTED,false,6);
+                    }
                     addLine(tile,conflict?
                         "El conductor tiene otro servicio en este horario.":
-                        "Sin cruces conocidos · disponibilidad real no verificada",
-                        12,conflict?ORANGE:MUTED,false,10);
+                        capacityConflict?"Capacidad insuficiente para esta reserva.":
+                        "Sin cruces conocidos · disponibilidad GPS no verificada",
+                        12,(conflict||capacityConflict)?ORANGE:MUTED,false,10);
                     if(conflict){
                         for(int j=0;j<Math.min(2,problems.length());j++){
                             JSONObject clash=problems.optJSONObject(j);
@@ -2277,9 +2362,11 @@ public final class MainActivity extends Activity {
                         }
                     }
                     Button select=button(current?"Conductor actual":
-                        conflict?"Horario no disponible":"Seleccionar  →",!current&&!conflict,
+                        conflict?"Horario no disponible":
+                        capacityConflict?"Capacidad insuficiente":"Seleccionar  →",
+                        !current&&!conflict&&!capacityConflict,
                         v->{selection.dismiss();confirmPremiumAssignment(booking,id,name,expected);});
-                    select.setEnabled(!current&&!conflict&&verified);
+                    select.setEnabled(!current&&!conflict&&!capacityConflict&&verified);
                     select.setAlpha(select.isEnabled()?1f:.52f);
                     tile.addView(select,new LinearLayout.LayoutParams(-1,dp(43)));
                     appendCard(options,tile,10);
