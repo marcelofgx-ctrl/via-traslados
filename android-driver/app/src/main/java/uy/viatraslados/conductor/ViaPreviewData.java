@@ -18,6 +18,49 @@ public final class ViaPreviewData {
     private static int price = 2750;
 
     private ViaPreviewData(){}
+    private static final java.util.Map<String,String> demoStatuses=new java.util.HashMap<>();
+    private static final java.util.Map<String,Integer> demoPrices=new java.util.HashMap<>();
+
+    private static JSONObject listBooking(String id,String date,String time,
+        String from,String to,int pax,int bags,String initialStatus,
+        int initialPrice,double km,int minutes,int hoursAgo) {
+        JSONObject b=new JSONObject();
+        try {
+            String current=demoStatuses.containsKey(id)?demoStatuses.get(id):initialStatus;
+            b.put("id",id).put("name","Pasajero de prueba").put("phone","099000000")
+                .put("email","demo@ejemplo.invalid")
+                .put("date",date).put("time",time).put("origin",from)
+                .put("destination",to).put("passengers",pax).put("bags",bags)
+                .put("status",current)
+                .put("price",demoPrices.containsKey(id)?demoPrices.get(id):initialPrice)
+                .put("created_at",System.currentTimeMillis()/1000L-3600L*hoursAgo)
+                .put("notes","Viaje ficticio de demostración visual V27")
+                .put("assignedDriverId",JSONObject.NULL)
+                .put("assignedDriverName",JSONObject.NULL)
+                .put("route",new JSONObject().put("distanceKm",km)
+                    .put("durationMinutes",minutes)
+                    .put("source","Geoapify").put("estimate",true)
+                    .put("trafficIncluded",false));
+        } catch(Exception ignored){}
+        return b;
+    }
+
+    public static JSONArray listDemoBookings(){
+        return new JSONArray()
+            .put(listBooking("VIA-V27-NEW-01","2026-11-15","11:00",
+                "Alberto Méndez 107, Colonia del Sacramento, Colonia, Uruguay",
+                "Lagunillas 434, Montevideo, Uruguay",1,1,"requested",0,185,146,4))
+            .put(listBooking("VIA-V27-NEW-02","2026-11-16","12:55",
+                "Aeropuerto Internacional de Carrasco, Ciudad de la Costa, Canelones",
+                "Punta del Este, Maldonado, Uruguay",2,2,"requested",0,114,100,8))
+            .put(listBooking("VIA-V27-QUOTE-03","2026-11-20","10:00",
+                "Ruta 200 - General Líber Seregni 262, San José de Carrasco, Canelones",
+                "Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones",
+                1,1,"quoted",2750,5.1,8,27))
+            .put(booking());
+    }
+
+
 
     public static JSONObject booking(){
         JSONObject b = new JSONObject();
@@ -85,7 +128,8 @@ public final class ViaPreviewData {
 
     public static synchronized Reply request(String method,String path,JSONObject payload){
         if("GET".equals(method)&&"/api/operator/requests".equals(path))
-            return new Reply(200,new JSONArray().put(booking()));
+            return new Reply(200,BuildConfig.VIA_LIST_PREVIEW?
+                listDemoBookings():new JSONArray().put(booking()));
         if("GET".equals(method)&&"/api/admin/drivers".equals(path))
             return new Reply(200,wrap("drivers",drivers()));
         if("GET".equals(method)&&"/api/admin/settings".equals(path)){
@@ -124,6 +168,14 @@ public final class ViaPreviewData {
             return new Reply(200,result);
         }
         if("PATCH".equals(method)&&path.contains("/api/operator/requests/")){
+            if(BuildConfig.VIA_LIST_PREVIEW&&payload!=null){
+                String id=path.substring("/api/operator/requests/".length());
+                if(id.startsWith("VIA-V27-")){
+                    if(payload.has("status"))demoStatuses.put(id,payload.optString("status"));
+                    if(payload.has("price"))demoPrices.put(id,payload.optInt("price",0));
+                    return new Reply(200,wrap("preview",listDemoBookings()));
+                }
+            }
             if(payload!=null){
                 String next=payload.optString("status","");
                 if(!next.isEmpty())status=next;
