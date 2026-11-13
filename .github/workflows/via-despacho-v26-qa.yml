@@ -10,6 +10,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: via-despacho-v26-qa
+  cancel-in-progress: true
 jobs:
   validate-and-build:
     runs-on: ubuntu-latest
