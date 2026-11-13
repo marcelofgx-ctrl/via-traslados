@@ -1592,12 +1592,30 @@ public final class MainActivity extends Activity {
         fare.setBackground(bg(item.optInt("price",0)>0?SOFT:
             Color.rgb(247,249,249),12,0));
         LinearLayout fareInfo=column();
-        addLine(fareInfo,item.optInt("price",0)>0?
-            "OFERTA ENVIADA":"PRESUPUESTO",10,
+        String fareTitle="PRESUPUESTO";
+        String fareSubtitle="Pendiente de cotización";
+        if(item.optInt("price",0)>0){
+            switch(state){
+                case "quoted":
+                    fareTitle="OFERTA ENVIADA";
+                    fareSubtitle="Esperando aceptación del pasajero";
+                    break;
+                case "accepted":
+                    fareTitle="OFERTA ACEPTADA";
+                    fareSubtitle="Falta confirmar el servicio";
+                    break;
+                case "confirmed":
+                    fareTitle="VIAJE CONFIRMADO";
+                    fareSubtitle="Servicio programado";
+                    break;
+                default:
+                    fareTitle="TARIFA DEL TRASLADO";
+                    fareSubtitle="Importe acordado";
+            }
+        }
+        addLine(fareInfo,fareTitle,10,
             item.optInt("price",0)>0?TEAL_DARK:MUTED,true,3);
-        addLine(fareInfo,item.optInt("price",0)>0?
-            "Esperando respuesta del pasajero":"Pendiente de cotización",
-            11,MUTED,false,0);
+        addLine(fareInfo,fareSubtitle,11,MUTED,false,0);
         fare.addView(fareInfo,new LinearLayout.LayoutParams(0,-2,1));
         TextView fareAmount=text(item.optInt("price",0)>0?
             "$ "+String.format(new java.util.Locale("es","UY"),
