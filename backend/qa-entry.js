@@ -21,6 +21,8 @@ const allowed=(path,method)=>{
  if(/^\/api\/operator\/requests\/VIA-QA-[A-Z0-9-]+$/.test(path)&&method==='PATCH')return true;
  if(/^\/api\/operator\/requests\/VIA-QA-[A-Z0-9-]+\/(price-guide|route)$/.test(path)&&method==='GET')return true;
  if(/^\/api\/operator\/requests\/VIA-QA-[A-Z0-9-]+\/release$/.test(path)&&method==='POST')return true;
+ if(/^\/api\/admin\/requests\/VIA-QA-[A-Z0-9-]+\/assignment-options$/.test(path)&&method==='GET')return true;
+ if(/^\/api\/admin\/requests\/VIA-QA-[A-Z0-9-]+\/assign$/.test(path)&&method==='POST')return true;
  if(path==='/api/admin/drivers'&&method==='GET')return true;
  if(path==='/api/admin/team'&&method==='GET')return true;
  if(path==='/api/admin/settings'&&method==='GET')return true;
