@@ -1,0 +1,75 @@
+name: Vía Traslados V29 — demo de socios y tarifas
+on:
+  push:
+    branches: [via-despacho-socios-tarifas-v29-qa-20261113]
+    paths: [".github/workflows/via-v29-demo-publish.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-v29-demo-publish
+  cancel-in-progress: false
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Revisión funcional sin tocar producción
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          python3 scripts/v29-dispatch-sql-test.py
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Preparar Android SDK
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar APK V29 demo sin conexión operativa
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaBusinessPreview=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v29preview'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='29'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v29-demo-socios-cotizaciones
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - name: Publicar exclusivamente versión demo V29 en sitio de QA
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin via-apk-descarga-qa-20261112
+          git worktree add /tmp/via-v29-site FETCH_HEAD
+          mkdir -p /tmp/via-v29-site/qa-apk-download/v29-preview
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v29-site/qa-apk-download/v29-preview/via-conductor-v29-demo.apk
+          cd /tmp/via-v29-site/qa-apk-download/v29-preview
+          sha256sum via-conductor-v29-demo.apk > SHA256SUMS.txt
+          cat > index.html <<'HTML'
+          <!doctype html><html lang="es-UY"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <meta name="robots" content="noindex,nofollow"><title>Vía Traslados · V29 Demo</title>
+          <style>*{box-sizing:border-box}html{font-family:system-ui,-apple-system,Roboto,sans-serif;background:#f4f8f7;color:#20393b}body{max-width:540px;margin:26px auto;padding:16px}main{background:white;padding:25px 22px;border-radius:19px;border:1px solid #e0ece9}h1{font-size:25px}p{font-size:14px;line-height:1.55;color:#536c6e}a{background:#006d69;color:white;display:block;border-radius:12px;padding:15px;text-align:center;text-decoration:none;font-weight:700;min-height:48px}</style></head>
+          <body><main><small>VÍA TRASLADOS · CENTRO DE OPERACIONES</small><h1>V29 · Socios y cotizaciones</h1>
+          <p>Demo de tarifas mínimas, sugeridas y máximas; cotización con adjudicación; liberación de viajes y panel administrativo de socios, contratados y permisos.</p>
+          <a href="./via-conductor-v29-demo.apk" download>Descargar APK V29 Demo</a>
+          <p>Solo datos ficticios; no conecta a Cloudflare ni procesa cobros. Se instala de forma independiente de Vía Traslados V28 y la aplicación operativa.</p></main></body></html>
+          HTML
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f via-conductor-v29-demo.apk
+          git add index.html SHA256SUMS.txt
+          git commit -m "qa(via): publicar demo de cotizaciones y permisos V29"
+          git push origin HEAD:via-apk-descarga-qa-20261112
