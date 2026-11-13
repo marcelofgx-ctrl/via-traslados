@@ -40,7 +40,7 @@ jobs:
           APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v30preview'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='29'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='30'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
           unzip -t "$APK" | tail -2
           sha256sum "$APK"
