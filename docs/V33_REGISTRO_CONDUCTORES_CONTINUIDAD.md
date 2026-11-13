@@ -74,8 +74,7 @@ flujo V33 haya terminado exitosamente.
   al lado de V33 para no interferir con APK QA anteriormente instalado.
 - Prueba de catálogos Java pura: `tests/ViaVehicleCatalogTest.java`.
 - El workflow `.github/workflows/via-v33-onboarding-qa.yml` fue adaptado
-  para construir la V34 y publicarla en la rama de descargas, ruta
-  `qa-apk-download/v34-catalogo-qa/` [corregir según ruta real abajo].
+  para construir la V34 y publicarla en la rama de descargas.
 - Ruta real prevista: `qa-apk-download/v34-catalog-qa/` y URL
   https://via-conductor-apk-qa.vercel.app/v34-catalog-qa/
 - Importante: el código y la automatización fueron guardados, pero confirmar
