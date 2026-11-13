@@ -1,0 +1,75 @@
+name: Vía Traslados V31 — ficha premium compacta por estados
+on:
+  push:
+    branches: [via-ficha-operativa-premium-v31-qa-20261113]
+    paths: [".github/workflows/via-v31-demo-publish.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-v31-demo-publish
+  cancel-in-progress: false
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Revisión funcional sin tocar producción
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          python3 scripts/v29-dispatch-sql-test.py
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Preparar Android SDK
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar APK V31 demo sin conexión operativa
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaOperationPreview=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v31preview'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='31'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v31-demo-detalle-optimizado
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - name: Publicar exclusivamente versión demo V31 en sitio de QA
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin via-apk-descarga-qa-20261112
+          git worktree add /tmp/via-v31-site FETCH_HEAD
+          mkdir -p /tmp/via-v31-site/qa-apk-download/v31-preview
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v31-site/qa-apk-download/v31-preview/via-conductor-v31-demo.apk
+          cd /tmp/via-v31-site/qa-apk-download/v31-preview
+          sha256sum via-conductor-v31-demo.apk > SHA256SUMS.txt
+          cat > index.html <<'HTML'
+          <!doctype html><html lang="es-UY"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <meta name="robots" content="noindex,nofollow"><title>Vía Traslados · V31 Demo</title>
+          <style>*{box-sizing:border-box}html{font-family:system-ui,-apple-system,Roboto,sans-serif;background:#f4f8f7;color:#20393b}body{max-width:540px;margin:26px auto;padding:16px}main{background:white;padding:25px 22px;border-radius:19px;border:1px solid #e0ece9}h1{font-size:25px}p{font-size:14px;line-height:1.55;color:#536c6e}a{background:#006d69;color:white;display:block;border-radius:12px;padding:15px;text-align:center;text-decoration:none;font-weight:700;min-height:48px}</style></head>
+          <body><main><small>VÍA TRASLADOS · CENTRO DE OPERACIONES</small><h1>V31 · Ficha premium de traslado</h1>
+          <p>Ficha premium con recorrido A/B, estados comerciales claros, presupuesto destacado y operaciones administrativas plegables. Sin acceso a reservas reales.</p>
+          <a href="./via-conductor-v31-demo.apk" download>Descargar APK V31 Demo</a>
+          <p>Solo datos ficticios; no conecta a Cloudflare ni procesa cobros. Instalación independiente de V30/V29. No modifica datos de producción.</p></main></body></html>
+          HTML
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f via-conductor-v31-demo.apk
+          git add index.html SHA256SUMS.txt
+          git commit -m "qa(via): publicar demo V31 con detalle corregido y ajustes ficticios"
+          git push origin HEAD:via-apk-descarga-qa-20261112
