@@ -81,7 +81,17 @@ const getBooking=async(req,env,id)=>{
  const row=await env.DB.prepare(`SELECT ${FIELDS},${routeSelect('bookings')},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
  return row&&equal(await hash(token),row.access_token_hash)?row:null;
 };
-async function transition(env,id,from,to,actor,price){const withPrice=price!==null;const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=?`;const args=withPrice?[to,price,id,from]:[to,id,from];const change=await env.DB.prepare(statement).bind(...args).run();if(change.meta.changes!==1)return false;await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();return true}
+async function transition(env,id,from,to,actor,price){
+ const withPrice=price!==null;
+ const statement=`UPDATE bookings SET status=?,updated_at=datetime('now')${withPrice?',price_uyu=?':''} WHERE id=? AND status=? RETURNING id,status`;
+ const args=withPrice?[to,price,id,from]:[to,id,from];
+ // UPDATE RETURNING confirma exactamente el registro modificado; los triggers
+ // de comisión pueden incrementar meta.changes y no deben producir falsos 409.
+ const changed=await env.DB.prepare(statement).bind(...args).first();
+ if(changed?.id!==id||changed?.status!==to)return false;
+ await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();
+ return true;
+}
 export default {async fetch(req,env,ctx){
  const url=new URL(req.url),origin=req.headers.get('Origin');
   const allowed=allowedOriginsFor(env,url.pathname);
