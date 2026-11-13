@@ -1316,8 +1316,8 @@ public final class MainActivity extends Activity {
 
         LinearLayout itinerary=card();
         addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,14);
-        premiumKeyValue(itinerary,"●   ORIGEN",item.optString("origin"),true);
-        premiumKeyValue(itinerary,"◆   DESTINO",item.optString("destination"),true);
+        premiumKeyValue(itinerary,"●   ORIGEN",prettyAddress(item.optString("origin")),true);
+        premiumKeyValue(itinerary,"◆   DESTINO",prettyAddress(item.optString("destination")),true);
         View line=new View(this);line.setBackgroundColor(BORDER);
         itinerary.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));
         spacer(itinerary,12);
