@@ -88,9 +88,12 @@ public final class ViaPreviewData {
             return new Reply(200,new JSONArray().put(booking()));
         if("GET".equals(method)&&"/api/admin/drivers".equals(path))
             return new Reply(200,wrap("drivers",drivers()));
-        if("GET".equals(method)&&"/api/admin/settings".equals(path))
-            return new Reply(200,new JSONObject().put("publicEnabled",true)
-                .put("drivers",new JSONArray()));
+        if("GET".equals(method)&&"/api/admin/settings".equals(path)){
+            JSONObject settings=new JSONObject();
+            try{settings.put("publicEnabled",true).put("drivers",new JSONArray());}
+            catch(Exception ignored){}
+            return new Reply(200,settings);
+        }
         if("GET".equals(method)&&path.endsWith("/assignment-options")){
             JSONObject current=booking(),response=new JSONObject();
             try {
