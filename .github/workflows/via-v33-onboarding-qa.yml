@@ -1,4 +1,4 @@
-name: Vía Traslados V33 — inscripción, foto, aprobación y APK QA
+name: Vía Traslados V33 — alta de conductores y revisión QA
 on:
   push:
     branches: [via-registro-conductores-v33-qa-20261113]
