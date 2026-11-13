@@ -2,7 +2,13 @@ name: Vía Traslados V33 — foto JPEG válida y registro QA
 on:
   push:
     branches: [via-registro-conductores-v33-qa-20261113]
-    paths: [".github/workflows/via-v33-onboarding-qa.yml"]
+    paths:
+      - ".github/workflows/via-v33-onboarding-qa.yml"
+      - "scripts/v33-onboarding-e2e.mjs"
+      - "backend/qa-driver-onboarding.js"
+      - "backend/qa-entry.js"
+      - "backend/schema-qa-v33.sql"
+      - "android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java"
   workflow_dispatch:
 permissions:
   contents: write
