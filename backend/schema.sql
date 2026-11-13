@@ -125,7 +125,9 @@ BEGIN
      WHERE u.id=NEW.driver_id AND u.status='approved' AND u.role IN ('admin','driver')
        AND c.email_verified_at IS NOT NULL
        AND (u.role='admin' OR p.can_quote_all=1 OR
-           EXISTS(SELECT 1 FROM booking_dispatch_releases r WHERE r.booking_id=NEW.booking_id))
+           EXISTS(SELECT 1 FROM booking_dispatch_releases r WHERE r.booking_id=NEW.booking_id)
+           OR EXISTS(SELECT 1 FROM driver_assignments a
+             WHERE a.booking_id=NEW.booking_id AND a.driver_id=NEW.driver_id))
    );
  SELECT RAISE(ABORT,'VIA_QUOTE_ASSIGNED_OTHER')
    WHERE EXISTS(SELECT 1 FROM driver_assignments
