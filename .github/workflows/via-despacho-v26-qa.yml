@@ -1,0 +1,72 @@
+name: Via Traslados - V26 despacho premium QA
+on:
+  push:
+    branches: [via-despacho-premium-v26-qa-20261112]
+    paths:
+      - "backend/**"
+      - "android-driver/**"
+      - "tests/**"
+      - ".github/workflows/via-despacho-v26-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-despacho-v26-qa
+  cancel-in-progress: true
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pruebas de Vía Traslados sin modificar reservas reales
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/staff.js
+          node --check backend/assignment-rules.js
+      - name: Validar D1 con SQLite local e idempotencia de migraciones
+        run: |
+          python3 - <<'PY'
+          import sqlite3,pathlib
+          db=sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys=ON')
+          sql=pathlib.Path('backend/schema.sql').read_text()
+          db.executescript(sql);db.executescript(sql)
+          cols={r[1] for r in db.execute("PRAGMA table_info(driver_vehicle_profiles)")}
+          assert {'staff_id','license_plate','make','model','passenger_capacity','luggage_capacity'}<=cols
+          db.execute("INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status) VALUES ('d1','d@qa.invalid','Conductor QA','s','h',100000,'driver','approved')")
+          db.execute("INSERT INTO driver_vehicle_profiles(staff_id,license_plate,make,model,passenger_capacity,luggage_capacity) VALUES ('d1','APP0061','BYD','Yuan',4,3)")
+          assert db.execute("SELECT license_plate FROM driver_vehicle_profiles WHERE staff_id='d1'").fetchone()[0]=='APP0061'
+          try:
+            db.execute("INSERT INTO driver_vehicle_profiles(staff_id,license_plate,passenger_capacity) VALUES ('unknown','X',99)")
+          except sqlite3.IntegrityError: pass
+          else: raise AssertionError('Se aceptó conductor inexistente o capacidad fuera de rango')
+          print('D1 QA: esquema idempotente, restricciones de conductor y ficha de vehículo OK')
+          PY
+          python3 scripts/v26-assignment-sql-test.py
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Preparar Android SDK 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar APK Android V26 QA sin publicarla
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug --no-daemon
+          unzip -t android-driver/app/build/outputs/apk/debug/app-debug.apk | tail -2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-conductor-v26-preview-not-for-release
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7

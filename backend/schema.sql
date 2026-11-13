@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS driver_assignments (
  assigned_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS driver_assignments_driver ON driver_assignments(driver_id);
+-- Ficha operativa opcional por conductor: nunca simula capacidad ni matrícula.
+CREATE TABLE IF NOT EXISTS driver_vehicle_profiles (
+ staff_id TEXT PRIMARY KEY REFERENCES staff_users(id) ON DELETE CASCADE,
+ license_plate TEXT NOT NULL DEFAULT '',
+ make TEXT NOT NULL DEFAULT '',
+ model TEXT NOT NULL DEFAULT '',
+ passenger_capacity INTEGER CHECK(passenger_capacity BETWEEN 1 AND 8),
+ luggage_capacity INTEGER CHECK(luggage_capacity BETWEEN 0 AND 10),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
 CREATE TABLE IF NOT EXISTS admin_audit (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  actor_id TEXT NOT NULL,
