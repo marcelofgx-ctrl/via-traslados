@@ -52,4 +52,14 @@ assert c.execute("SELECT rate_bps,commission_cents,payment_status FROM booking_c
 assert c.execute("SELECT rate_bps,commission_cents,payment_status FROM booking_commission_ledger WHERE booking_id='VIA-TWO'").fetchone()==(2500,150000,'pending')
 c.execute("UPDATE bookings SET status='completed' WHERE id='VIA-TWO'")
 assert c.execute("SELECT COUNT(*) FROM booking_commission_ledger WHERE booking_id='VIA-TWO'").fetchone()[0]==1
+# Un conductor preasignado por el administrador también puede cotizar sin
+# estar liberado al resto de contratados.
+c.execute("""INSERT INTO bookings(id,customer_name,phone,email,origin,destination,
+ trip_date,trip_time,passengers,bags,access_token_hash)
+ VALUES('VIA-FIVE','Pasajero','099','p@qa.invalid','Inicio','Final',
+ '2026-11-22','22:00',1,0,'hash')""")
+c.execute("""INSERT INTO driver_assignments(booking_id,driver_id,assigned_by)
+ VALUES('VIA-FIVE','contractor','owner')""")
+assert quote(c,'VIA-FIVE','contractor',1200)==1
+assert c.execute("SELECT status FROM bookings WHERE id='VIA-FIVE'").fetchone()[0]=='quoted'
 print('OK: D1 atómico, comisión 25% solo al completar viaje, liquidación sin duplicados')
