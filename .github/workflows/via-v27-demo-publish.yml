@@ -1,5 +1,8 @@
 name: Vía Traslados V27 - publicar APK demo aislada
 on:
+  push:
+    branches: [via-solicitudes-compactas-v27-qa-20261112]
+    paths: [".github/workflows/via-v27-demo-publish.yml"]
   workflow_dispatch:
 permissions:
   contents: write
