@@ -1,0 +1,35 @@
+name: Vía Traslados V30 — verificación pública de demo
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths: [".github/workflows/via-v30-public-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Comprobar portada y V30 sin iniciar sesión
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          ok=0
+          for attempt in $(seq 1 15); do
+            code=$(curl -sSL --max-time 15 -o /tmp/via-index -w '%{http_code}' "$BASE/" || true)
+            if [ "$code" = "200" ] && grep -q 'Descargar V30 Demo' /tmp/via-index; then ok=1;break;fi
+            sleep 3
+          done
+          test "$ok" -eq 1
+          curl -fLsS --retry 3 "$BASE/v30-preview/" -o /tmp/via-v30-index
+          grep -q 'Detalle y cotización optimizados' /tmp/via-v30-index
+      - name: Verificar APK y SHA256 desde Internet
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          curl -fLsS --retry 4 --max-time 160 "$BASE/v30-preview/via-conductor-v30-demo.apk" -o /tmp/via-v30.apk
+          test "$(stat -c%s /tmp/via-v30.apk)" -gt 1000000
+          echo "f4783b7219a1198346909dccac2a1832ac4bcbe5788470503f1ffdec9ec16ecd  /tmp/via-v30.apk" | sha256sum -c -
+          unzip -t /tmp/via-v30.apk | tail -2
+          curl -fLsS "$BASE/v29-preview/SHA256SUMS.txt" | grep -q 'via-conductor-v29-demo.apk'
