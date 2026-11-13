@@ -2190,38 +2190,199 @@ public final class MainActivity extends Activity {
             }).show();
     }
 
+    // Selector profesional: solo cuentas reales, sin simular GPS ni disponibilidad.
     private void driverAssignmentDialog(JSONObject booking) {
-        if (!"admin".equals(staffRole)) return;
-        api("GET","/api/admin/drivers",null,(status,response,error)->{
-            if(status!=200){message(error);return;}
+        if(!"admin".equals(staffRole))return;
+        LinearLayout[] views=new LinearLayout[2];
+        Dialog selection=premiumPage("PASO 1 DE 2","Asignar conductor",
+            booking.optString("id"),"Asignación",views);
+        LinearLayout body=views[0];
+        LinearLayout summary=card();
+        addLine(summary,"TRASLADO",10,MUTED,true,8);
+        addLine(summary,compactDate(booking.optString("date"))+" · "+
+            booking.optString("time"),16,INK,true,8);
+        addLine(summary,prettyAddress(booking.optString("origin"))+"  →  "+
+            prettyAddress(booking.optString("destination")),13,INK,false,0);
+        appendCard(body,summary,14);
+        addLine(body,"CONDUCTORES HABILITADOS",11,TEAL_DARK,true,7);
+        addLine(body,"La agenda puede detectar cruces de horarios. No hay seguimiento GPS ni presencia en línea en esta versión.",
+            12,MUTED,false,13);
+        LinearLayout options=column();
+        body.addView(options);
+        addLine(options,"Consultando conductores y agenda…",14,MUTED,false,0);
+        api("GET","/api/admin/requests/"+Uri.encode(booking.optString("id"))+
+            "/assignment-options",null,(status,response,error)->{
+            if(!selection.isShowing())return;
+            options.removeAllViews();
+            if(status!=200){
+                addLine(options,"No se pudieron cargar los conductores.",16,INK,true,9);
+                addLine(options,error.isEmpty()?
+                    "El motor de despacho V26 todavía no está activo. La asignación permanece sin cambios.":
+                    error,13,ORANGE,false,12);
+                options.addView(button("Volver al traslado",false,v->{
+                    selection.dismiss();details(booking);
+                }),new LinearLayout.LayoutParams(-1,dp(44)));
+                return;
+            }
             try {
-                JSONArray arr=new JSONObject(response).getJSONArray("drivers");
-                java.util.ArrayList<String> names=new java.util.ArrayList<>();
-                java.util.ArrayList<String> ids=new java.util.ArrayList<>();
-                names.add("Sin conductor asignado");
-                ids.add("");
-                for(int i=0;i<arr.length();i++){
-                    JSONObject d=arr.getJSONObject(i);
-                    if("approved".equals(d.optString("status"))){
-                        names.add(d.optString("name")+" · "+d.optString("email"));
-                        ids.add(d.getString("id"));
-                    }
+                JSONObject payload=new JSONObject(response);
+                if(!payload.optBoolean("assignable",false)){
+                    addLine(options,"Este traslado ya no admite asignaciones.",
+                        14,ORANGE,true,0);
+                    return;
                 }
-                new AlertDialog.Builder(this).setTitle("Asignar solicitud "+booking.optString("id"))
-                    .setItems(names.toArray(new String[0]),(d,which)->{
-                        try {
-                            JSONObject payload=new JSONObject();
-                            if(which==0) payload.put("driverId",JSONObject.NULL);
-                            else payload.put("driverId",ids.get(which));
-                            api("POST","/api/admin/requests/"+Uri.encode(booking.optString("id"))+"/assign",
-                                payload,(code,body,err)->{
-                                    if(code==200){message("Asignación guardada");fetchBookings(true);}
-                                    else message(err.isEmpty()?"No se pudo asignar":err);
-                                });
-                        }catch(Exception e){message("Asignación inválida");}
-                    }).setNegativeButton("Cancelar",null).show();
-            }catch(Exception e){message("No se pudo leer la lista de conductores");}
+                String currentId=payload.optString("assignedDriverId","");
+                if("null".equals(currentId))currentId="";
+                final String expected=currentId;
+                JSONArray list=payload.getJSONArray("drivers");
+                if(list.length()==0){
+                    addLine(options,"Todavía no hay conductores habilitados.",
+                        15,INK,true,7);
+                    addLine(options,"Aprobá un conductor desde Gestión antes de asignar.",
+                        12,MUTED,false,0);
+                }
+                for(int i=0;i<list.length();i++){
+                    JSONObject driver=list.optJSONObject(i);
+                    if(driver==null)continue;
+                    String name=driver.optString("name","Conductor");
+                    String id=driver.optString("id","");
+                    boolean verified=driver.optBoolean("emailVerified",false);
+                    JSONArray problems=driver.optJSONArray("conflicts");
+                    boolean conflict=problems!=null&&problems.length()>0;
+                    boolean current=id.equals(expected);
+                    LinearLayout tile=card();
+                    LinearLayout header=row();
+                    TextView driverName=text(name,16,INK,true);
+                    header.addView(driverName,new LinearLayout.LayoutParams(0,-2,1));
+                    TextView state=text(current?"ASIGNADO":conflict?"CRUCE DE AGENDA":
+                        verified?"APROBADO":"CORREO PENDIENTE",10,
+                        conflict?ORANGE:TEAL_DARK,true);
+                    state.setPadding(dp(7),dp(5),dp(7),dp(5));
+                    state.setBackground(bg(conflict?Color.rgb(255,244,232):SOFT,12,0));
+                    header.addView(state);
+                    tile.addView(header);
+                    spacer(tile,8);
+                    addLine(tile,"Vehículo y matrícula: sin registrar",12,MUTED,false,5);
+                    addLine(tile,conflict?
+                        "El conductor tiene otro servicio en este horario.":
+                        "Sin cruces conocidos · disponibilidad real no verificada",
+                        12,conflict?ORANGE:MUTED,false,10);
+                    if(conflict){
+                        for(int j=0;j<Math.min(2,problems.length());j++){
+                            JSONObject clash=problems.optJSONObject(j);
+                            if(clash!=null)addLine(tile,
+                                "Coincide con "+clash.optString("bookingId","otro traslado")+
+                                " · "+clash.optString("date")+" "+clash.optString("time"),
+                                11,ORANGE,false,5);
+                        }
+                    }
+                    Button select=button(current?"Conductor actual":
+                        conflict?"Horario no disponible":"Seleccionar  →",!current&&!conflict,
+                        v->{selection.dismiss();confirmPremiumAssignment(booking,id,name,expected);});
+                    select.setEnabled(!current&&!conflict&&verified);
+                    select.setAlpha(select.isEnabled()?1f:.52f);
+                    tile.addView(select,new LinearLayout.LayoutParams(-1,dp(43)));
+                    appendCard(options,tile,10);
+                }
+                if(!expected.isEmpty()){
+                    TextView unassign=actionText("Quitar conductor asignado",ORANGE,v->{
+                        selection.dismiss();
+                        confirmPremiumAssignment(booking,null,"Sin conductor",expected);
+                    });
+                    unassign.setGravity(Gravity.CENTER);
+                    options.addView(unassign);
+                }
+            } catch(Exception ex){
+                addLine(options,"Respuesta de asignaciones inválida. No se modificó nada.",
+                    13,ORANGE,false,0);
+            }
         });
+    }
+
+    // Confirmación separada y con control de cambio concurrente en el servidor.
+    private void confirmPremiumAssignment(JSONObject booking,String driverId,
+            String driverName,String expectedId) {
+        LinearLayout[] views=new LinearLayout[2];
+        final boolean removing=driverId==null;
+        Dialog confirm=premiumPage("PASO 2 DE 2",removing?"Quitar conductor":
+            "Confirmar asignación",booking.optString("id"),"Revisar",views);
+        LinearLayout body=views[0],footer=views[1];
+        addLine(body,removing?"El traslado quedará sin conductor asignado.":
+            "Estás por asignar el siguiente conductor:",14,MUTED,false,13);
+        LinearLayout card=card();
+        addLine(card,"CONDUCTOR",10,TEAL_DARK,true,8);
+        addLine(card,driverName,19,INK,true,13);
+        View divider=new View(this);divider.setBackgroundColor(BORDER);
+        card.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
+        spacer(card,12);
+        premiumKeyValue(card,"FECHA Y HORA",compactDate(booking.optString("date"))+
+            " · "+booking.optString("time"),true);
+        premiumKeyValue(card,"RECORRIDO",
+            prettyAddress(booking.optString("origin"))+" → "+
+            prettyAddress(booking.optString("destination")),true);
+        addLine(card,"Reserva: "+statusName(booking.optString("status")),
+            12,MUTED,false,0);
+        appendCard(body,card,14);
+        addLine(body,"Asignar un conductor no confirma automáticamente el viaje al pasajero.",
+            13,TEAL_DARK,true,9);
+        addLine(body,"La disponibilidad en tiempo real no se conoce. El servidor volverá a validar la agenda y los permisos antes de guardar.",
+            12,MUTED,false,0);
+        TextView errorMsg=text("",12,ORANGE,false);
+        footer.addView(errorMsg);
+        Button save=button(removing?"Quitar asignación":"Confirmar asignación",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            save.setEnabled(false);
+            errorMsg.setText("Guardando la asignación…");
+            try{
+                JSONObject payload=new JSONObject();
+                payload.put("driverId",driverId==null?JSONObject.NULL:driverId);
+                payload.put("expectedDriverId",
+                    expectedId==null||expectedId.isEmpty()?JSONObject.NULL:expectedId);
+                api("POST","/api/admin/requests/"+
+                    Uri.encode(booking.optString("id"))+"/assign",payload,
+                    (status,response,error)->{
+                        if(status==200){
+                            confirm.dismiss();
+                            try{
+                                booking.put("assignedDriverId",driverId==null?JSONObject.NULL:driverId);
+                                booking.put("assignedDriverName",
+                                    driverId==null?JSONObject.NULL:driverName);
+                            }catch(Exception ignored){}
+                            fetchBookings(true);
+                            premiumAssignmentResult(booking,driverName,removing);
+                        }else{
+                            save.setEnabled(true);
+                            errorMsg.setText(error.isEmpty()?
+                                "No se guardó: revisá agenda y asignación.":error);
+                        }
+                    });
+            }catch(Exception ex){
+                save.setEnabled(true);
+                errorMsg.setText("No se pudo preparar la confirmación.");
+            }
+        });
+    }
+
+    private void premiumAssignmentResult(JSONObject booking,String name,boolean removed) {
+        LinearLayout[] views=new LinearLayout[2];
+        Dialog result=premiumPage("GESTIÓN DE CONDUCTORES",
+            removed?"Asignación retirada":"Conductor asignado",
+            booking.optString("id"),"Actualizado",views);
+        LinearLayout content=views[0],footer=views[1];
+        LinearLayout success=card();
+        addLine(success,"✓  "+(removed?"Traslado sin conductor":name),
+            19,TEAL_DARK,true,13);
+        addLine(success,removed?
+            "El traslado está pendiente de una nueva asignación.":
+            "Asignación registrada. La confirmación del pasajero y el estado del viaje son independientes.",
+            13,INK,false,9);
+        addLine(success,"Estado del servicio: "+statusName(booking.optString("status")),
+            12,MUTED,false,0);
+        appendCard(content,success,12);
+        footer.addView(button("Volver al detalle",true,v->{
+            result.dismiss();details(booking);
+        }),new LinearLayout.LayoutParams(-1,dp(46)));
     }
 
     private void settings(LinearLayout body) {
