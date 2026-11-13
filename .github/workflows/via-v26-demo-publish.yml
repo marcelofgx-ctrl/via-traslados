@@ -1,0 +1,54 @@
+name: Vía Traslados V26 — publicar APK demo aislada
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-v26-demo-publish
+  cancel-in-progress: false
+jobs:
+  build-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Preparar Android SDK 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Probar compilación de demo separada sin acceso al servidor
+        run: |
+          set -euo pipefail
+          grep -q 'if (BuildConfig.VIA_PREVIEW)' android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          grep -q 'PREVIEW_LOCAL_NO_NETWORK' android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+          test -f android-driver/app/src/main/java/uy/viatraslados/conductor/ViaPreviewData.java
+          gradle -p android-driver :app:assembleDebug -PviaPreview=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package: name='uy.viatraslados.conductor.v26preview'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "versionCode='26'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+      - name: Copiar únicamente APK demo al sitio QA de descarga
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin via-apk-descarga-qa-20261112
+          git worktree add /tmp/via-site FETCH_HEAD
+          mkdir -p /tmp/via-site/qa-apk-download/v26-preview
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-site/qa-apk-download/v26-preview/via-conductor-v26-demo.apk
+          cd /tmp/via-site/qa-apk-download/v26-preview
+          sha256sum via-conductor-v26-demo.apk > SHA256SUMS.txt
+          printf '%s\n' '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vía Traslados · V26 Demo</title><style>body{font-family:system-ui;max-width:520px;margin:35px auto;padding:16px;background:#f5f8fa;color:#18393d}main{background:white;border-radius:20px;padding:26px;border:1px solid #ddd}a{display:block;background:#006e70;color:white;text-align:center;padding:15px;border-radius:12px;text-decoration:none;font-weight:700}p{line-height:1.6}</style><main><h1>Vía Traslados · V26</h1><p><strong>Vista de demostración</strong> independiente de la aplicación real, con datos ficticios. Podés revisar el detalle y la asignación de conductores sin iniciar sesión. Ninguna acción se envía a producción.</p><p>La APK tiene un identificador distinto: no reemplaza ni actualiza tu instalación actual.</p><a href="./via-conductor-v26-demo.apk" download>Descargar demo V26 para Android</a><p style="font-size:13px">Android puede pedir autorización para instalar desde Chrome. El instalador está firmado con clave de pruebas no apta para futuras actualizaciones regulares.</p></main></html>' > index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f v26-preview/via-conductor-v26-demo.apk
+          git add v26-preview/index.html v26-preview/SHA256SUMS.txt
+          git commit -m "qa(via): publicar APK V26 demo aislada, solo datos simulados"
+          git push origin HEAD:via-apk-descarga-qa-20261112
