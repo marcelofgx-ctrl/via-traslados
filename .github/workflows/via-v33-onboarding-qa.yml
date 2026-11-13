@@ -1,4 +1,4 @@
-name: Vía Traslados V33 — foto JPEG válida y registro QA
+name: Vía Traslados V34 — registro y catálogo Android QA
 on:
   push:
     branches: [via-registro-conductores-v33-qa-20261113]
@@ -11,11 +11,12 @@ on:
       - "android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java"
       - "android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java"
       - "tests/ViaVehicleCatalogTest.java"
+      - "android-driver/app/build.gradle"
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: via-v33-registration-qa
+  group: via-v34-catalog-qa
   cancel-in-progress: false
 jobs:
   qa-backend:
@@ -139,38 +140,38 @@ jobs:
             android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java \
             tests/ViaVehicleCatalogTest.java
           java -cp /tmp/via-catalog-v33 uy.viatraslados.conductor.ViaVehicleCatalogTest
-      - name: Compilar APK V33 online y verificar aislamiento
+      - name: Compilar APK V34 catálogo QA y verificar aislamiento
         run: |
           set -euo pipefail
-          gradle -p android-driver :app:assembleDebug -PviaOnboardQa=true --no-daemon
+          gradle -p android-driver :app:assembleDebug -PviaCatalogQa=true --no-daemon
           APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v33onboardqa'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='33'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v34catalogqa'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='34'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
           unzip -t "$APK" | tail -2
           sha256sum "$APK"
       - uses: actions/upload-artifact@v4
         with:
-          name: via-v33-registration-qa-apk
+          name: via-v34-catalog-qa-apk
           path: android-driver/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 21
-      - name: Publicar solo instalador QA, conservar V31/V30
+      - name: Publicar V34 QA sin modificar V33, V32 ni producción
         run: |
           set -euo pipefail
           git fetch --no-tags origin via-apk-descarga-qa-20261112
           git worktree add /tmp/via-v33-site FETCH_HEAD
-          mkdir -p /tmp/via-v33-site/qa-apk-download/v33-registration-qa
-          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v33-site/qa-apk-download/v33-registration-qa/via-conductor-v33-registration-qa.apk
-          cd /tmp/via-v33-site/qa-apk-download/v33-registration-qa
-          sha256sum via-conductor-v33-registration-qa.apk > SHA256SUMS.txt
+          mkdir -p /tmp/via-v33-site/qa-apk-download/v34-catalog-qa
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v33-site/qa-apk-download/v34-catalog-qa/via-conductor-v34-catalog-qa.apk
+          cd /tmp/via-v33-site/qa-apk-download/v34-catalog-qa
+          sha256sum via-conductor-v34-catalog-qa.apk > SHA256SUMS.txt
           cat > index.html <<'HTML'
-          <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vía Traslados V33 Registro QA</title>
-          <style>*{box-sizing:border-box}body{font:15px system-ui;background:#f3f8f7;color:#173a39;max-width:520px;margin:28px auto;padding:16px}main{padding:24px;border:1px solid #d7e8e4;border-radius:18px;background:white}a{display:block;background:#00736e;color:white;border-radius:13px;padding:16px;text-align:center;text-decoration:none;font-weight:bold}p{line-height:1.5;color:#586b6a}</style></head><body><main><h1>Vía Traslados V33</h1><p>Formulario de incorporación de conductores con foto, marca, modelo, año y matrícula; contraseña y bandeja de aprobación. Servidor y D1 QA aislados, sin producción.</p><a href="./via-conductor-v33-registration-qa.apk" download>Descargar V33 QA Online</a><p>Podés probar ingreso, inscripción, fotografía del vehículo y aprobación desde la bandeja del administrador. Usá solamente datos y fotos sintéticos: teléfono 099000xxx, correo @qa.invalid y matrícula QA. No hay cuentas ni pagos reales.</p></main></body></html>
+          <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vía Traslados V34 Catálogo QA</title>
+          <style>*{box-sizing:border-box}body{font:15px system-ui;background:#f3f8f7;color:#173a39;max-width:520px;margin:28px auto;padding:16px}main{padding:24px;border:1px solid #d7e8e4;border-radius:18px;background:white}a{display:block;background:#00736e;color:white;border-radius:13px;padding:16px;text-align:center;text-decoration:none;font-weight:bold}p{line-height:1.5;color:#586b6a}</style></head><body><main><h1>Vía Traslados V34</h1><p>Formulario de incorporación de conductores con marca, modelo dependiente, año y color desplegables, opción de escribir otros, foto, contraseña y bandeja de aprobación. Servidor y D1 QA aislados, sin producción.</p><a href="./via-conductor-v34-catalog-qa.apk" download>Descargar V34 Catálogo QA</a><p>Podés probar ingreso, inscripción, fotografía del vehículo y aprobación desde la bandeja del administrador. Usá solamente datos y fotos sintéticos: teléfono 099000xxx, correo @qa.invalid y matrícula QA. No hay cuentas ni pagos reales.</p></main></body></html>
           HTML
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f via-conductor-v33-registration-qa.apk
+          git add -f via-conductor-v34-catalog-qa.apk
           git add index.html SHA256SUMS.txt
-          git commit -m "qa(via): distribuir V33 online con backend y D1 aislados"
+          git commit -m "qa(via): distribuir V34 con catálogo en Android QA aislado"
           git push origin HEAD:via-apk-descarga-qa-20261112
