@@ -48,6 +48,7 @@ jobs:
           else: raise AssertionError('Se aceptó conductor inexistente o capacidad fuera de rango')
           print('D1 QA: esquema idempotente, restricciones de conductor y ficha de vehículo OK')
           PY
+          python3 scripts/v26-assignment-sql-test.py
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '17'}
       - uses: gradle/actions/setup-gradle@v4
