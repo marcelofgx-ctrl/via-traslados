@@ -96,12 +96,9 @@ public final class MainActivity extends Activity {
             operatorKey = "PREVIEW_LOCAL_NO_NETWORK";
             adminLoaded = true;
             managedDrivers = ViaPreviewData.drivers();
-            bookings = new JSONArray().put(ViaPreviewData.booking());
-            tab = "viajes";
+            bookings = ViaPreviewData.requests();
+            tab = "solicitudes";
             dashboard();
-            handler.post(() -> {
-                if (!isFinishing()) details(ViaPreviewData.booking());
-            });
         } else {
             loginScreen();
         }
@@ -891,7 +888,7 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text("V26 · VISTA DE PRUEBA · SIN CONEXIÓN A PRODUCCIÓN",
+            TextView demo=text("V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
                 10,TEAL_DARK,true);
             demo.setGravity(Gravity.CENTER);
             demo.setPadding(dp(8),dp(7),dp(8),dp(7));
@@ -1039,7 +1036,8 @@ public final class MainActivity extends Activity {
             tabs.setPadding(dp(3),dp(3),dp(3),dp(3));
             tabs.setBackground(bg(Color.rgb(231,241,239),12,0));
             String[] options={"Nuevas ("+count("requested")+")",
-                "Con mis ofertas ("+count("quoted")+")"};
+                ("admin".equals(staffRole)?"Con ofertas (":"Mis ofertas (")+
+                count("quoted")+")"};
             String[] ids={"nuevas","ofertas"};
             for(int i=0;i<ids.length;i++){
                 final String next=ids[i];
@@ -1171,7 +1169,10 @@ public final class MainActivity extends Activity {
         double distance=route.optDouble("distanceKm",Double.NaN);
         int minutes=route.optInt("durationMinutes",-1);
         if(!Double.isFinite(distance)||distance<=0||minutes<=0)return "Ruta pendiente";
-        return String.format(new java.util.Locale("es","UY"),"%.1f km  ·  %d min",distance,minutes);
+        String duration=minutes>=60?
+            (minutes/60)+" h "+(minutes%60)+" min":minutes+" min";
+        return String.format(new java.util.Locale("es","UY"),"%.1f km · %s",
+            distance,duration);
     }
 
     private void showRouteState(String id) {
@@ -1357,8 +1358,12 @@ public final class MainActivity extends Activity {
             geo,geo+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         license.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
             osm,source.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        attribution.setText(license);
-        attribution.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        if(BuildConfig.VIA_PREVIEW){
+            attribution.setText("Ruta ilustrativa · sin servicios externos");
+        }else{
+            attribution.setText(license);
+            attribution.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        }
         LinearLayout.LayoutParams attribParams=new LinearLayout.LayoutParams(-1,-2);
         attribParams.topMargin=dp(3);
         tile.addView(attribution,attribParams);
@@ -1537,7 +1542,9 @@ public final class MainActivity extends Activity {
         addLine(itinerary,info,13,INK,true,7);
         // Atribución obligatoria visible, pero subordinada a los datos del viaje.
         if(measured!=null){
-            TextView credit=text("Powered by Geoapify · © OpenStreetMap contributors",10,MUTED,false);
+            TextView credit=text(BuildConfig.VIA_PREVIEW?
+                "Ruta ilustrativa · sin servicios externos":
+                "Powered by Geoapify · © OpenStreetMap contributors",10,MUTED,false);
             credit.setOnClickListener(v->{
                 try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")));}
                 catch(Exception ignored){}
