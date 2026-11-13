@@ -1,7 +1,7 @@
-name: Vía Traslados V33 — validar estados D1 y publicar QA
+name: Vía Traslados V33 — inscripción, foto, aprobación y APK QA
 on:
   push:
-    branches: [via-qa-online-v33-20261113]
+    branches: [via-registro-conductores-v33-qa-20261113]
     paths: [".github/workflows/via-v33-onboarding-qa.yml"]
   workflow_dispatch:
 permissions:
@@ -144,17 +144,17 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin via-apk-descarga-qa-20261112
           git worktree add /tmp/via-v33-site FETCH_HEAD
-          mkdir -p /tmp/via-v33-site/qa-apk-download/v33-online-qa
-          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v33-site/qa-apk-download/v33-online-qa/via-conductor-v33-online-qa.apk
-          cd /tmp/via-v33-site/qa-apk-download/v33-online-qa
-          sha256sum via-conductor-v33-online-qa.apk > SHA256SUMS.txt
+          mkdir -p /tmp/via-v33-site/qa-apk-download/v33-registration-qa
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v33-site/qa-apk-download/v33-registration-qa/via-conductor-v33-registration-qa.apk
+          cd /tmp/via-v33-site/qa-apk-download/v33-registration-qa
+          sha256sum via-conductor-v33-registration-qa.apk > SHA256SUMS.txt
           cat > index.html <<'HTML'
           <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vía Traslados V33 Registro QA</title>
-          <style>*{box-sizing:border-box}body{font:15px system-ui;background:#f3f8f7;color:#173a39;max-width:520px;margin:28px auto;padding:16px}main{padding:24px;border:1px solid #d7e8e4;border-radius:18px;background:white}a{display:block;background:#00736e;color:white;border-radius:13px;padding:16px;text-align:center;text-decoration:none;font-weight:bold}p{line-height:1.5;color:#586b6a}</style></head><body><main><h1>Vía Traslados V33</h1><p>Prueba de funcionamiento real contra Cloudflare Worker y D1 QA separados. Contiene solo conductores y pasajeros sintéticos; no utiliza cuentas, reservas ni pagos de producción.</p><a href="./via-conductor-v33-online-qa.apk" download>Descargar V33 QA Online</a><p>Elegí perfiles de prueba en Ajustes. Cotizaciones y cambios de estado se guardan en la D1 de QA. El ingreso y la aceptación del pasajero son simulados; el backend sí persiste las operaciones.</p></main></body></html>
+          <style>*{box-sizing:border-box}body{font:15px system-ui;background:#f3f8f7;color:#173a39;max-width:520px;margin:28px auto;padding:16px}main{padding:24px;border:1px solid #d7e8e4;border-radius:18px;background:white}a{display:block;background:#00736e;color:white;border-radius:13px;padding:16px;text-align:center;text-decoration:none;font-weight:bold}p{line-height:1.5;color:#586b6a}</style></head><body><main><h1>Vía Traslados V33</h1><p>Formulario de incorporación de conductores con foto, marca, modelo, año y matrícula; contraseña y bandeja de aprobación. Servidor y D1 QA aislados, sin producción.</p><a href="./via-conductor-v33-registration-qa.apk" download>Descargar V33 QA Online</a><p>Podés probar ingreso, inscripción, fotografía del vehículo y aprobación desde la bandeja del administrador. Usá solamente datos y fotos sintéticos: teléfono 099000xxx, correo @qa.invalid y matrícula QA. No hay cuentas ni pagos reales.</p></main></body></html>
           HTML
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f via-conductor-v33-online-qa.apk
+          git add -f via-conductor-v33-registration-qa.apk
           git add index.html SHA256SUMS.txt
           git commit -m "qa(via): distribuir V33 online con backend y D1 aislados"
           git push origin HEAD:via-apk-descarga-qa-20261112
