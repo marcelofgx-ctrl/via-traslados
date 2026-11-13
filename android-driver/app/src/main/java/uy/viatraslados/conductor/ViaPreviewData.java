@@ -4,7 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Datos ficticios para probar la interfaz V26 en un paquete Android separado.
+ * Datos ficticios para probar la interfaz V27 en un paquete Android separado.
  * Nunca invoca el Worker, D1 ni servicios de producción.
  */
 public final class ViaPreviewData {
@@ -42,6 +42,65 @@ public final class ViaPreviewData {
                 .put("trafficIncluded",false));
         }catch(Exception ignored){}
         return b;
+    }
+
+
+    private static final java.util.Map<String,String> statuses=new java.util.HashMap<>();
+    private static final java.util.Map<String,Integer> prices=new java.util.HashMap<>();
+
+    private static JSONObject sample(String id,String date,String time,String from,
+            String to,int pax,int luggage,double km,int minutes,String state,int price,
+            long createdAt){
+        JSONObject item=booking();
+        try {
+            item.put("id",id).put("date",date).put("time",time);
+            item.put("origin",from).put("destination",to);
+            item.put("name","Pasajero de demostración");
+            item.put("passengers",pax).put("bags",luggage);
+            item.put("status",statuses.containsKey(id)?statuses.get(id):state);
+            item.put("price",prices.containsKey(id)?prices.get(id):price);
+            item.put("created_at",createdAt);
+            item.put("assignedDriverId",JSONObject.NULL);
+            item.put("assignedDriverName",JSONObject.NULL);
+            item.put("notes","Datos inventados para probar la pantalla, sin reservas reales.");
+            item.put("route",new JSONObject().put("distanceKm",km)
+                .put("durationMinutes",minutes).put("source","simulated"));
+        }catch(Exception ignored){}
+        return item;
+    }
+
+    public static JSONArray requests(){
+        JSONArray rows=new JSONArray();
+        rows.put(sample("VIA-DEMO-N001","2026-11-20","10:00",
+            "Ruta 200, San José de Carrasco, Canelones",
+            "Aeropuerto Internacional de Carrasco, Canelones",
+            1,1,5.1,8,"requested",0,1794501200L));
+        rows.put(sample("VIA-DEMO-N002","2026-11-21","14:30",
+            "Av. Italia 4230, Montevideo",
+            "Bulevar Artigas 1825, Montevideo",
+            2,2,12.7,26,"requested",0,1794498500L));
+        rows.put(sample("VIA-DEMO-N003","2026-11-24","09:15",
+            "Alberto Méndez 107, Colonia del Sacramento",
+            "Lagunillas 434, Montevideo",
+            1,1,185,146,"requested",0,1794499000L));
+        rows.put(sample("VIA-DEMO-Q001","2026-11-23","07:30",
+            "Aeropuerto Internacional de Carrasco",
+            "Punta Carretas, Montevideo",
+            3,2,23.4,38,"quoted",3150,1794498000L));
+        rows.put(sample("VIA-DEMO-Q002","2026-11-25","18:00",
+            "Ciudad Vieja, Montevideo",
+            "Shangrilá, Canelones",
+            1,0,26.1,42,"quoted",2400,1794488000L));
+        rows.put(booking());
+        return rows;
+    }
+
+    private static String bookingId(String path){
+        String prefix="/api/operator/requests/";
+        if(path.startsWith(prefix))return path.substring(prefix.length()).split("/")[0];
+        prefix="/api/admin/requests/";
+        if(path.startsWith(prefix))return path.substring(prefix.length()).split("/")[0];
+        return ID;
     }
 
     private static JSONObject driver(String id,String name,String phone,
@@ -85,7 +144,7 @@ public final class ViaPreviewData {
 
     public static synchronized Reply request(String method,String path,JSONObject payload){
         if("GET".equals(method)&&"/api/operator/requests".equals(path))
-            return new Reply(200,new JSONArray().put(booking()));
+            return new Reply(200,requests());
         if("GET".equals(method)&&"/api/admin/drivers".equals(path))
             return new Reply(200,wrap("drivers",drivers()));
         if("GET".equals(method)&&"/api/admin/settings".equals(path)){
@@ -124,12 +183,24 @@ public final class ViaPreviewData {
             return new Reply(200,result);
         }
         if("PATCH".equals(method)&&path.contains("/api/operator/requests/")){
+            String id=bookingId(path);
             if(payload!=null){
                 String next=payload.optString("status","");
-                if(!next.isEmpty())status=next;
-                if(payload.has("price"))price=payload.optInt("price",price);
+                if(!next.isEmpty()){
+                    if(ID.equals(id))status=next;
+                    else statuses.put(id,next);
+                }
+                if(payload.has("price")){
+                    if(ID.equals(id))price=payload.optInt("price",price);
+                    else prices.put(id,payload.optInt("price",0));
+                }
             }
-            return new Reply(200,booking());
+            JSONArray all=requests();
+            for(int i=0;i<all.length();i++){
+                JSONObject row=all.optJSONObject(i);
+                if(row!=null&&id.equals(row.optString("id")))return new Reply(200,row);
+            }
+            return fail(404,"Solicitud ficticia no encontrada");
         }
         return fail(400,"Modo demostración: operación sin servidor.");
     }

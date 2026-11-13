@@ -1,0 +1,72 @@
+name: Via Traslados V27 - solicitudes compactas QA
+on:
+  push:
+    branches: [via-solicitudes-compactas-v27-qa-20261112]
+    paths:
+      - "android-driver/**"
+      - "backend/**"
+      - "tests/**"
+      - "scripts/v26-assignment-sql-test.py"
+      - ".github/workflows/via-solicitudes-v27-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-solicitudes-v27-qa
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validar backend y motor de asignación
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          python3 scripts/v26-assignment-sql-test.py
+      - name: Inspección estática del nuevo listado Android
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java").read_text()
+          required=["requestMatches(JSONObject item)","selectRequestOrder()",
+            "selectRequestFilter()","showBookings(LinearLayout container,String mode)",
+            "compactRouteRow(LinearLayout parent","requestSearchVisible",
+            "VIA_PREVIEW","routeLabels.clear()"]
+          for part in required:
+            assert part in s,part
+          assert s.count("private void bookingCard(")==1
+          assert s.count("private void lists(")==1
+          print("Listado V27: acciones reales, control de mapas y un solo renderizador")
+          PY
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Instalar Android SDK 35
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar V27 demo aislada sin publicar
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaPreview=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "name='uy.viatraslados.conductor.v27preview'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "versionCode='27'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-traslados-v27-demo-artifact
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7

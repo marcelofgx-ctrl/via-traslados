@@ -64,6 +64,10 @@ public final class MainActivity extends Activity {
     private String lastPayload = "";
     private String tab = "solicitudes";
     private String subtab = "nuevas";
+    private String requestOrder = "trip";
+    private String requestFilter = "all";
+    private String requestSearch = "";
+    private boolean requestSearchVisible = false;
     private boolean loading = false;
     private boolean visible = false;
     private Dialog acceptanceDialog;
@@ -92,12 +96,9 @@ public final class MainActivity extends Activity {
             operatorKey = "PREVIEW_LOCAL_NO_NETWORK";
             adminLoaded = true;
             managedDrivers = ViaPreviewData.drivers();
-            bookings = new JSONArray().put(ViaPreviewData.booking());
-            tab = "viajes";
+            bookings = ViaPreviewData.requests();
+            tab = "solicitudes";
             dashboard();
-            handler.post(() -> {
-                if (!isFinishing()) details(ViaPreviewData.booking());
-            });
         } else {
             loginScreen();
         }
@@ -887,7 +888,7 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text("V26 · VISTA DE PRUEBA · SIN CONEXIÓN A PRODUCCIÓN",
+            TextView demo=text("V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
                 10,TEAL_DARK,true);
             demo.setGravity(Gravity.CENTER);
             demo.setPadding(dp(8),dp(7),dp(8),dp(7));
@@ -922,73 +923,204 @@ public final class MainActivity extends Activity {
         return n;
     }
 
-    private void lists(LinearLayout body, String mode) {
-        if ("solicitudes".equals(mode)) {
-            addLine(body, "Solicitudes", 23, INK, true, 3);
-            addLine(body, "Revisá solicitudes y cotizaciones", 12, MUTED, false, 11);
+    // V27: cabecera densa y utilitaria. Los tres controles tienen comportamiento real.
+    private TextView requestControl(String label, View.OnClickListener action) {
+        TextView chip=text(label,12,TEAL_DARK,true);
+        chip.setGravity(Gravity.CENTER);
+        chip.setMinHeight(dp(40));
+        chip.setPadding(dp(9),dp(6),dp(9),dp(6));
+        chip.setSingleLine(true);
+        chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        chip.setBackground(ripple(Color.WHITE,BORDER,11));
+        chip.setClickable(true);
+        chip.setFocusable(true);
+        chip.setOnClickListener(action);
+        return chip;
+    }
 
-            // Control segmentado, compacto y con una sola selección destacada.
-            LinearLayout filters=row();
-            filters.setPadding(dp(3),dp(3),dp(3),dp(3));
-            filters.setBackground(bg(Color.rgb(233,241,239),13,0));
-            String[] choices={"Nuevas ("+count("requested")+")","Con ofertas ("+count("quoted")+")"};
-            String[] keys={"nuevas","ofertas"};
-            for(int n=0;n<choices.length;n++){
-                final String next=keys[n];
-                boolean active=next.equals(subtab);
-                TextView option=text(choices[n],13,active?Color.WHITE:TEAL_DARK,active);
-                option.setGravity(Gravity.CENTER);
-                option.setBackground(ripple(active?TEAL:Color.TRANSPARENT,0,10));
-                option.setClickable(true);
-                option.setFocusable(true);
-                option.setContentDescription("Mostrar "+choices[n]);
-                option.setOnClickListener(v->{if(!next.equals(subtab)){subtab=next;dashboard();}});
-                LinearLayout.LayoutParams part=new LinearLayout.LayoutParams(0,dp(39),1);
-                if(n>0)part.leftMargin=dp(2);
-                filters.addView(option,part);
+    private void selectRequestOrder() {
+        final String[] options={"Fecha del viaje · próximas primero","Fecha de creación · recientes primero"};
+        int selected="created".equals(requestOrder)?1:0;
+        new AlertDialog.Builder(this).setTitle("Ordenar solicitudes")
+            .setSingleChoiceItems(options,selected,(dialog,position)->{
+                requestOrder=position==1?"created":"trip";
+                dialog.dismiss();
+                dashboard();
+            }).setNegativeButton("Cancelar",null).show();
+    }
+
+    private void selectRequestFilter() {
+        final String[] options={"Todas las solicitudes","Con aeropuerto","Con equipaje"};
+        int selected="airport".equals(requestFilter)?1:
+            "luggage".equals(requestFilter)?2:0;
+        new AlertDialog.Builder(this).setTitle("Filtrar solicitudes")
+            .setSingleChoiceItems(options,selected,(dialog,position)->{
+                requestFilter=position==1?"airport":position==2?"luggage":"all";
+                dialog.dismiss();
+                dashboard();
+            }).setNegativeButton("Cancelar",null).show();
+    }
+
+    private boolean requestMatches(JSONObject item) {
+        if(!"all".equals(requestFilter)) {
+            if("luggage".equals(requestFilter)&&item.optInt("bags",0)<1)return false;
+            if("airport".equals(requestFilter)){
+                String route=(item.optString("origin","")+" "+
+                    item.optString("destination","")).toLowerCase(java.util.Locale.ROOT);
+                if(!route.contains("aeropuerto")&&!route.contains("airport"))return false;
             }
-            body.addView(filters,new LinearLayout.LayoutParams(-1,dp(45)));
-            spacer(body,12);
-        } else if ("viajes".equals(mode)) {
-            addLine(body, "Mis viajes", 25, INK, true, 4);
-            addLine(body, "Servicios confirmados y en curso", 13, MUTED, false, 18);
-        } else {
-            addLine(body, "Historial", 25, INK, true, 4);
-            addLine(body, "Traslados finalizados y cancelados", 13, MUTED, false, 18);
         }
+        String needle=requestSearch.trim().toLowerCase(java.util.Locale.ROOT);
+        if(needle.isEmpty())return true;
+        String haystack=(item.optString("id","")+" "+
+            item.optString("origin","")+" "+item.optString("destination","")+" "+
+            item.optString("name","")).toLowerCase(java.util.Locale.ROOT);
+        return haystack.contains(needle);
+    }
 
-        int shown=0;
+    private void showBookings(LinearLayout container,String mode) {
+        // Remover las referencias a tarjetas anteriores después de buscar o filtrar.
+        routeLabels.clear();
+        routeSpinners.clear();
+        routeCredits.clear();
+        routeCards.clear();
+        routeCardBookings.clear();
+        container.removeAllViews();
+        java.util.List<JSONObject> rows=new java.util.ArrayList<>();
         for(int i=0;i<bookings.length();i++){
             JSONObject item=bookings.optJSONObject(i);
             if(item==null)continue;
-            String status=item.optString("status");
+            String state=item.optString("status","");
             boolean include;
-            if("solicitudes".equals(mode))
-                include="nuevas".equals(subtab)?"requested".equals(status):"quoted".equals(status);
-            else if("historial".equals(mode))
-                include="completed".equals(status)||"cancelled".equals(status);
+            if("solicitudes".equals(mode)){
+                include="nuevas".equals(subtab)?"requested".equals(state):"quoted".equals(state);
+                if(include)include=requestMatches(item);
+            }else if("historial".equals(mode))
+                include="completed".equals(state)||"cancelled".equals(state);
             else
-                include="accepted".equals(status)||"confirmed".equals(status)
-                    ||"en_route".equals(status)||"arrived".equals(status)||"in_progress".equals(status);
-            if(include){bookingCard(body,item);shown++;}
+                include="accepted".equals(state)||"confirmed".equals(state)
+                    ||"en_route".equals(state)||"arrived".equals(state)||"in_progress".equals(state);
+            if(include)rows.add(item);
         }
-        if(shown==0){
+        if("solicitudes".equals(mode)){
+            if("created".equals(requestOrder)){
+                rows.sort((a,b)->Long.compare(b.optLong("created_at",0),
+                    a.optLong("created_at",0)));
+            }else{
+                rows.sort((a,b)->{
+                    String da=a.optString("date","")+" "+a.optString("time","");
+                    String db=b.optString("date","")+" "+b.optString("time","");
+                    return da.compareTo(db);
+                });
+            }
+        }
+        if(rows.isEmpty()){
             LinearLayout empty=card();
-            TextView circle=text("✓",20,TEAL,true);
-            circle.setGravity(Gravity.CENTER);
-            circle.setBackground(bg(SOFT,28,0));
-            empty.addView(circle,new LinearLayout.LayoutParams(dp(45),dp(45)));
-            spacer(empty,11);
-            addLine(empty,"Todo al día",18,INK,true,6);
-            addLine(empty,"No hay movimientos en esta sección. Las novedades aparecerán automáticamente.",
-                13,MUTED,false,0);
-            appendCard(body,empty,10);
+            empty.setPadding(dp(16),dp(15),dp(16),dp(15));
+            addLine(empty,"Sin solicitudes para mostrar",15,INK,true,5);
+            addLine(empty,"Probá otra pestaña o quitá los filtros.",
+                12,MUTED,false,0);
+            appendCard(container,empty,8);
+        }else for(JSONObject item:rows)bookingCard(container,item);
+        if("solicitudes".equals(mode)){
+            String count=rows.size()+" resultado"+(rows.size()==1?"":"s");
+            addLine(container,count+" · Actualización cada 20 s",11,MUTED,false,5);
         }
-        spacer(body,4);
-        addLine(body,"Solicitudes actualizadas cada 20 s · Distancias calculadas por ruta.",
-            11,MUTED,false,0);
+        handler.post(()->{if(!isFinishing())requestVisibleRoutes();});
     }
 
+    private void lists(LinearLayout body, String mode) {
+        if("solicitudes".equals(mode)){
+            addLine(body,"Solicitudes",21,INK,true,8);
+            LinearLayout tabs=row();
+            tabs.setPadding(dp(3),dp(3),dp(3),dp(3));
+            tabs.setBackground(bg(Color.rgb(231,241,239),12,0));
+            String[] options={"Nuevas ("+count("requested")+")",
+                ("admin".equals(staffRole)?"Con ofertas (":"Mis ofertas (")+
+                count("quoted")+")"};
+            String[] ids={"nuevas","ofertas"};
+            for(int i=0;i<ids.length;i++){
+                final String next=ids[i];
+                boolean chosen=next.equals(subtab);
+                TextView button=text(options[i],12,chosen?Color.WHITE:TEAL_DARK,chosen);
+                button.setGravity(Gravity.CENTER);
+                button.setSingleLine(true);
+                button.setBackground(ripple(chosen?TEAL:Color.TRANSPARENT,0,10));
+                button.setClickable(true);
+                button.setFocusable(true);
+                button.setContentDescription("Mostrar "+options[i]);
+                button.setOnClickListener(v->{if(!next.equals(subtab)){subtab=next;dashboard();}});
+                LinearLayout.LayoutParams part=new LinearLayout.LayoutParams(0,dp(40),1);
+                if(i>0)part.leftMargin=dp(2);
+                tabs.addView(button,part);
+            }
+            body.addView(tabs,new LinearLayout.LayoutParams(-1,dp(46)));
+            spacer(body,10);
+
+            LinearLayout toolbar=row();
+            TextView order=requestControl("↕  "+
+                ("created".equals(requestOrder)?"Recientes":"Fecha del viaje"),v->selectRequestOrder());
+            toolbar.addView(order,new LinearLayout.LayoutParams(0,dp(40),1));
+            TextView filter=requestControl("⚑  "+("all".equals(requestFilter)?
+                "Filtro":"airport".equals(requestFilter)?"Aeropuerto":"Equipaje"),
+                v->selectRequestFilter());
+            LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(0,dp(40),0.84f);
+            fp.leftMargin=dp(7);
+            toolbar.addView(filter,fp);
+            TextView search=requestControl("⌕",v->{
+                requestSearchVisible=!requestSearchVisible;
+                if(!requestSearchVisible)requestSearch="";
+                dashboard();
+            });
+            search.setTextSize(21);
+            search.setContentDescription(requestSearchVisible?"Cerrar búsqueda":"Buscar solicitud");
+            LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(42),dp(40));
+            sp.leftMargin=dp(7);
+            toolbar.addView(search,sp);
+            body.addView(toolbar);
+            if(requestSearchVisible){
+                EditText input=new EditText(this);
+                input.setSingleLine(true);
+                input.setTextSize(14);
+                input.setTextColor(INK);
+                input.setHintTextColor(MUTED);
+                input.setHint("Buscar por dirección, pasajero o número");
+                input.setBackground(bg(Color.WHITE,11,BORDER));
+                input.setPadding(dp(13),dp(9),dp(13),dp(9));
+                input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+                input.setText(requestSearch);
+                LinearLayout.LayoutParams inputParams=new LinearLayout.LayoutParams(-1,dp(43));
+                inputParams.topMargin=dp(8);
+                body.addView(input,inputParams);
+                // Se actualiza solo la lista, no la Activity ni el teclado.
+                // Listener conectado después de crear el contenedor de resultados.
+                LinearLayout results=column();
+                LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);
+                rp.topMargin=dp(10);
+                body.addView(results,rp);
+                input.addTextChangedListener(new android.text.TextWatcher(){
+                    @Override public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+                    @Override public void onTextChanged(CharSequence s,int start,int before,int count){
+                        requestSearch=s.toString();
+                        showBookings(results,mode);
+                    }
+                    @Override public void afterTextChanged(android.text.Editable s){}
+                });
+                showBookings(results,mode);
+                return;
+            }
+            spacer(body,10);
+        }else if("viajes".equals(mode)){
+            addLine(body,"Mis viajes",22,INK,true,4);
+            addLine(body,"Aceptados, confirmados y en curso",12,MUTED,false,12);
+        }else{
+            addLine(body,"Historial",22,INK,true,4);
+            addLine(body,"Finalizados y cancelados",12,MUTED,false,12);
+        }
+        LinearLayout results=column();
+        body.addView(results,new LinearLayout.LayoutParams(-1,-2));
+        showBookings(results,mode);
+    }
 
     // Los kilómetros permanecen vinculados a la reserva y se solicitan una sola vez
     // por sesión. No repetimos llamadas de rutas con el refresco de 30 segundos.
@@ -1037,7 +1169,10 @@ public final class MainActivity extends Activity {
         double distance=route.optDouble("distanceKm",Double.NaN);
         int minutes=route.optInt("durationMinutes",-1);
         if(!Double.isFinite(distance)||distance<=0||minutes<=0)return "Ruta pendiente";
-        return String.format(new java.util.Locale("es","UY"),"%.1f km  ·  %d min",distance,minutes);
+        String duration=minutes>=60?
+            (minutes/60)+" h "+(minutes%60)+" min":minutes+" min";
+        return String.format(new java.util.Locale("es","UY"),"%.1f km · %s",
+            distance,duration);
     }
 
     private void showRouteState(String id) {
@@ -1123,112 +1258,155 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void bookingCard(LinearLayout parent,JSONObject item){
-        LinearLayout tile=column();
-        tile.setPadding(dp(14),dp(13),dp(14),dp(12));
-        tile.setBackground(bg(Color.WHITE,15,BORDER));
-        LinearLayout head=row();
-        TextView when=text(compactDate(item.optString("date",""))+
-            "  ·  "+item.optString("time",""),13,INK,true);
-        head.addView(when,new LinearLayout.LayoutParams(0,-2,1));
-        String status=item.optString("status");
-        TextView flag=text(statusName(status),11,stateColor(status),true);
-        flag.setGravity(Gravity.CENTER);
-        flag.setPadding(dp(10),dp(5),dp(10),dp(5));
-        flag.setBackground(bg(SOFT,14,0));
-        head.addView(flag);
-        tile.addView(head);
-        spacer(tile,11);
+    private void compactRouteRow(LinearLayout parent,String pinText,String address,
+            boolean origin){
+        LinearLayout routeRow=row();
+        TextView pin=text(pinText,10,origin?Color.WHITE:TEAL_DARK,true);
+        pin.setGravity(Gravity.CENTER);
+        pin.setBackground(bg(origin?TEAL:SOFT,8,origin?0:BORDER));
+        pin.setContentDescription(origin?"Origen":"Destino");
+        LinearLayout.LayoutParams pinParams=new LinearLayout.LayoutParams(dp(22),dp(22));
+        routeRow.addView(pin,pinParams);
+        TextView value=text(prettyAddress(address),13,INK,true);
+        value.setMaxLines(2);
+        value.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        value.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams valueParams=new LinearLayout.LayoutParams(0,-2,1);
+        valueParams.leftMargin=dp(9);
+        routeRow.addView(value,valueParams);
+        parent.addView(routeRow,new LinearLayout.LayoutParams(-1,-2));
+    }
 
-        LinearLayout from=row();
-        TextView fromPin=text("●",12,TEAL,true);
-        fromPin.setGravity(Gravity.CENTER);
-        from.addView(fromPin,new LinearLayout.LayoutParams(dp(19),-2));
-        LinearLayout fromBody=column();
-        addLine(fromBody,"ORIGEN",10,MUTED,true,2);
-        TextView origin=text(prettyAddress(item.optString("origin")),14,INK,true);
-        origin.setMaxLines(2);origin.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        fromBody.addView(origin);
-        from.addView(fromBody,new LinearLayout.LayoutParams(0,-2,1));
-        tile.addView(from);
+    private void bookingCard(LinearLayout parent,JSONObject item){
+        final String status=item.optString("status","");
+        final String id=item.optString("id","");
+        LinearLayout tile=column();
+        tile.setPadding(dp(13),dp(12),dp(13),dp(11));
+        tile.setBackground(bg(Color.WHITE,15,BORDER));
+        tile.setClickable(true);
+        tile.setFocusable(true);
+        tile.setOnClickListener(v->details(item));
+        tile.setContentDescription(statusName(status)+" · "+
+            compactDate(item.optString("date",""))+" "+item.optString("time","")+
+            " · "+prettyAddress(item.optString("origin"))+" a "+
+            prettyAddress(item.optString("destination"))+". Abrir detalle.");
+
+        LinearLayout head=row();
+        TextView date=text(compactDate(item.optString("date",""))+
+            " · "+item.optString("time",""),14,INK,true);
+        date.setSingleLine(true);
+        date.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        head.addView(date,new LinearLayout.LayoutParams(0,-2,1));
+        TextView statusChip=text(statusName(status),10,stateColor(status),true);
+        statusChip.setGravity(Gravity.CENTER);
+        statusChip.setPadding(dp(8),dp(5),dp(8),dp(5));
+        statusChip.setBackground(bg(SOFT,10,0));
+        LinearLayout.LayoutParams chipParams=new LinearLayout.LayoutParams(-2,-2);
+        chipParams.leftMargin=dp(7);
+        head.addView(statusChip,chipParams);
+        tile.addView(head);
+
+        LinearLayout second=row();
+        TextView reference=text(id,11,MUTED,false);
+        reference.setSingleLine(true);
+        reference.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        second.addView(reference,new LinearLayout.LayoutParams(0,-2,1));
+        if("quoted".equals(status)&&item.optInt("price",0)>0){
+            TextView amount=text("$ "+String.format(new java.util.Locale("es","UY"),
+                "%,d",item.optInt("price"))+" UYU",12,TEAL_DARK,true);
+            second.addView(amount);
+        }
+        LinearLayout.LayoutParams secondParams=new LinearLayout.LayoutParams(-1,-2);
+        secondParams.topMargin=dp(3);
+        tile.addView(second,secondParams);
         spacer(tile,9);
 
-        LinearLayout to=row();
-        TextView toPin=text("◆",11,TEAL,true);
-        toPin.setGravity(Gravity.CENTER);
-        to.addView(toPin,new LinearLayout.LayoutParams(dp(19),-2));
-        LinearLayout toBody=column();
-        addLine(toBody,"DESTINO",10,MUTED,true,2);
-        TextView dest=text(prettyAddress(item.optString("destination")),14,INK,true);
-        dest.setMaxLines(2);dest.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        toBody.addView(dest);
-        to.addView(toBody,new LinearLayout.LayoutParams(0,-2,1));
-        tile.addView(to);
-        spacer(tile,11);
+        compactRouteRow(tile,"A",item.optString("origin",""),true);
+        spacer(tile,5);
+        compactRouteRow(tile,"B",item.optString("destination",""),false);
+        spacer(tile,9);
 
-        LinearLayout facts=row();
-        int pax=item.optInt("passengers",1),bags=item.optInt("bags",0);
-        TextView people=text(pax+(pax==1?" pasajero":" pasajeros")+" · "+
-            bags+(bags==1?" valija":" valijas"),12,MUTED,false);
-        facts.addView(people,new LinearLayout.LayoutParams(0,-2,1));
-
-        String id=item.optString("id","");
-        LinearLayout route=row();
+        LinearLayout metrics=row();
+        LinearLayout distanceGroup=row();
         android.widget.ProgressBar spinner=new android.widget.ProgressBar(this,null,
             android.R.attr.progressBarStyleSmall);
         spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TEAL));
-        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(15),dp(15));
-        sp.rightMargin=dp(5);
-        route.addView(spinner,sp);
-        TextView metric=text("",12,MUTED,true);
-        metric.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        route.addView(metric);
-        facts.addView(route);
-        tile.addView(facts);
-        // Geoapify Free y OpenStreetMap requieren atribución visible y enlaces.
-        TextView credit=text("",10,MUTED,false);
-        String attributionText="Powered by Geoapify · © OpenStreetMap contributors";
-        android.text.SpannableString linked=new android.text.SpannableString(attributionText);
-        int geoStart=attributionText.indexOf("Geoapify");
-        int osmStart=attributionText.indexOf("© OpenStreetMap");
-        linked.setSpan(new android.text.style.URLSpan("https://www.geoapify.com/"),
-            geoStart,geoStart+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        linked.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
-            osmStart,attributionText.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        credit.setText(linked);
-        credit.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
-        LinearLayout.LayoutParams cr=new LinearLayout.LayoutParams(-1,-2);
-        cr.topMargin=dp(5);
-        tile.addView(credit,cr);
+        LinearLayout.LayoutParams spinParams=new LinearLayout.LayoutParams(dp(13),dp(13));
+        spinParams.rightMargin=dp(5);
+        distanceGroup.addView(spinner,spinParams);
+        TextView routeValue=text("Calculando ruta…",12,MUTED,true);
+        routeValue.setSingleLine(true);
+        routeValue.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        distanceGroup.addView(routeValue,new LinearLayout.LayoutParams(0,-2,1));
+        metrics.addView(distanceGroup,new LinearLayout.LayoutParams(0,-2,1));
+        int pax=item.optInt("passengers",1),bags=item.optInt("bags",0);
+        TextView capacity=text(pax+" pax · "+bags+" val.",11,MUTED,false);
+        capacity.setSingleLine(true);
+        capacity.setContentDescription(pax+" pasajero"+(pax==1?"":"s")+
+            ", "+bags+" valija"+(bags==1?"":"s"));
+        LinearLayout.LayoutParams capParams=new LinearLayout.LayoutParams(-2,-2);
+        capParams.leftMargin=dp(6);
+        metrics.addView(capacity,capParams);
+        tile.addView(metrics);
+
+        // Atribución visible al disponerse de métricas del proveedor, con enlaces.
+        TextView attribution=text("",10,MUTED,false);
+        String source="Powered by Geoapify · © OpenStreetMap contributors";
+        android.text.SpannableString license=new android.text.SpannableString(source);
+        int geo=source.indexOf("Geoapify"), osm=source.indexOf("© OpenStreetMap");
+        license.setSpan(new android.text.style.URLSpan("https://www.geoapify.com/"),
+            geo,geo+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        license.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
+            osm,source.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if(BuildConfig.VIA_PREVIEW){
+            attribution.setText("Ruta ilustrativa · sin servicios externos");
+        }else{
+            attribution.setText(license);
+            attribution.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        }
+        LinearLayout.LayoutParams attribParams=new LinearLayout.LayoutParams(-1,-2);
+        attribParams.topMargin=dp(3);
+        tile.addView(attribution,attribParams);
+
         if(!id.isEmpty()){
-            routeLabels.put(id,metric);
+            routeLabels.put(id,routeValue);
             routeSpinners.put(id,spinner);
-            routeCredits.put(id,credit);
+            routeCredits.put(id,attribution);
             routeCards.put(id,tile);
             routeCardBookings.put(id,item);
+            JSONObject saved=item.optJSONObject("route");
+            if(saved!=null&&saved.optDouble("distanceKm",0)>0&&
+                saved.optInt("durationMinutes",0)>0)routeResults.put(id,saved);
             showRouteState(id);
-        }else{
+        }else {
             spinner.setVisibility(View.GONE);
-            credit.setVisibility(View.GONE);
-            metric.setText("Ruta pendiente");
+            attribution.setVisibility(View.GONE);
+            routeValue.setText("Ruta pendiente");
         }
-        spacer(tile,12);
+        spacer(tile,9);
+        View separator=new View(this);
+        separator.setBackgroundColor(BORDER);
+        tile.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
+        spacer(tile,6);
 
         LinearLayout actions=row();
-        TextView see=actionText("Ver detalles   ›",TEAL_DARK,v->details(item));
+        TextView see=actionText("Ver detalles  ›",TEAL_DARK,v->details(item));
+        see.setTextSize(12);
+        see.setMinHeight(dp(42));
         see.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-        see.setTextSize(13);
-        see.setPadding(dp(2),dp(5),0,dp(5));
-        actions.addView(see,new LinearLayout.LayoutParams(0,dp(43),1));
+        see.setPadding(dp(1),dp(4),0,dp(4));
+        actions.addView(see,new LinearLayout.LayoutParams(0,dp(42),1));
         if("requested".equals(status)){
-            Button quote=button("Cotizar  →",true,v->quote(item));
-            quote.setTextSize(13);
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(121),dp(43));
-            lp.leftMargin=dp(10);
-            actions.addView(quote,lp);
+            Button quoteButton=button("Sugerir precio",true,v->quote(item));
+            quoteButton.setTextSize(12);
+            quoteButton.setMinHeight(0);
+            LinearLayout.LayoutParams quoteParams=
+                new LinearLayout.LayoutParams(dp(133),dp(42));
+            quoteParams.leftMargin=dp(6);
+            actions.addView(quoteButton,quoteParams);
         }
         tile.addView(actions);
-        appendCard(parent,tile,10);
+        appendCard(parent,tile,8);
     }
 
     private static String statusName(String state) {
@@ -1364,7 +1542,9 @@ public final class MainActivity extends Activity {
         addLine(itinerary,info,13,INK,true,7);
         // Atribución obligatoria visible, pero subordinada a los datos del viaje.
         if(measured!=null){
-            TextView credit=text("Powered by Geoapify · © OpenStreetMap contributors",10,MUTED,false);
+            TextView credit=text(BuildConfig.VIA_PREVIEW?
+                "Ruta ilustrativa · sin servicios externos":
+                "Powered by Geoapify · © OpenStreetMap contributors",10,MUTED,false);
             credit.setOnClickListener(v->{
                 try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")));}
                 catch(Exception ignored){}
@@ -1381,6 +1561,7 @@ public final class MainActivity extends Activity {
         LinearLayout shortcuts=row();
         String phone=item.optString("phone","");
         TextView call=actionText("☎  Llamar",TEAL_DARK,v->{
+            if(BuildConfig.VIA_PREVIEW){message("Demo: no se realizan llamadas.");return;}
             try{startActivity(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(phone))));}
             catch(Exception e){message("No se pudo abrir el teléfono.");}
         });
@@ -1462,6 +1643,7 @@ public final class MainActivity extends Activity {
     }
 
     private void openMaps(JSONObject item) {
+        if(BuildConfig.VIA_PREVIEW){message("Demo: no se abre navegación real.");return;}
         try {
             String origin=URLEncoder.encode(item.optString("origin"),"UTF-8");
             String dest=URLEncoder.encode(item.optString("destination"),"UTF-8");

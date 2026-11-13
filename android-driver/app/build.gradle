@@ -4,13 +4,13 @@ android {
     namespace 'uy.viatraslados.conductor'
     compileSdk 35
     defaultConfig {
-        applicationId project.hasProperty('viaPreview') ? 'uy.viatraslados.conductor.v26preview' : 'uy.viatraslados.conductor.autoprecalcqa'
+        applicationId project.hasProperty('viaPreview') ? 'uy.viatraslados.conductor.v27preview' : 'uy.viatraslados.conductor.autoprecalcqa'
         minSdk 26
         targetSdk 35
-        versionCode project.hasProperty('viaPreview') ? 26 : 10
-        versionName project.hasProperty('viaPreview') ? '0.26.0-preview' : '1.0.0-auto-precalc-qa'
+        versionCode project.hasProperty('viaPreview') ? 27 : 10
+        versionName project.hasProperty('viaPreview') ? '0.27.0-preview' : '1.0.0-auto-precalc-qa'
         buildConfigField 'boolean', 'VIA_PREVIEW', project.hasProperty('viaPreview') ? 'true' : 'false'
-        manifestPlaceholders = [appLabel: project.hasProperty('viaPreview') ? 'Vía Traslados V26 Demo' : 'Vía Traslados QA 1.0']
+        manifestPlaceholders = [appLabel: project.hasProperty('viaPreview') ? 'Vía Traslados V27 Demo' : 'Vía Traslados QA 1.0']
     }
     buildFeatures { buildConfig true }
     compileOptions {
