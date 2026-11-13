@@ -1213,99 +1213,215 @@ public final class MainActivity extends Activity {
         return "requested".equals(state) ? ORANGE : TEAL;
     }
 
-    private void details(JSONObject item) {
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout body = column();
-        body.setPadding(dp(22),dp(10),dp(22),dp(16));
-        scroll.addView(body);
-        addLine(body, item.optString("id"), 15, TEAL, true, 12);
-        addLine(body, statusName(item.optString("status")), 17, INK, true, 13);
-        addLine(body, "FECHA Y HORA", 11, MUTED, true, 4);
-        addLine(body, item.optString("date") + "  ·  " + item.optString("time"),
-            17, INK, true, 16);
-        addLine(body, "ORIGEN", 11, MUTED, true, 4);
-        addLine(body, item.optString("origin"), 16, INK, true, 13);
-        addLine(body, "DESTINO", 11, MUTED, true, 4);
-        addLine(body, item.optString("destination"), 16, INK, true, 13);
-        JSONObject route=routeResults.get(item.optString("id"));
-        addLine(body,"DISTANCIA POR CARRETERA",11,MUTED,true,4);
-        addLine(body,route==null?"Pendiente de calcular":routeMetrics(route),
-            15,route==null?MUTED:TEAL_DARK,true,route==null?13:5);
-        if(route!=null) {
-            TextView powered=text("Powered by Geoapify · © OpenStreetMap contributors",11,MUTED,false);
-            powered.setOnClickListener(v->{
-                try{startActivity(new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://www.geoapify.com/")));}
-                catch(Exception ignored){}
-            });
-            body.addView(powered);
+    // V26: pantalla de consulta a tamaño completo; no un AlertDialog largo.
+    private Dialog premiumPage(String eyebrow, String title, String subtitle, String state,
+            LinearLayout[] sections) {
+        Dialog dialog=new Dialog(this,android.R.style.Theme_Material_Light_NoActionBar);
+        LinearLayout page=column();
+        page.setBackgroundColor(LIGHT);
+        LinearLayout header=row();
+        header.setBackgroundColor(Color.WHITE);
+        header.setPadding(dp(13),dp(10),dp(17),dp(10));
+        TextView back=actionText("‹",TEAL_DARK,v->dialog.dismiss());
+        back.setTextSize(28);
+        back.setContentDescription("Volver al panel");
+        header.addView(back,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        LinearLayout heading=column();
+        addLine(heading,title,19,INK,true,2);
+        addLine(heading,subtitle,11,MUTED,false,0);
+        header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+        if(state!=null&&!state.isEmpty()){
+            TextView flag=text(state,11,TEAL_DARK,true);
+            flag.setGravity(Gravity.CENTER);
+            flag.setPadding(dp(9),dp(7),dp(9),dp(7));
+            flag.setBackground(bg(SOFT,12,0));
+            header.addView(flag);
+        }
+        page.addView(header,new LinearLayout.LayoutParams(-1,-2));
+        View separator=new View(this);
+        separator.setBackgroundColor(BORDER);
+        page.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
+
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout body=column();
+        body.setPadding(dp(17),dp(16),dp(17),dp(25));
+        if(eyebrow!=null&&!eyebrow.isEmpty()){
+            TextView over=text(eyebrow,10,TEAL_DARK,true);
+            over.setLetterSpacing(0.13f);
+            body.addView(over);
             spacer(body,13);
         }
-        addLine(body, "PASAJEROS Y EQUIPAJE", 11, MUTED, true, 4);
-        addLine(body, item.optInt("passengers",1) + " pasajero(s), " +
-            item.optInt("bags",0) + " valija(s)", 15, INK, false, 13);
-        String notes = item.optString("notes","");
-        if (!notes.isEmpty() && !"null".equals(notes)) {
-            addLine(body,"INDICACIONES",11,MUTED,true,4);
-            addLine(body,notes,15,INK,false,13);
+        scroll.addView(body);
+        page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout footer=column();
+        footer.setBackgroundColor(Color.WHITE);
+        footer.setPadding(dp(17),dp(9),dp(17),dp(14));
+        sections[0]=body;
+        sections[1]=footer;
+        page.addView(footer,new LinearLayout.LayoutParams(-1,-2));
+        dialog.setContentView(page);
+        dialog.show();
+        Window window=dialog.getWindow();
+        if(window!=null){
+            window.setBackgroundDrawableResource(android.R.color.white);
+            window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT);
         }
-        int price = item.optInt("price",0);
-        if (price>0) addLine(body,"Precio ofrecido: $" + price + " UYU",
-                           18,TEAL,true,14);
-        addLine(body,"PASAJERO",11,MUTED,true,4);
-        addLine(body,item.optString("name","Sin nombre"),15,INK,true,3);
-        addLine(body,item.optString("phone",""),14,MUTED,false,3);
-        addLine(body,item.optString("email",""),13,MUTED,false,14);
-        if ("admin".equals(staffRole) && ("requested".equals(item.optString("status")) || "quoted".equals(item.optString("status")))) {
-            Button assign=button("Asignar conductor",true,v->driverAssignmentDialog(item));
-            body.addView(assign,new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(body,8);
-        }
-        Button map=button("Abrir ruta en Google Maps", false, v -> openMaps(item));
-        body.addView(map,new LinearLayout.LayoutParams(-1,dp(50)));
-        spacer(body,8);
-        String phone = item.optString("phone","");
-        if (!phone.isEmpty()) {
-            Button call=button("Llamar al pasajero", false, v -> {
-                try { startActivity(new Intent(Intent.ACTION_DIAL,
-                    Uri.parse("tel:" + Uri.encode(phone)))); }
-                catch (Exception e) { message("No se encontró una app de teléfono."); }
+        return dialog;
+    }
+
+    private void premiumFact(LinearLayout parent,String label,String value) {
+        LinearLayout tile=column();
+        tile.setPadding(dp(13),dp(12),dp(13),dp(12));
+        tile.setBackground(bg(SOFT,13,0));
+        addLine(tile,label,10,MUTED,true,6);
+        addLine(tile,value,15,INK,true,0);
+        parent.addView(tile,new LinearLayout.LayoutParams(0,-2,1));
+    }
+
+    private void premiumKeyValue(LinearLayout parent,String label,String value,boolean important) {
+        addLine(parent,label,10,MUTED,true,4);
+        addLine(parent,value,important?15:13,important?INK:MUTED,important,11);
+    }
+
+    private void details(JSONObject item) {
+        final String id=item.optString("id","");
+        final String state=item.optString("status","");
+        LinearLayout[] views=new LinearLayout[2];
+        Dialog panel=premiumPage("DETALLE DEL SERVICIO","Detalle del traslado",id,statusName(state),views);
+        LinearLayout body=views[0],footer=views[1];
+
+        LinearLayout facts=row();
+        LinearLayout date=column();
+        date.setPadding(dp(13),dp(12),dp(13),dp(12));
+        date.setBackground(bg(SOFT,13,0));
+        addLine(date,"FECHA Y HORA",10,MUTED,true,6);
+        addLine(date,compactDate(item.optString("date"))+" · "+item.optString("time"),14,INK,true,0);
+        facts.addView(date,new LinearLayout.LayoutParams(0,-2,1));
+        JSONObject route=routeResults.get(id);
+        if(route==null)route=item.optJSONObject("route");
+        final JSONObject measured=route;
+        LinearLayout metric=column();
+        metric.setPadding(dp(13),dp(12),dp(13),dp(12));
+        metric.setBackground(bg(SOFT,13,0));
+        addLine(metric,"DISTANCIA / TIEMPO",10,MUTED,true,6);
+        addLine(metric,measured==null?"Pendiente":routeMetrics(measured),14,
+            measured==null?MUTED:TEAL_DARK,true,0);
+        LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(0,-2,1);
+        mp.leftMargin=dp(7);
+        facts.addView(metric,mp);
+        body.addView(facts);
+        spacer(body,12);
+
+        LinearLayout itinerary=card();
+        addLine(itinerary,"RECORRIDO",10,TEAL_DARK,true,14);
+        premiumKeyValue(itinerary,"●   ORIGEN",item.optString("origin"),true);
+        premiumKeyValue(itinerary,"◆   DESTINO",item.optString("destination"),true);
+        View line=new View(this);line.setBackgroundColor(BORDER);
+        itinerary.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));
+        spacer(itinerary,12);
+        String info=item.optInt("passengers",1)+" pasajero(s) · "+
+            item.optInt("bags",0)+" valija(s)";
+        if(item.optInt("price",0)>0)info+=" · $ "+item.optInt("price")+" UYU";
+        addLine(itinerary,info,13,INK,true,7);
+        // Atribución obligatoria visible, pero subordinada a los datos del viaje.
+        if(measured!=null){
+            TextView credit=text("Powered by Geoapify · © OpenStreetMap contributors",10,MUTED,false);
+            credit.setOnClickListener(v->{
+                try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")));}
+                catch(Exception ignored){}
             });
-            body.addView(call,new LinearLayout.LayoutParams(-1,dp(50)));
-            spacer(body,8);
+            itinerary.addView(credit);
         }
-        String state=item.optString("status");
-        if ("requested".equals(state)) {
-            body.addView(button("Sugerir precio en pesos",true,v->quote(item)),
-                new LinearLayout.LayoutParams(-1,dp(50)));
+        appendCard(body,itinerary,12);
+
+        LinearLayout passenger=card();
+        addLine(passenger,"PASAJERO",10,TEAL_DARK,true,10);
+        addLine(passenger,item.optString("name","Sin nombre"),16,INK,true,5);
+        addLine(passenger,item.optString("phone",""),13,MUTED,false,3);
+        addLine(passenger,item.optString("email",""),12,MUTED,false,9);
+        LinearLayout shortcuts=row();
+        String phone=item.optString("phone","");
+        TextView call=actionText("☎  Llamar",TEAL_DARK,v->{
+            try{startActivity(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(phone))));}
+            catch(Exception e){message("No se pudo abrir el teléfono.");}
+        });
+        call.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        call.setEnabled(!phone.isEmpty());
+        shortcuts.addView(call,new LinearLayout.LayoutParams(0,dp(42),1));
+        TextView maps=actionText("↗  Abrir ruta",TEAL_DARK,v->openMaps(item));
+        maps.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        shortcuts.addView(maps,new LinearLayout.LayoutParams(0,dp(42),1));
+        passenger.addView(shortcuts);
+        appendCard(body,passenger,12);
+
+        final boolean assignable="admin".equals(staffRole)&&(
+            "requested".equals(state)||"quoted".equals(state)||
+            "accepted".equals(state)||"confirmed".equals(state));
+        String assigned=item.optString("assignedDriverName","");
+        if("null".equals(assigned))assigned="";
+        final boolean hasDriver=!assigned.isEmpty();
+        LinearLayout driver=card();
+        addLine(driver,"CONDUCTOR ASIGNADO",10,TEAL_DARK,true,9);
+        addLine(driver,hasDriver?assigned:"Sin asignar",16,INK,true,5);
+        addLine(driver,hasDriver?"Asignación registrada · disponibilidad GPS no verificada":
+            "Elegí un conductor habilitado y sin conflictos conocidos",12,MUTED,false,8);
+        if(assignable&&hasDriver){
+            TextView change=actionText("Cambiar conductor  ›",TEAL_DARK,v->{
+                panel.dismiss();driverAssignmentDialog(item);
+            });
+            change.setGravity(Gravity.LEFT);
+            driver.addView(change,new LinearLayout.LayoutParams(-1,dp(40)));
         }
-        String next="",title="";
-        switch(state) {
-            case "accepted": next="confirmed";title="Confirmar servicio";break;
-            case "confirmed": next="en_route";title="Salir hacia el pasajero";break;
-            case "en_route": next="arrived";title="Marcar llegada al origen";break;
-            case "arrived": next="in_progress";title="Iniciar traslado";break;
-            case "in_progress": next="completed";title="Finalizar traslado";break;
+        appendCard(body,driver,12);
+        String notes=item.optString("notes","");
+        if(!notes.isEmpty()&&!"null".equals(notes)){
+            LinearLayout extra=card();
+            addLine(extra,"INDICACIONES",10,MUTED,true,8);
+            addLine(extra,notes,13,INK,false,0);
+            appendCard(body,extra,11);
         }
-        if (!next.isEmpty()) {
-            String target=next;
-            String actionTitle=title;
-            spacer(body,8);
-            body.addView(button(actionTitle,true,v->confirmStatus(item,target,actionTitle)),
-                new LinearLayout.LayoutParams(-1,dp(50)));
+
+        if("requested".equals(state)){
+            TextView quoteAction=actionText("Sugerir precio  ›",TEAL_DARK,v->{panel.dismiss();quote(item);});
+            quoteAction.setGravity(Gravity.LEFT);
+            body.addView(quoteAction,new LinearLayout.LayoutParams(-1,dp(42)));
         }
-        if ("requested".equals(state)||"quoted".equals(state)||
-            "accepted".equals(state)||"confirmed".equals(state)||
-            "en_route".equals(state)||"arrived".equals(state)) {
-            spacer(body,9);
-            body.addView(button("Cancelar solicitud",false,v->confirmStatus(item,"cancelled","Cancelar solicitud")),
-                new LinearLayout.LayoutParams(-1,dp(50)));
+        if("requested".equals(state)||"quoted".equals(state)||
+           "accepted".equals(state)||"confirmed".equals(state)||
+           "en_route".equals(state)||"arrived".equals(state)){
+            TextView cancel=actionText("Cancelar solicitud",ORANGE,v->{
+                panel.dismiss();confirmStatus(item,"cancelled","Cancelar solicitud");
+            });
+            cancel.setGravity(Gravity.LEFT);
+            body.addView(cancel,new LinearLayout.LayoutParams(-1,dp(42)));
         }
-        new AlertDialog.Builder(this)
-           .setTitle("Detalle del traslado")
-           .setView(scroll)
-           .setNegativeButton("Cerrar",null)
-           .show();
+
+        String next="",nextTitle="";
+        switch(state){
+            case "accepted": next="confirmed";nextTitle="Confirmar servicio";break;
+            case "confirmed": next="en_route";nextTitle="Salir hacia el pasajero";break;
+            case "en_route": next="arrived";nextTitle="Marcar llegada";break;
+            case "arrived": next="in_progress";nextTitle="Iniciar traslado";break;
+            case "in_progress": next="completed";nextTitle="Finalizar traslado";break;
+        }
+        if(assignable&&!hasDriver){
+            footer.addView(button("Asignar conductor   →",true,v->{
+                panel.dismiss();driverAssignmentDialog(item);
+            }),new LinearLayout.LayoutParams(-1,dp(46)));
+        }else if("requested".equals(state)){
+            footer.addView(button("Sugerir precio   →",true,v->{panel.dismiss();quote(item);}),
+                new LinearLayout.LayoutParams(-1,dp(46)));
+        }else if(!next.isEmpty()){
+            final String finalState=next,finalTitle=nextTitle;
+            footer.addView(button(finalTitle+"   →",true,v->{
+                panel.dismiss();confirmStatus(item,finalState,finalTitle);
+            }),new LinearLayout.LayoutParams(-1,dp(46)));
+        }else{
+            footer.addView(button("Volver al panel",false,v->panel.dismiss()),
+                new LinearLayout.LayoutParams(-1,dp(46)));
+        }
     }
 
     private void openMaps(JSONObject item) {
