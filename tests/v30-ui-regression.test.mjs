@@ -8,14 +8,15 @@ const layout=ui.slice(ui.indexOf('private void details(JSONObject item)'),ui.ind
 const settings=ui.slice(ui.indexOf('private void settings(LinearLayout body)'),ui.indexOf('private void navigation()'));
 
 test('importe ofrecido tiene dos componentes con ancho correctamente definido',()=>{
-  assert.match(layout,/fare\.addView\(fareLabel,new LinearLayout\.LayoutParams\(0,-2,1\)\)/);
-  assert.match(layout,/fare\.addView\(total,new LinearLayout\.LayoutParams\(-2,-2\)\)/);
+  assert.match(layout,/fare\.addView\(fareInfo,new LinearLayout\.LayoutParams\(0,-2,1\)\)/);
+  assert.match(layout,/fare\.addView\(fareAmount,priceParams\)/);
   assert.doesNotMatch(layout,/addLine\(fare,/);
   assert.match(layout,/itinerary\.addView\(fare,new LinearLayout\.LayoutParams\(-1,-2\)\)/);
 });
 test('tomar viaje cotizando es primario, asignar otro conductor secundario',()=>{
   assert.match(layout,/if\(canQuote\)\s*\{\s*footer\.addView\(button\("Cotizar y tomar viaje/);
-  assert.match(layout,/actionText\("Asignar otro conductor manualmente/);
+  assert.match(layout,/Asignar conductor manualmente/);
+  assert.match(layout,/GESTIONAR SOLICITUD/);
 });
 test('ajustes preview no muestra ni ejecuta enrolamiento real',()=>{
   assert.match(settings,/if\(BuildConfig\.VIA_PREVIEW\)\s*\{/);
