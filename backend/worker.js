@@ -161,8 +161,8 @@ export default {async fetch(req,env,ctx){
        // No exponer datos personales de pasajeros a todos los conductores.
        data.name=null;data.phone=null;data.email=null;
      }
-     data.canQuote=r.status==='requested'&&!r.assigned_driver_id&&
-       (policy.canQuoteAll||Boolean(r.released));
+     data.canQuote=r.status==='requested'&&
+       (assigned||(!r.assigned_driver_id&&(policy.canQuoteAll||Boolean(r.released))));
      data.canRelease=r.status==='requested'&&!r.assigned_driver_id&&
        policy.canRelease&&!r.released;
      data.released=Boolean(r.released);
