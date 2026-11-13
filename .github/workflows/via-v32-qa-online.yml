@@ -1,4 +1,4 @@
-name: Vía Traslados V32 — QA online aislada (D1 + APK)
+name: Vía Traslados V32 — backend QA listo y APK online
 on:
   push:
     branches: [via-qa-online-v32-20261113]
@@ -75,8 +75,17 @@ jobs:
         run: |
           set -euo pipefail
           BASE=https://via-traslados-api-qa.marcelof-gx.workers.dev
-          curl -fLsS --retry 5 --retry-delay 2 "$BASE/api/health" -o /tmp/via-qa-health.json
-          node -e "let x=require('/tmp/via-qa-health.json');if(!x.ok||!x.qa||x.production!==false||x.bookings<5)process.exit(1);console.log('Worker QA + D1 QA accesibles, con cinco viajes de ensayo')"
+          ready=0
+          for attempt in $(seq 1 25); do
+            code=$(curl -sSL --max-time 12 -o /tmp/via-qa-health.json -w '%{http_code}' "$BASE/api/health" || true)
+            if [ "$code" = 200 ] && node -e "let x=require('/tmp/via-qa-health.json');process.exit(x.ok&&x.qa&&x.production===false&&x.bookings>=5?0:1)"; then
+              ready=1
+              break
+            fi
+            sleep 4
+          done
+          test "$ready" -eq 1
+          node -e "let x=require('/tmp/via-qa-health.json');console.log('Worker y D1 QA confirmados con',x.bookings,'viajes ficticios')"
           curl -fLsS --retry 3 -H 'Content-Type: application/json' -d '{"role":"admin"}' "$BASE/api/qa/session" -o /tmp/via-qa-session.json
           TOKEN=$(node -e "console.log(require('/tmp/via-qa-session.json').token)")
           curl -fLsS --retry 3 -H "Authorization: Bearer $TOKEN" "$BASE/api/operator/requests" -o /tmp/via-qa-requests.json
