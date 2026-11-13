@@ -1387,7 +1387,8 @@ public final class MainActivity extends Activity {
         }
         // En todas las tarjetas se puede tocar cualquier zona para abrir el detalle.
         // En las cotizadas no duplicamos esa acción en una fila de 42 dp.
-        if("requested".equals(status)){
+        if("requested".equals(status)&&item.optBoolean("canQuote",
+            BuildConfig.VIA_PREVIEW||"admin".equals(staffRole))){
             spacer(tile,9);
             View separator=new View(this);
             separator.setBackgroundColor(BORDER);
@@ -1639,7 +1640,8 @@ public final class MainActivity extends Activity {
             spacer(body,7);
         }
 
-        if("requested".equals(state)){
+        if("requested".equals(state)&&item.optBoolean("canQuote",
+            BuildConfig.VIA_PREVIEW||"admin".equals(staffRole))){
             TextView quoteAction=actionText("Sugerir precio  ›",TEAL_DARK,v->{
                 panel.dismiss();quote(item);
             });
@@ -1647,6 +1649,27 @@ public final class MainActivity extends Activity {
             quoteAction.setTextSize(12);
             quoteAction.setPadding(dp(4),0,0,0);
             body.addView(quoteAction,new LinearLayout.LayoutParams(-1,dp(38)));
+        }
+        if("requested".equals(state)&&item.optBoolean("canRelease",false)
+            &&!hasDriver){
+            TextView release=actionText("Liberar solicitud a conductores  ›",
+                TEAL_DARK,v->new AlertDialog.Builder(this)
+                    .setTitle("Liberar solicitud")
+                    .setMessage("La solicitud será visible para los conductores contratados habilitados. "+
+                        "El primero que envíe una propuesta válida quedará asignado.")
+                    .setNegativeButton("Volver",null)
+                    .setPositiveButton("Liberar",(dialog,which)->api("POST",
+                        "/api/operator/requests/"+Uri.encode(id)+"/release",
+                        new JSONObject(),(status,result,error)->{
+                            if(status==200){
+                                panel.dismiss();
+                                message("Solicitud liberada.");
+                                fetchBookings(true);
+                            }else message(error.isEmpty()?"No se pudo liberar la solicitud.":error);
+                        })).show());
+            release.setTextSize(12);
+            release.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            body.addView(release,new LinearLayout.LayoutParams(-1,dp(40)));
         }
         if("requested".equals(state)||"quoted".equals(state)||
            "accepted".equals(state)||"confirmed".equals(state)||
