@@ -166,6 +166,39 @@ export async function staffRoutes(req,env,path,send,err){
  }
  // Configuración comercial confidencial: nunca se incorpora a /api/staff/me
  // ni a los listados operativos que ven los conductores.
+ if(path==='/api/admin/commissions'&&req.method==='GET'){
+   if(!await founderAuthorized())return err('Solo administración puede consultar comisiones',403);
+   const result=await env.DB.prepare(
+     "SELECT l.booking_id,l.driver_id,u.display_name AS driver_name,"+
+     "l.fare_uyu,l.rate_bps,l.commission_cents,l.payment_status,l.payment_reference,"+
+     "l.completed_at,l.paid_at FROM booking_commission_ledger l "+
+     "JOIN staff_users u ON u.id=l.driver_id "+
+     "ORDER BY l.completed_at DESC LIMIT 250"
+   ).all();
+   return send({currency:'UYU',items:result.results.map(x=>({
+     bookingId:x.booking_id,driverId:x.driver_id,driverName:x.driver_name,
+     grossUyu:x.fare_uyu,rateBps:x.rate_bps,commissionUyu:x.commission_cents/100,
+     paymentStatus:x.payment_status,reference:x.payment_reference,
+     completedAt:x.completed_at,paidAt:x.paid_at
+   }))});
+ }
+ const settlement=path.match(/^\/api\/admin\/commissions\/([A-Z0-9-]+)$/);
+ if(settlement&&req.method==='PATCH'){
+   if(!await founderAuthorized())return err('Solo administración puede registrar liquidaciones',403);
+   let p;try{p=await bodyLimit(req)}catch{return err('Liquidación inválida',400)}
+   if(p.status!=='paid'||typeof p.reference!=='string'||
+      p.reference.trim().length<3||p.reference.trim().length>120)
+     return err('Indicá una referencia de pago verificable',400);
+   const updated=await env.DB.prepare(
+     "UPDATE booking_commission_ledger SET payment_status='paid',"+
+     "payment_reference=?,paid_at=unixepoch() "+
+     "WHERE booking_id=? AND payment_status='pending'"
+   ).bind(p.reference.trim(),settlement[1]).run();
+   if(updated.meta?.changes!==1)return err('La comisión no está pendiente o ya fue liquidada',409);
+   await audit(env,actor,'commission-paid',settlement[1],
+     'Pago marcado como verificado por administrador');
+   return send({bookingId:settlement[1],status:'paid'});
+ }
  if(path==='/api/admin/pricing'&&req.method==='GET'){
    if(!await founderAuthorized())return err('Solo el administrador fundador puede editar las tarifas',403);
    return send({currency:'UYU',config:await pricingSettings(env),advisory:true});
