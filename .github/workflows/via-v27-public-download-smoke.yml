@@ -1,0 +1,36 @@
+name: Vía Traslados — verificar descarga pública V27
+on:
+  push:
+    branches: [via-apk-descarga-qa-20261112]
+    paths: [".github/workflows/via-v27-public-download-smoke.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke-anonymous:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Comprobar portada y subpágina sin autenticación
+        run: |
+          set -euo pipefail
+          BASE="https://via-conductor-apk-qa.vercel.app"
+          success=0
+          for i in $(seq 1 15); do
+            code="$(curl -sSL --max-time 15 -o /tmp/via-v27-home.html -w '%{http_code}' "$BASE/" || true)"
+            if [ "$code" = "200" ] && grep -q 'Descargar V27 Demo' /tmp/via-v27-home.html; then success=1; break; fi
+            sleep 4
+          done
+          test "$success" -eq 1
+          curl -fLsS --retry 3 "$BASE/v27-preview/" -o /tmp/via-v27-page.html
+          grep -q 'datos ficticios' /tmp/via-v27-page.html
+      - name: Verificar APK V27 anónima y checksum de publicación QA
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 4 --retry-delay 2 --max-time 120 \
+            "https://via-conductor-apk-qa.vercel.app/v27-preview/via-conductor-v27-demo.apk" \
+            -o /tmp/via-v27-demo.apk
+          test "$(stat -c%s /tmp/via-v27-demo.apk)" -gt 1000000
+          echo "99ae6de72d0f707bd6655732606f37dd093e557508c13a741fe4b07d0dcb5039  /tmp/via-v27-demo.apk" | sha256sum -c -
+          unzip -t /tmp/via-v27-demo.apk | tail -2
+          file /tmp/via-v27-demo.apk
