@@ -1257,112 +1257,151 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void bookingCard(LinearLayout parent,JSONObject item){
-        LinearLayout tile=column();
-        tile.setPadding(dp(14),dp(13),dp(14),dp(12));
-        tile.setBackground(bg(Color.WHITE,15,BORDER));
-        LinearLayout head=row();
-        TextView when=text(compactDate(item.optString("date",""))+
-            "  ·  "+item.optString("time",""),13,INK,true);
-        head.addView(when,new LinearLayout.LayoutParams(0,-2,1));
-        String status=item.optString("status");
-        TextView flag=text(statusName(status),11,stateColor(status),true);
-        flag.setGravity(Gravity.CENTER);
-        flag.setPadding(dp(10),dp(5),dp(10),dp(5));
-        flag.setBackground(bg(SOFT,14,0));
-        head.addView(flag);
-        tile.addView(head);
-        spacer(tile,11);
+    private void compactRouteRow(LinearLayout parent,String pinText,String address,
+            boolean origin){
+        LinearLayout routeRow=row();
+        TextView pin=text(pinText,10,origin?Color.WHITE:TEAL_DARK,true);
+        pin.setGravity(Gravity.CENTER);
+        pin.setBackground(bg(origin?TEAL:SOFT,8,origin?0:BORDER));
+        pin.setContentDescription(origin?"Origen":"Destino");
+        LinearLayout.LayoutParams pinParams=new LinearLayout.LayoutParams(dp(22),dp(22));
+        routeRow.addView(pin,pinParams);
+        TextView value=text(prettyAddress(address),13,INK,true);
+        value.setMaxLines(2);
+        value.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        value.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams valueParams=new LinearLayout.LayoutParams(0,-2,1);
+        valueParams.leftMargin=dp(9);
+        routeRow.addView(value,valueParams);
+        parent.addView(routeRow,new LinearLayout.LayoutParams(-1,-2));
+    }
 
-        LinearLayout from=row();
-        TextView fromPin=text("●",12,TEAL,true);
-        fromPin.setGravity(Gravity.CENTER);
-        from.addView(fromPin,new LinearLayout.LayoutParams(dp(19),-2));
-        LinearLayout fromBody=column();
-        addLine(fromBody,"ORIGEN",10,MUTED,true,2);
-        TextView origin=text(prettyAddress(item.optString("origin")),14,INK,true);
-        origin.setMaxLines(2);origin.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        fromBody.addView(origin);
-        from.addView(fromBody,new LinearLayout.LayoutParams(0,-2,1));
-        tile.addView(from);
+    private void bookingCard(LinearLayout parent,JSONObject item){
+        final String status=item.optString("status","");
+        final String id=item.optString("id","");
+        LinearLayout tile=column();
+        tile.setPadding(dp(13),dp(12),dp(13),dp(11));
+        tile.setBackground(bg(Color.WHITE,15,BORDER));
+        tile.setClickable(true);
+        tile.setFocusable(true);
+        tile.setOnClickListener(v->details(item));
+        tile.setContentDescription(statusName(status)+" · "+
+            compactDate(item.optString("date",""))+" "+item.optString("time","")+
+            " · "+prettyAddress(item.optString("origin"))+" a "+
+            prettyAddress(item.optString("destination"))+". Abrir detalle.");
+
+        LinearLayout head=row();
+        TextView date=text(compactDate(item.optString("date",""))+
+            " · "+item.optString("time",""),14,INK,true);
+        date.setSingleLine(true);
+        date.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        head.addView(date,new LinearLayout.LayoutParams(0,-2,1));
+        TextView statusChip=text(statusName(status),10,stateColor(status),true);
+        statusChip.setGravity(Gravity.CENTER);
+        statusChip.setPadding(dp(8),dp(5),dp(8),dp(5));
+        statusChip.setBackground(bg(SOFT,10,0));
+        LinearLayout.LayoutParams chipParams=new LinearLayout.LayoutParams(-2,-2);
+        chipParams.leftMargin=dp(7);
+        head.addView(statusChip,chipParams);
+        tile.addView(head);
+
+        LinearLayout second=row();
+        TextView reference=text(id,11,MUTED,false);
+        reference.setSingleLine(true);
+        reference.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        second.addView(reference,new LinearLayout.LayoutParams(0,-2,1));
+        if("quoted".equals(status)&&item.optInt("price",0)>0){
+            TextView amount=text("$ "+String.format(new java.util.Locale("es","UY"),
+                "%,d",item.optInt("price"))+" UYU",12,TEAL_DARK,true);
+            second.addView(amount);
+        }
+        LinearLayout.LayoutParams secondParams=new LinearLayout.LayoutParams(-1,-2);
+        secondParams.topMargin=dp(3);
+        tile.addView(second,secondParams);
         spacer(tile,9);
 
-        LinearLayout to=row();
-        TextView toPin=text("◆",11,TEAL,true);
-        toPin.setGravity(Gravity.CENTER);
-        to.addView(toPin,new LinearLayout.LayoutParams(dp(19),-2));
-        LinearLayout toBody=column();
-        addLine(toBody,"DESTINO",10,MUTED,true,2);
-        TextView dest=text(prettyAddress(item.optString("destination")),14,INK,true);
-        dest.setMaxLines(2);dest.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        toBody.addView(dest);
-        to.addView(toBody,new LinearLayout.LayoutParams(0,-2,1));
-        tile.addView(to);
-        spacer(tile,11);
+        compactRouteRow(tile,"A",item.optString("origin",""),true);
+        spacer(tile,5);
+        compactRouteRow(tile,"B",item.optString("destination",""),false);
+        spacer(tile,9);
 
-        LinearLayout facts=row();
-        int pax=item.optInt("passengers",1),bags=item.optInt("bags",0);
-        TextView people=text(pax+(pax==1?" pasajero":" pasajeros")+" · "+
-            bags+(bags==1?" valija":" valijas"),12,MUTED,false);
-        facts.addView(people,new LinearLayout.LayoutParams(0,-2,1));
-
-        String id=item.optString("id","");
-        LinearLayout route=row();
+        LinearLayout metrics=row();
+        LinearLayout distanceGroup=row();
         android.widget.ProgressBar spinner=new android.widget.ProgressBar(this,null,
             android.R.attr.progressBarStyleSmall);
         spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(TEAL));
-        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(15),dp(15));
-        sp.rightMargin=dp(5);
-        route.addView(spinner,sp);
-        TextView metric=text("",12,MUTED,true);
-        metric.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        route.addView(metric);
-        facts.addView(route);
-        tile.addView(facts);
-        // Geoapify Free y OpenStreetMap requieren atribución visible y enlaces.
-        TextView credit=text("",10,MUTED,false);
-        String attributionText="Powered by Geoapify · © OpenStreetMap contributors";
-        android.text.SpannableString linked=new android.text.SpannableString(attributionText);
-        int geoStart=attributionText.indexOf("Geoapify");
-        int osmStart=attributionText.indexOf("© OpenStreetMap");
-        linked.setSpan(new android.text.style.URLSpan("https://www.geoapify.com/"),
-            geoStart,geoStart+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        linked.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
-            osmStart,attributionText.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        credit.setText(linked);
-        credit.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
-        LinearLayout.LayoutParams cr=new LinearLayout.LayoutParams(-1,-2);
-        cr.topMargin=dp(5);
-        tile.addView(credit,cr);
+        LinearLayout.LayoutParams spinParams=new LinearLayout.LayoutParams(dp(13),dp(13));
+        spinParams.rightMargin=dp(5);
+        distanceGroup.addView(spinner,spinParams);
+        TextView routeValue=text("Calculando ruta…",12,MUTED,true);
+        routeValue.setSingleLine(true);
+        routeValue.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        distanceGroup.addView(routeValue,new LinearLayout.LayoutParams(0,-2,1));
+        metrics.addView(distanceGroup,new LinearLayout.LayoutParams(0,-2,1));
+        int pax=item.optInt("passengers",1),bags=item.optInt("bags",0);
+        TextView capacity=text(pax+" pax · "+bags+" val.",11,MUTED,false);
+        capacity.setSingleLine(true);
+        capacity.setContentDescription(pax+" pasajero"+(pax==1?"":"s")+
+            ", "+bags+" valija"+(bags==1?"":"s"));
+        LinearLayout.LayoutParams capParams=new LinearLayout.LayoutParams(-2,-2);
+        capParams.leftMargin=dp(6);
+        metrics.addView(capacity,capParams);
+        tile.addView(metrics);
+
+        // Atribución visible al disponerse de métricas del proveedor, con enlaces.
+        TextView attribution=text("",10,MUTED,false);
+        String source="Powered by Geoapify · © OpenStreetMap contributors";
+        android.text.SpannableString license=new android.text.SpannableString(source);
+        int geo=source.indexOf("Geoapify"), osm=source.indexOf("© OpenStreetMap");
+        license.setSpan(new android.text.style.URLSpan("https://www.geoapify.com/"),
+            geo,geo+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        license.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
+            osm,source.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        attribution.setText(license);
+        attribution.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+        LinearLayout.LayoutParams attribParams=new LinearLayout.LayoutParams(-1,-2);
+        attribParams.topMargin=dp(3);
+        tile.addView(attribution,attribParams);
+
         if(!id.isEmpty()){
-            routeLabels.put(id,metric);
+            routeLabels.put(id,routeValue);
             routeSpinners.put(id,spinner);
-            routeCredits.put(id,credit);
+            routeCredits.put(id,attribution);
             routeCards.put(id,tile);
             routeCardBookings.put(id,item);
+            JSONObject saved=item.optJSONObject("route");
+            if(saved!=null&&saved.optDouble("distanceKm",0)>0&&
+                saved.optInt("durationMinutes",0)>0)routeResults.put(id,saved);
             showRouteState(id);
-        }else{
+        }else {
             spinner.setVisibility(View.GONE);
-            credit.setVisibility(View.GONE);
-            metric.setText("Ruta pendiente");
+            attribution.setVisibility(View.GONE);
+            routeValue.setText("Ruta pendiente");
         }
-        spacer(tile,12);
+        spacer(tile,9);
+        View separator=new View(this);
+        separator.setBackgroundColor(BORDER);
+        tile.addView(separator,new LinearLayout.LayoutParams(-1,dp(1)));
+        spacer(tile,6);
 
         LinearLayout actions=row();
-        TextView see=actionText("Ver detalles   ›",TEAL_DARK,v->details(item));
+        TextView see=actionText("Ver detalles  ›",TEAL_DARK,v->details(item));
+        see.setTextSize(12);
+        see.setMinHeight(dp(42));
         see.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-        see.setTextSize(13);
-        see.setPadding(dp(2),dp(5),0,dp(5));
-        actions.addView(see,new LinearLayout.LayoutParams(0,dp(43),1));
+        see.setPadding(dp(1),dp(4),0,dp(4));
+        actions.addView(see,new LinearLayout.LayoutParams(0,dp(42),1));
         if("requested".equals(status)){
-            Button quote=button("Cotizar  →",true,v->quote(item));
-            quote.setTextSize(13);
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(121),dp(43));
-            lp.leftMargin=dp(10);
-            actions.addView(quote,lp);
+            Button quoteButton=button("Sugerir precio",true,v->quote(item));
+            quoteButton.setTextSize(12);
+            quoteButton.setMinHeight(0);
+            LinearLayout.LayoutParams quoteParams=
+                new LinearLayout.LayoutParams(dp(133),dp(42));
+            quoteParams.leftMargin=dp(6);
+            actions.addView(quoteButton,quoteParams);
         }
         tile.addView(actions);
-        appendCard(parent,tile,10);
+        appendCard(parent,tile,8);
     }
 
     private static String statusName(String state) {
