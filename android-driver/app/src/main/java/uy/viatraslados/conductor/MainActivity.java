@@ -94,6 +94,10 @@ public final class MainActivity extends Activity {
             staffRole = "admin";
             staffName = "Administrador de demostración";
             operatorKey = "PREVIEW_LOCAL_NO_NETWORK";
+            if(BuildConfig.VIA_BUSINESS_PREVIEW){
+                staffToken = "PREVIEW_LOCAL_TOKEN_NO_NETWORK";
+                canManageRoles = true;
+            }
             adminLoaded = true;
             managedDrivers = ViaPreviewData.drivers();
             bookings = ViaPreviewData.requests();
@@ -888,7 +892,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_DENSE_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_BUSINESS_PREVIEW ?
+                "V29 · SOCIOS Y TARIFAS · DEMO SIN PRODUCCIÓN" :
+                BuildConfig.VIA_DENSE_PREVIEW ?
                 "V28 · DEMO PREMIUM COMPACTA · SIN PRODUCCIÓN" :
                 "V27 · DEMO SIN CONEXIÓN A PRODUCCIÓN",
                 10,TEAL_DARK,true);
