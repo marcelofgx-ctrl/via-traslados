@@ -40,6 +40,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String API = "https://via-traslados-api.marcelof-gx.workers.dev";
+    private static final String API_QA = "https://via-traslados-api-qa.marcelof-gx.workers.dev";
     private static final int TEAL = Color.rgb(3, 116, 109);
     private static final int TEAL_DARK = Color.rgb(0, 96, 91);
     private static final int BORDER = Color.rgb(223, 234, 230);
@@ -89,7 +90,9 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(LIGHT);
         setContentView(root);
-        if (BuildConfig.VIA_PREVIEW) {
+        if(BuildConfig.VIA_ONLINE_QA){
+            startQaSession("admin");
+        }else if (BuildConfig.VIA_PREVIEW) {
             // APK independiente, solo datos ficticios; no accede al Worker ni a D1.
             staffRole = "admin";
             staffName = "Administrador de demostración";
@@ -129,6 +132,91 @@ public final class MainActivity extends Activity {
         staffRefreshToken = null;
         executor.shutdownNow();
         super.onDestroy();
+    }
+
+    // V32: sesiones temporales emitidas por el Worker QA real. Sin credenciales
+    // dentro de la APK. Únicamente personas y viajes sintéticos en D1 QA.
+    private void startQaSession(String persona){
+        if(!BuildConfig.VIA_ONLINE_QA)return;
+        staffToken=null;
+        staffRefreshToken=null;
+        operatorKey=null;
+        staffRole="driver";
+        staffName="";
+        staffUserId="";
+        canManageRoles=false;
+        loading=false;
+        lastPayload="";
+        routeResults.clear();
+        root.removeAllViews();
+        root.setBackgroundColor(LIGHT);
+        LinearLayout loading=column();
+        loading.setPadding(dp(22),dp(28),dp(22),dp(20));
+        addLine(loading,"VÍA TRASLADOS · QA ONLINE",12,TEAL_DARK,true,10);
+        addLine(loading,"Conexión de prueba",25,INK,true,10);
+        addLine(loading,"Datos sintéticos en Cloudflare D1 QA. "+
+            "No se utiliza la base de producción.",13,MUTED,false,20);
+        Button retry=button("Conectar nuevamente",false,v->startQaSession(persona));
+        retry.setVisibility(View.GONE);
+        loading.addView(retry,new LinearLayout.LayoutParams(-1,dp(46)));
+        root.addView(loading,new LinearLayout.LayoutParams(-1,-2));
+        JSONObject request=new JSONObject();
+        try{request.put("role",persona);}catch(Exception ignored){}
+        api("POST","/api/qa/session",request,(status,result,error)->{
+            if(status!=200){
+                addLine(loading,"No se pudo acceder al servidor QA: "+
+                    (error.isEmpty()?"revisá el entorno de pruebas.":error),
+                    13,ORANGE,false,12);
+                retry.setVisibility(View.VISIBLE);
+                return;
+            }
+            try{
+                JSONObject response=new JSONObject(result);
+                JSONObject user=response.getJSONObject("user");
+                staffToken=response.getString("token");
+                staffRole=user.getString("role");
+                staffName=user.getString("name");
+                staffUserId=user.getString("id");
+                canManageRoles=user.optJSONObject("capabilities")!=null&&
+                    user.optJSONObject("capabilities").optBoolean("canManageRoles",false);
+                operatorKey=null;
+                adminLoaded=false;
+                tab="solicitudes";
+                subtab="nuevas";
+                fetchBookings(true);
+            }catch(Exception exc){
+                addLine(loading,"No se pudo interpretar la sesión QA.",13,ORANGE,false,10);
+                retry.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+    private void chooseQaRole(){
+        if(!BuildConfig.VIA_ONLINE_QA)return;
+        String[] choices={"Administrador QA","Socio QA","Contratado QA"};
+        String[] roles={"admin","partner","contractor"};
+        new AlertDialog.Builder(this)
+            .setTitle("Perfil de prueba")
+            .setMessage("Cada perfil consulta permisos reales del backend QA. "+
+                "Todos los usuarios y viajes son ficticios.")
+            .setItems(choices,(dialog,index)->startQaSession(roles[index]))
+            .setNegativeButton("Cancelar",null).show();
+    }
+    private void resetQaData(){
+        if(!BuildConfig.VIA_ONLINE_QA)return;
+        if(!"admin".equals(staffRole)){message("Elegí primero el perfil administrador QA.");return;}
+        new AlertDialog.Builder(this)
+            .setTitle("Reiniciar solicitudes de prueba")
+            .setMessage("Se eliminarán las cotizaciones y asignaciones únicamente de "+
+                "la base de datos QA. Producción no cambia.")
+            .setNegativeButton("Volver",null)
+            .setPositiveButton("Reiniciar QA",(dialog,which)->{
+                JSONObject p=new JSONObject();
+                try{p.put("confirm","REINICIAR_QA");}catch(Exception ignored){}
+                api("POST","/api/qa/reset",p,(status,result,error)->{
+                    if(status==200){message("Solicitudes QA reiniciadas.");fetchBookings(true);}
+                    else message(error.isEmpty()?"No se pudo reiniciar QA.":error);
+                });
+            }).show();
     }
 
     private int dp(float n) { return (int)(n * getResources().getDisplayMetrics().density + 0.5f); }
@@ -622,7 +710,7 @@ public final class MainActivity extends Activity {
             String error = "";
             try {
                 okhttp3.Request.Builder builder = new okhttp3.Request.Builder()
-                    .url(API + path)
+                    .url((BuildConfig.VIA_ONLINE_QA ? API_QA : API) + path)
                     .header("Accept", "application/json")
                     .header("Cache-Control", "no-cache");
                 if (token != null && !token.isEmpty()) builder.header("Authorization", "Bearer " + token);
@@ -689,21 +777,30 @@ public final class MainActivity extends Activity {
                     notifyAcceptedProposals(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
-                    if (login) loginScreen();
+                    if(login){
+                        if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
+                        else loginScreen();
+                    }
                 }
             } else if (status == 401 || status == 403) {
-                if (login) {
+                if(BuildConfig.VIA_ONLINE_QA){
+                    message("La sesión QA expiró. Volviendo a conectar.");
+                    startQaSession("admin");
+                }else if(login){
                     loginScreen();
                     new AlertDialog.Builder(this).setTitle("No se pudo ingresar")
                       .setMessage("Clave incorrecta o acceso no autorizado.")
                       .setPositiveButton("Entendido", null).show();
-                } else {
+                }else{
                     message("La sesión dejó de estar autorizada.");
                     loginScreen();
                 }
             } else {
                 message(error.isEmpty() ? "No fue posible actualizar las solicitudes." : error);
-                if (login) loginScreen();
+                if(login){
+                    if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
+                    else loginScreen();
+                }
             }
         });
     }
@@ -891,7 +988,14 @@ public final class MainActivity extends Activity {
             header.addView(badge,badgeParams);
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
-        if (BuildConfig.VIA_PREVIEW) {
+        if (BuildConfig.VIA_ONLINE_QA) {
+            TextView qa=text("V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
+                10,TEAL_DARK,true);
+            qa.setGravity(Gravity.CENTER);
+            qa.setBackgroundColor(SOFT);
+            qa.setPadding(dp(7),dp(8),dp(7),dp(8));
+            root.addView(qa,new LinearLayout.LayoutParams(-1,-2));
+        }else if (BuildConfig.VIA_PREVIEW) {
             TextView demo=text(BuildConfig.VIA_OPERATION_PREVIEW ?
                 "V31 · FICHA OPERATIVA PREMIUM · DEMO AISLADA" :
                 BuildConfig.VIA_LAYOUT_PREVIEW ?
@@ -1370,7 +1474,9 @@ public final class MainActivity extends Activity {
             geo,geo+"Geoapify".length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         license.setSpan(new android.text.style.URLSpan("https://www.openstreetmap.org/copyright"),
             osm,source.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        if(BuildConfig.VIA_PREVIEW){
+        if(BuildConfig.VIA_ONLINE_QA){
+            attribution.setText("Ruta de ensayo · distancias sintéticas");
+        }else if(BuildConfig.VIA_PREVIEW){
             attribution.setText("Ruta ilustrativa · sin servicios externos");
         }else{
             attribution.setText(license);
@@ -1630,7 +1736,9 @@ public final class MainActivity extends Activity {
         if(!BuildConfig.VIA_PREVIEW)spacer(itinerary,7);
         if(measured!=null&&!BuildConfig.VIA_PREVIEW){
             TextView credit=text("",9,MUTED,false);
-            if(BuildConfig.VIA_PREVIEW){
+            if(BuildConfig.VIA_ONLINE_QA){
+                credit.setText("Ruta de ensayo precargada · sin consulta al mapa real");
+            }else if(BuildConfig.VIA_PREVIEW){
                 credit.setText("Ruta ilustrativa · sin servicios externos");
             }else{
                 String attribution="Powered by Geoapify · © OpenStreetMap contributors";
@@ -1664,7 +1772,7 @@ public final class MainActivity extends Activity {
         customerHeader.addView(customerTag,new LinearLayout.LayoutParams(0,dp(30),1));
         String phone=item.optString("phone","");
         TextView call=actionText("☎  Llamar",TEAL_DARK,v->{
-            if(BuildConfig.VIA_PREVIEW){message("Demo: no se realizan llamadas.");return;}
+            if(BuildConfig.VIA_PREVIEW||BuildConfig.VIA_ONLINE_QA){message("QA: números sintéticos, sin llamadas.");return;}
             try{startActivity(new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(phone))));}
             catch(Exception e){message("No se pudo abrir el teléfono.");}
         });
@@ -1719,7 +1827,8 @@ public final class MainActivity extends Activity {
             "requested".equals(state)||"quoted".equals(state)||
             "accepted".equals(state)||"confirmed".equals(state)||
             "en_route".equals(state)||"arrived".equals(state));
-        if(assignable||canRelease||cancellable){
+        if(assignable||canRelease||cancellable||
+            (BuildConfig.VIA_ONLINE_QA&&"quoted".equals(state))){
             LinearLayout operations=column();
             operations.setPadding(dp(11),dp(7),dp(11),dp(7));
             operations.setBackground(bg(Color.WHITE,13,BORDER));
@@ -1765,6 +1874,28 @@ public final class MainActivity extends Activity {
                 release.setTextSize(12);
                 release.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
                 actions.addView(release,new LinearLayout.LayoutParams(-1,dp(43)));
+            }
+            if(BuildConfig.VIA_ONLINE_QA&&"quoted".equals(state)){
+                TextView accept=actionText("Simular aceptación del pasajero QA   ›",
+                    TEAL_DARK,v->new AlertDialog.Builder(this)
+                        .setTitle("Aceptar oferta de prueba")
+                        .setMessage("Este paso simula al pasajero, pero registra la "+
+                            "aceptación realmente en la base D1 QA.")
+                        .setNegativeButton("Volver",null)
+                        .setPositiveButton("Aceptar oferta QA",(dialog,which)->{
+                            JSONObject payload=new JSONObject();
+                            try{payload.put("id",id);}catch(Exception ignored){}
+                            api("POST","/api/qa/accept",payload,(status,result,error)->{
+                                if(status==200){
+                                    panel.dismiss();message("Oferta aceptada en QA.");
+                                    fetchBookings(true);
+                                }else message(error.isEmpty()?
+                                    "No se pudo aceptar la oferta QA.":error);
+                            });
+                        }).show());
+                accept.setTextSize(12);
+                accept.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+                actions.addView(accept,new LinearLayout.LayoutParams(-1,dp(43)));
             }
             if(cancellable){
                 TextView cancel=actionText("Cancelar solicitud",ORANGE,v->{
@@ -3276,6 +3407,35 @@ public final class MainActivity extends Activity {
 
     private void settings(LinearLayout body) {
         addLine(body,"Ajustes",25,INK,true,4);
+        if(BuildConfig.VIA_ONLINE_QA){
+            addLine(body,"Pruebas reales de API con usuarios ficticios",
+                13,MUTED,false,14);
+            LinearLayout qa=card();
+            addLine(qa,"ENTORNO",10,TEAL_DARK,true,8);
+            addLine(qa,"QA Online · V32",18,INK,true,6);
+            addLine(qa,"Conectado a via-traslados-api-qa y D1 exclusiva. "+
+                "No utiliza reservas ni usuarios productivos.",13,MUTED,false,13);
+            addLine(qa,"PERFIL ACTUAL",10,MUTED,true,5);
+            addLine(qa,staffName,15,INK,true,10);
+            qa.addView(button("Cambiar perfil de prueba",false,v->chooseQaRole()),
+                new LinearLayout.LayoutParams(-1,dp(46)));
+            if("admin".equals(staffRole)){
+                spacer(qa,9);
+                qa.addView(button("Reiniciar viajes de prueba",false,v->resetQaData()),
+                    new LinearLayout.LayoutParams(-1,dp(44)));
+            }
+            appendCard(body,qa,13);
+            LinearLayout note=card();
+            addLine(note,"QUÉ ES REAL EN ESTE ENSAYO",10,TEAL_DARK,true,8);
+            addLine(note,"Las solicitudes, cotizaciones, permisos, asignaciones y "+
+                "cambios de estado se guardan realmente en D1 QA.",
+                13,INK,false,10);
+            addLine(note,"El ingreso es una sesión sintética y no valida correo "+
+                "ni WhatsApp. No se generan cobros ni notificaciones reales.",
+                12,MUTED,false,0);
+            appendCard(body,note,0);
+            return;
+        }
         if(BuildConfig.VIA_PREVIEW){
             addLine(body,"Entorno de demostración · sin cuentas reales",
                 13,MUTED,false,15);

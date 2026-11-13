@@ -1,0 +1,18 @@
+name: Vía Traslados V32 — diagnóstico E2E de estados D1 QA
+on:
+  push:
+    branches: [via-qa-online-v32-20261113]
+    paths: [".github/workflows/via-v32-e2e-once.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validar cotización y comisión en el servidor QA, restaurando sus datos
+        run: node scripts/v32-online-e2e.mjs

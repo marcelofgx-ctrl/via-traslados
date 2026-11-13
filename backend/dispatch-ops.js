@@ -92,7 +92,17 @@ export async function quoteBooking(env,actor,bookingId,amount){
     "LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id "+
     "WHERE u.id=? AND u.status='approved'"
   ).bind(bookingId,amount,actor.id).run();
-  if(insert.meta?.changes!==1)return {status:409,error:'No se pudo adjudicar el traslado'};
+  // D1 informa cambios de INSERT + triggers de forma distinta entre versiones.
+  // Comprobar el resultado efectivo, no asumir meta.changes===1.
+  const confirmed=await env.DB.prepare(
+    "SELECT q.driver_id,q.price_uyu,b.status,a.driver_id AS assigned_driver "+
+    "FROM booking_quotes q JOIN bookings b ON b.id=q.booking_id "+
+    "JOIN driver_assignments a ON a.booking_id=q.booking_id WHERE q.booking_id=?"
+  ).bind(bookingId).first();
+  if(!insert.success||!confirmed||confirmed.driver_id!==actor.id||
+     confirmed.assigned_driver!==actor.id||confirmed.price_uyu!==amount||
+     confirmed.status!=='quoted')
+    return {status:409,error:'No se pudo verificar la adjudicación del traslado'};
   return {status:200,assignedTo:actor.id,quotePriceUyu:amount,
     ...quoteBreakdown(amount,policy.commissionBps)};
  }catch(e){
