@@ -15,10 +15,12 @@ for(const [id,email,name,role,phone] of accounts){
  q.push(`INSERT OR IGNORE INTO staff_contacts(staff_id,phone,email_verified_at)
  VALUES(${sqlQuote(id)},${sqlQuote(phone)},unixepoch());`);
 }
-q.push(`INSERT OR IGNORE INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps)
- VALUES('00000000-0000-4000-8000-000000000002','partner',1,1,0);`);
-q.push(`INSERT OR IGNORE INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps)
- VALUES('00000000-0000-4000-8000-000000000003','contractor',0,0,2500);`);
+q.push(`INSERT INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps)
+ VALUES('00000000-0000-4000-8000-000000000002','partner',1,1,0)
+ ON CONFLICT(staff_id) DO UPDATE SET mode='partner',can_quote_all=1,can_release=1,commission_bps=0;`);
+q.push(`INSERT INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps)
+ VALUES('00000000-0000-4000-8000-000000000003','contractor',0,0,2500)
+ ON CONFLICT(staff_id) DO UPDATE SET mode='contractor',can_quote_all=0,can_release=0,commission_bps=2500;`);
 const fixtures=[
  ['001','Ruta 200, San José de Carrasco, Canelones','Aeropuerto Internacional de Carrasco, Canelones',1,1,5100,480],
  ['002','Av. Italia 4230, Montevideo','Bulevar Artigas 1825, Montevideo',2,2,12700,1560],
