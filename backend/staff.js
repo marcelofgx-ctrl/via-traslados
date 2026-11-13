@@ -240,7 +240,7 @@ export async function staffRoutes(req,env,path,send,err){
    const context=await readAssignmentContext(options[1]);
    if(!context)return err('Solicitud no encontrada',404);
    const drivers=await env.DB.prepare(
-     "SELECT u.id,u.display_name,u.status,c.email_verified_at,v.license_plate,v.make,v.model,v.passenger_capacity,v.luggage_capacity FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE u.role='driver' AND u.status='approved' ORDER BY u.display_name COLLATE NOCASE LIMIT 250"
+     "SELECT u.id,u.display_name,u.status,c.email_verified_at,c.phone,v.license_plate,v.make,v.model,v.passenger_capacity,v.luggage_capacity FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE u.role='driver' AND u.status='approved' ORDER BY u.display_name COLLATE NOCASE LIMIT 250"
    ).all();
    return send({
      bookingId:context.booking.id,bookingStatus:context.booking.status,
@@ -249,7 +249,7 @@ export async function staffRoutes(req,env,path,send,err){
      assignedDriverName:context.current?.driver_name||null,
      availabilitySource:'schedule-only',gpsAvailable:false,
      drivers:drivers.results.map(user=>({
-       id:user.id,name:user.display_name,status:user.status,
+       id:user.id,name:user.display_name,status:user.status,phone:user.phone||null,
        emailVerified:Boolean(user.email_verified_at),
        vehicle:{plate:user.license_plate||null,make:user.make||null,model:user.model||null,passengerCapacity:user.passenger_capacity??null,luggageCapacity:user.luggage_capacity??null},
        capacityConflict:(user.passenger_capacity!==null&&user.passenger_capacity!==undefined&&user.passenger_capacity<Number(context.booking.passengers))||(user.luggage_capacity!==null&&user.luggage_capacity!==undefined&&user.luggage_capacity<Number(context.booking.bags)),
