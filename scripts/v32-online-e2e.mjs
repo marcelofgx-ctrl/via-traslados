@@ -37,8 +37,20 @@ try{
  const accepted=await call('/api/qa/accept',{token:admin,method:'POST',data:{id}});
  assert.equal(accepted.status,'accepted');
  for(const state of ['confirmed','en_route','arrived','in_progress','completed']){
-  const row=await call('/api/operator/requests/'+id,{
-   token:contractor,method:'PATCH',data:{status:state}});
+  const before=(await call('/api/operator/requests',{token:admin}))
+    .find(r=>r.id===id);
+  console.log('QA transitioning',before?.status,'to',state);
+  let row;
+  try{
+    row=await call('/api/operator/requests/'+id,{
+      token:contractor,method:'PATCH',data:{status:state}});
+  }catch(e){
+    const after=(await call('/api/operator/requests',{token:admin}))
+      .find(r=>r.id===id);
+    console.log('QA failure post-state:',after?.status,'assigned:',
+      Boolean(after?.assignedDriverId),'price:',after?.price);
+    throw e;
+  }
   assert.equal(row.status,state);
  }
  const ledger=await call('/api/admin/commissions',{token:admin});
