@@ -40,6 +40,6 @@ export function priceGuide(distanceKm,minutes,overrides={}){
 export function quoteBreakdown(priceUyu,bps){
  if(!Number.isInteger(priceUyu)||priceUyu<1||priceUyu>10000000
    ||!Number.isInteger(bps)||bps<0||bps>5000)throw Error('Cotización inválida');
- const fee=Math.round(priceUyu*bps/10000);
+ const fee=Math.round(priceUyu*bps/100)/100; // Conservar centésimos de peso antes de facturar
  return {grossUyu:priceUyu,commissionBps:bps,commissionUyu:fee,driverNetUyu:priceUyu-fee};
 }
