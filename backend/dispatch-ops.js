@@ -66,7 +66,8 @@ export async function visibilityFor(env,actor,bookingId,policy){
  const assigned=row.driver_id===actor.id;
  const unclaimed=row.status==='requested'&&!row.driver_id;
  const released=Boolean(row.released);
- const canQuote=unclaimed&&(policy.canQuoteAll||released);
+ const canQuote=row.status==='requested'&&
+   (assigned||unclaimed&&(policy.canQuoteAll||released));
  return {
    visible:assigned||unclaimed&&(policy.canQuoteAll||policy.canRelease||released),
    mayQuote:canQuote,mayRelease:unclaimed&&policy.canRelease,assigned
