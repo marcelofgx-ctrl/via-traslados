@@ -971,7 +971,7 @@ public final class MainActivity extends Activity {
                 android.widget.PopupMenu menu=new android.widget.PopupMenu(this,order);
                 menu.getMenu().add(0,1,0,"Más recientes");
                 menu.getMenu().add(0,2,1,"Viaje más próximo");
-                menu.getMenu().add(0,3,2,"Viaje más lejano");
+                menu.getMenu().add(0,3,2,"Viajes posteriores");
                 menu.setOnMenuItemClickListener(item->{
                     requestSort=item.getItemId()==1?"recent":item.getItemId()==2?"soon":"far";
                     dashboard();return true;
@@ -979,7 +979,7 @@ public final class MainActivity extends Activity {
                 menu.show();
             });
             controls.addView(order,new LinearLayout.LayoutParams(0,dp(40),1.35f));
-            TextView filter=text("☷  "+filterLabel()+"  ▾",12,TEAL_DARK,true);
+            TextView filter=text(filterLabel()+"  ▾",12,TEAL_DARK,true);
             filter.setGravity(Gravity.CENTER);
             filter.setPadding(dp(7),0,dp(7),0);
             filter.setBackground(ripple(Color.WHITE,BORDER,11));
@@ -998,8 +998,11 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams flp=new LinearLayout.LayoutParams(0,dp(40),1f);
             flp.leftMargin=dp(7);
             controls.addView(filter,flp);
-            TextView search=text("⌕",24,TEAL_DARK,false);
-            search.setGravity(Gravity.CENTER);
+            android.widget.ImageButton search=new android.widget.ImageButton(this);
+            search.setImageResource(android.R.drawable.ic_menu_search);
+            search.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+            search.setColorFilter(TEAL_DARK);
+            search.setPadding(dp(10),dp(10),dp(10),dp(10));
             search.setContentDescription(requestSearchOpen?"Ocultar búsqueda":"Buscar por dirección o referencia");
             search.setBackground(ripple(requestSearchOpen?SOFT:Color.WHITE,BORDER,11));
             search.setOnClickListener(v->{requestSearchOpen=!requestSearchOpen;dashboard();});
@@ -1048,7 +1051,7 @@ public final class MainActivity extends Activity {
     private String sortLabel() {
         switch(requestSort){
             case "soon": return "Próximos";
-            case "far": return "Más lejanos";
+            case "far": return "Más tarde";
             default: return "Recientes";
         }
     }
