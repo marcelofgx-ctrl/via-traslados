@@ -892,7 +892,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_BUSINESS_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_LAYOUT_PREVIEW ?
+                "V30 · DETALLE Y COTIZACIÓN · DEMO SIN PRODUCCIÓN" :
+                BuildConfig.VIA_BUSINESS_PREVIEW ?
                 "V29 · SOCIOS Y TARIFAS · DEMO SIN PRODUCCIÓN" :
                 BuildConfig.VIA_DENSE_PREVIEW ?
                 "V28 · DEMO PREMIUM COMPACTA · SIN PRODUCCIÓN" :
@@ -1573,10 +1575,6 @@ public final class MainActivity extends Activity {
         int passengerCount=item.optInt("passengers",1),luggageCount=item.optInt("bags",0);
         String paxText=passengerCount+" "+(passengerCount==1?"pasajero":"pasajeros");
         String luggageText=luggageCount+" "+(luggageCount==1?"valija":"valijas");
-        String serviceSummary=paxText+" · "+luggageText;
-        if(item.optInt("price",0)>0)
-            serviceSummary+=" · $ "+String.format(new java.util.Locale("es","UY"),
-                "%,d",item.optInt("price"))+" UYU";
         LinearLayout serviceData=row();
         TextView pax=text(paxText,12,INK,true);
         serviceData.addView(pax,new LinearLayout.LayoutParams(0,-2,1));
@@ -1584,14 +1582,20 @@ public final class MainActivity extends Activity {
         serviceData.addView(baggage);
         itinerary.addView(serviceData);
         if(item.optInt("price",0)>0){
-            spacer(itinerary,8);
+            spacer(itinerary,10);
             LinearLayout fare=row();
-            addLine(fare,"IMPORTE OFERTADO",10,MUTED,true,0);
+            fare.setGravity(Gravity.CENTER_VERTICAL);
+            fare.setPadding(dp(11),dp(10),dp(11),dp(10));
+            fare.setBackground(bg(SOFT,11,0));
+            TextView fareLabel=text("IMPORTE OFERTADO",10,MUTED,true);
+            fareLabel.setGravity(Gravity.CENTER_VERTICAL);
+            fare.addView(fareLabel,new LinearLayout.LayoutParams(0,-2,1));
             TextView total=text("$ "+String.format(new java.util.Locale("es","UY"),
-                "%,d",item.optInt("price"))+" UYU",15,TEAL_DARK,true);
-            total.setGravity(Gravity.RIGHT);
-            fare.addView(total,new LinearLayout.LayoutParams(0,-2,1));
-            itinerary.addView(fare);
+                "%,d",item.optInt("price"))+" UYU",16,TEAL_DARK,true);
+            total.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+            total.setSingleLine(true);
+            fare.addView(total,new LinearLayout.LayoutParams(-2,-2));
+            itinerary.addView(fare,new LinearLayout.LayoutParams(-1,-2));
         }
         spacer(itinerary,7);
         if(measured!=null){
@@ -1612,11 +1616,13 @@ public final class MainActivity extends Activity {
             }
             itinerary.addView(credit);
         }
-        TextView maps=actionText("↗  Abrir ruta",TEAL_DARK,v->openMaps(item));
-        maps.setTextSize(12);
-        maps.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-        maps.setPadding(0,0,0,0);
-        itinerary.addView(maps,new LinearLayout.LayoutParams(-1,dp(38)));
+        if(!BuildConfig.VIA_PREVIEW){
+            TextView maps=actionText("↗  Abrir ruta en Google Maps",TEAL_DARK,v->openMaps(item));
+            maps.setTextSize(12);
+            maps.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            maps.setPadding(0,0,0,0);
+            itinerary.addView(maps,new LinearLayout.LayoutParams(-1,dp(38)));
+        }
         appendCard(body,itinerary,10);
 
         // Pasajero y asignación comparten una sola tarjeta de operaciones.
@@ -1679,15 +1685,19 @@ public final class MainActivity extends Activity {
             spacer(body,7);
         }
 
-        if("requested".equals(state)&&item.optBoolean("canQuote",
-            BuildConfig.VIA_PREVIEW||"admin".equals(staffRole))){
-            TextView quoteAction=actionText("Sugerir precio  ›",TEAL_DARK,v->{
-                panel.dismiss();quote(item);
-            });
-            quoteAction.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
-            quoteAction.setTextSize(12);
-            quoteAction.setPadding(dp(4),0,0,0);
-            body.addView(quoteAction,new LinearLayout.LayoutParams(-1,dp(38)));
+        // Cotizar es la acción principal del pie. La asignación manual queda
+        // como operación secundaria exclusiva del administrador.
+        final boolean canQuote="requested".equals(state)&&item.optBoolean("canQuote",
+            BuildConfig.VIA_PREVIEW||"admin".equals(staffRole));
+        if(assignable&&!hasDriver){
+            TextView manual=actionText("Asignar otro conductor manualmente  ›",
+                TEAL_DARK,v->{
+                    panel.dismiss();driverAssignmentDialog(item);
+                });
+            manual.setTextSize(12);
+            manual.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);
+            manual.setPadding(dp(4),0,0,0);
+            body.addView(manual,new LinearLayout.LayoutParams(-1,dp(40)));
         }
         if("requested".equals(state)&&item.optBoolean("canRelease",false)
             &&!hasDriver){
@@ -1730,13 +1740,13 @@ public final class MainActivity extends Activity {
             case "arrived": next="in_progress";nextTitle="Iniciar traslado";break;
             case "in_progress": next="completed";nextTitle="Finalizar traslado";break;
         }
-        if(assignable&&!hasDriver){
+        if(canQuote){
+            footer.addView(button("Cotizar y tomar viaje   →",true,v->{
+                panel.dismiss();quote(item);
+            }),new LinearLayout.LayoutParams(-1,dp(46)));
+        }else if(assignable&&!hasDriver){
             footer.addView(button("Asignar conductor   →",true,v->{
                 panel.dismiss();driverAssignmentDialog(item);
-            }),new LinearLayout.LayoutParams(-1,dp(46)));
-        }else if("requested".equals(state)){
-            footer.addView(button("Sugerir precio   →",true,v->{
-                panel.dismiss();quote(item);
             }),new LinearLayout.LayoutParams(-1,dp(46)));
         }else if(!next.isEmpty()){
             final String finalState=next,finalTitle=nextTitle;
@@ -3219,6 +3229,35 @@ public final class MainActivity extends Activity {
 
     private void settings(LinearLayout body) {
         addLine(body,"Ajustes",25,INK,true,4);
+        if(BuildConfig.VIA_PREVIEW){
+            addLine(body,"Entorno de demostración · sin cuentas reales",
+                13,MUTED,false,15);
+            LinearLayout preview=card();
+            addLine(preview,"ADMINISTRADOR FICTICIO",10,TEAL_DARK,true,8);
+            addLine(preview,"Centro de operaciones · Vía Traslados",
+                16,INK,true,7);
+            addLine(preview,"Esta versión trabaja únicamente con viajes y conductores "+
+                "simulados. No existe una sesión real ni se puede crear una cuenta "+
+                "o activar el acceso biométrico desde esta demo.",
+                12,MUTED,false,13);
+            preview.addView(button("Volver a solicitudes",true,v->{
+                tab="solicitudes";dashboard();
+            }),new LinearLayout.LayoutParams(-1,dp(44)));
+            appendCard(body,preview,12);
+            LinearLayout tip=card();
+            addLine(tip,"QUÉ PROBAR",10,TEAL_DARK,true,8);
+            addLine(tip,"Cotización → rango de precios → propuesta asignada.",13,INK,false,7);
+            addLine(tip,"Gestión → permisos de conductores y comisiones ficticias.",
+                13,INK,false,7);
+            addLine(tip,"Sin llamadas, cobros, correos ni conexión al servidor.",
+                12,MUTED,false,0);
+            appendCard(body,tip,12);
+            addLine(body,BuildConfig.VIA_LAYOUT_PREVIEW?
+                "Versión V30 Demo · Corrección de detalle y ajustes":
+                "Versión de demostración · sin producción",
+                11,MUTED,false,0);
+            return;
+        }
         addLine(body,"Cuenta, seguridad y aplicación",13,MUTED,false,19);
 
         LinearLayout account=card();

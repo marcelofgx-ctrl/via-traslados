@@ -12,8 +12,8 @@ public final class ViaPreviewData {
     private static final String DRIVER_1 = "11111111-1111-4111-8111-111111111111";
     private static final String DRIVER_2 = "22222222-2222-4222-8222-222222222222";
     private static final String DRIVER_3 = "33333333-3333-4333-8333-333333333333";
-    private static String assignedId;
-    private static String assignedName;
+    private static String assignedId = DRIVER_1;
+    private static String assignedName = "Lucía Gómez";
     private static String status = "accepted";
     private static int price = 2750;
 
@@ -113,10 +113,13 @@ public final class ViaPreviewData {
             item.put("status",statuses.containsKey(id)?statuses.get(id):state);
             item.put("price",prices.containsKey(id)?prices.get(id):price);
             item.put("created_at",createdAt);
+            // Una cotización ya enviada siempre tiene un conductor ficticio adjudicado.
+            // El demo debe reflejar la misma regla operativa que el backend.
+            boolean alreadyQuoted="quoted".equals(item.optString("status"));
             item.put("assignedDriverId",assignedDemo.containsKey(id)?
-                "11111111-1111-4111-8111-111111111111":JSONObject.NULL);
+                DRIVER_1:alreadyQuoted?DRIVER_1:JSONObject.NULL);
             item.put("assignedDriverName",assignedDemo.containsKey(id)?
-                assignedDemo.get(id):JSONObject.NULL);
+                assignedDemo.get(id):alreadyQuoted?"Lucía Gómez":JSONObject.NULL);
             item.put("canQuote","requested".equals(item.optString("status")));
             item.put("canRelease","requested".equals(item.optString("status"))&&
                 !releasedDemo.contains(id));
