@@ -32,16 +32,22 @@ export function evaluateReverseCandidates(rows=[],maxReferenceMeters=100){
  const closest=candidates[0];
  const key=x=>text(x.street).toLocaleLowerCase('es').normalize('NFD')
     .replace(/[\u0300-\u036f]/g,'').replace(/\s+(?:n[º°o.]?\s*)?\d{1,6}[a-z]?\s*$/,'');
- const conflict=candidates.slice(1).find(x=>x.distanceMeters-closest.distanceMeters<=25 &&
-   key(x)!==key(closest));
+ const near=candidates.filter(x=>x.distanceMeters-closest.distanceMeters<=25);
+ const conflict=near.find(x=>key(x)!==key(closest));
  if(conflict)return {status:'ambiguous',reference:null,reason:'multiple_nearby_streets'};
+ const fold=v=>text(v).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ const distinctCities=new Set(near.map(x=>fold(x.city)).filter(Boolean));
+ const distinctDepartments=new Set(near.map(x=>fold(x.department)).filter(Boolean));
+ const ambiguousCity=distinctCities.size>1;
+ const ambiguousDepartment=distinctDepartments.size>1;
  return {status:'suggested',reference:{
    street:withoutNumber(closest.street),
    nearbyPortal:houseNumber(text(closest.street))?text(closest.street):null,
-   city:text(closest.city),department:text(closest.department),
+   city:ambiguousCity?'':text(closest.city),
+   department:ambiguousDepartment?'':text(closest.department),
    distanceMeters:closest.distanceMeters,source:text(closest.source)||'geocoder',
    confidence:'reference_only'
- },reason:null};
+ },reason:ambiguousCity?'locality_ambiguous':ambiguousDepartment?'department_ambiguous':null};
 }
 
 /** La respuesta inversa no tiene autoridad sobre una dirección elegida por usuario. */
