@@ -5,7 +5,7 @@ const clean=v=>String(v??'').trim().replace(/\s+/g,' ').slice(0,140);
 const fold=v=>clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
 const valid=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&a>=-36&&a<=-30&&b>=-59&&b<=-52;
 const numeric=v=>v==null||v===''?null:Number(v);
-const number=v=>(fold(v).match(/(?:^|\s)(\d{1,6}[a-z]?)$/)||[])[1]||'';
+const number=v=>(fold(String(v).split(',')[0]).match(/(?:^|\s)(\d{1,6}[a-z]?)$/)||[])[1]||'';
 const km=(a,b,c,d)=>{const r=Math.PI/180,x=Math.sin((c-a)*r/2),y=Math.sin((d-b)*r/2);return 12742*Math.asin(Math.sqrt(x*x+Math.cos(a*r)*Math.cos(c*r)*y*y))};
 const cities=['shangrila','lagomar','ciudad de la costa','colonia nicolich','paso carrasco','solymar','el pinar','pinar','salinas','atlantida','neptunia','parque del plata','pando','carrasco','montevideo','canelones','maldonado','punta del este','la paz','las piedras','sauce'];
 function locality(q){
