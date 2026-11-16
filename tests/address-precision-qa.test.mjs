@@ -37,14 +37,14 @@ test('no adjudica coordenadas cuando la puerta difiere',async()=>{
  assert.equal(r.status,200);
  assert.equal(r.results.length,0);
 });
-test('mantiene el portal confirmado y la corrección localizada de Shangrilá',async()=>{
+test('no sustituye localidades por excepciones locales',async()=>{
  const search=candidates([row('Roque Saenz Peña',1711,'Lagomar','Canelones',-34.84,-56.04)]);
- const r=await search({q:'Roque Saenz Peña 1711, Shangrilá',mode:'resolve'});
+ const mismatch=await search({q:'Roque Saenz Peña 1711, Shangrilá',mode:'resolve'});
+ assert.equal(mismatch.results.length,0);
+ const r=await search({q:'Roque Saenz Peña 1711, Lagomar',mode:'resolve'});
  assert.equal(r.results.length,1);
- assert.equal(r.results[0].city,'Shangrilá');
+ assert.equal(r.results[0].city,'Lagomar');
  assert.equal(r.results[0].accuracy,'portal');
- assert.equal(r.results[0].lat,-34.84);
- assert.equal(r.results[0].lng,-56.04);
 });
 test('puntos de interés siguen funcionando en QA',async()=>{
  const search=setup(async()=>response([]));
@@ -57,4 +57,11 @@ test('no se aceptan consultas vacías',async()=>{
  const search=candidates([]);
  const r=await search({q:'x',mode:'suggest'});
  assert.equal(r.status,400);
+});
+
+test('geocodificación inversa no certifica domicilio aunque el portal esté cerca',async()=>{
+ const search=candidates([row('Calle Test',450,'Ciudad Test','Canelones',-34.84,-56.04)]);
+ const r=await search({mode:'reverse',lat:-34.840001,lng:-56.040001});
+ assert.equal(r.policy,'reference_only');
+ assert.equal(r.results[0].referenceOnly,true);
 });
