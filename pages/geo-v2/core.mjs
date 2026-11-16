@@ -61,9 +61,16 @@ export function buildPickupDisplay({point,postalAddress=null,reverseCandidates=[
  }
  const nearby=evaluateReverseCandidates(reverseCandidates);
  if(nearby.status==='suggested'){
-  return {point:{...point},title:'Cerca de '+nearby.reference.street,
-   subtitle:[nearby.reference.city,nearby.reference.department,'Punto por confirmar'].filter(Boolean).join(' · '),
-   postalStatus:'suggested',nearbyReference:nearby.reference};
+  // El número es una referencia del portal cercano, NUNCA la puerta exacta
+  // del GPS. Mostrarlo resulta útil, pero siempre con "Cerca de" y distancia.
+  const ref=nearby.reference;
+  const numbered=ref.nearbyPortal && ref.distanceMeters<=35;
+  const title='Cerca de '+(numbered?ref.nearbyPortal:ref.street);
+  const places=[ref.city,ref.department].filter(Boolean);
+  const distance=Number.isFinite(ref.distanceMeters)?'Referencia aprox. a '+Math.round(ref.distanceMeters)+' m':'Punto por confirmar';
+  return {point:{...point},title,
+   subtitle:[...places,distance].join(' · '),
+   postalStatus:'suggested',nearbyReference:ref,numberIsApproximate:!!numbered};
  }
  return {point:{...point},title:'Punto de recogida sin dirección confirmada',
   subtitle:nearby.status==='ambiguous'?'Varias calles próximas · elegí en mapa':'Ajustá el punto en el mapa',
