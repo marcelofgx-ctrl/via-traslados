@@ -42,8 +42,9 @@ function addrScore(row,q,la,lo){
 }
 function relevantResolve(p,q){
  const n=number(q),got=number(p.street);
- if(n&&n!==got)return false;
- if(n&&p.accuracy!=='portal')return false;
+ // En resolución postal no aceptar portales sin número solicitado ni aproximaciones.
+ if(!n||!got||n!==got)return false;
+ if(p.accuracy!=='portal')return false;
  const streetQuery=fold(q.split(',')[0]).replace(/\s+\d{1,6}[a-z]?$/,'').trim();
  const gotStreet=fold(p.street).replace(/\s+\d{1,6}[a-z]?$/,'').trim();
  const tokens=streetQuery.split(' ').filter(t=>t.length>=3);
