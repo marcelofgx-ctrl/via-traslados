@@ -134,6 +134,14 @@ export default async function handler(req,res){
    ])).values()];
    return res.status(200).json({results:unique.slice(0,3),mode,provider:'IDE Uruguay',qa:true});
   }
+  if(mode==='reverse'){
+   // Evitar mostrar una dirección distante como si fuera la calle del marcador.
+   const closest=results.filter(p=>valid(p.lat,p.lng))
+    .map(p=>({...p,distanceMeters:Math.round(km(lat,lng,p.lat,p.lng)*1000)}))
+    .filter(p=>p.distanceMeters<=800)
+    .sort((a,b)=>a.distanceMeters-b.distanceMeters);
+   return res.status(200).json({results:closest.slice(0,3),mode,provider:'IDE Uruguay',qa:true});
+  }
   if(mode==='suggest')results.sort((a,b)=>addrScore(b,q,lat,lng)-addrScore(a,q,lat,lng));
   return res.status(200).json({results:results.slice(0,12),mode,provider:'IDE Uruguay',qa:true});
  }catch{
