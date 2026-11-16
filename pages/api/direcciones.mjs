@@ -128,7 +128,11 @@ export default async function handler(req,res){
   if(mode==='resolve'){
    const exact=results.filter(p=>relevantResolve(p,q));
    exact.sort((a,b)=>addrScore(b,q,lat,lng)-addrScore(a,q,lat,lng));
-   return res.status(200).json({results:exact.slice(0,3),mode,provider:'IDE Uruguay',qa:true});
+   // IDE puede devolver el mismo portal por alias de localidad; evitar duplicados.
+   const unique=[...new Map(exact.map(p=>[
+    fold(p.street)+'|'+fold(p.department)+'|'+p.lat.toFixed(6)+'|'+p.lng.toFixed(6),p
+   ])).values()];
+   return res.status(200).json({results:unique.slice(0,3),mode,provider:'IDE Uruguay',qa:true});
   }
   if(mode==='suggest')results.sort((a,b)=>addrScore(b,q,lat,lng)-addrScore(a,q,lat,lng));
   return res.status(200).json({results:results.slice(0,12),mode,provider:'IDE Uruguay',qa:true});
