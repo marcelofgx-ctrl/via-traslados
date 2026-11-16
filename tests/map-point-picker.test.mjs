@@ -36,7 +36,7 @@ test('la página no pide GPS por sí sola, solo cuando se pulsa el botón',()=>{
 });
 test('el script y el estilo del selector se cargan en el inicio de reservas',()=>{
  assert.match(html,/map-point-picker\.css\?v=3/);
- assert.match(html,/map-point-picker\.js\?v=3/);
+ assert.match(html,/map-point-picker\.js\?v=4/);
  assert.match(js,/accuracy:'map'/);
  assert.match(js,/dispatchEvent\(new CustomEvent\('via:address'/);
 });
@@ -59,5 +59,12 @@ test('mapa vectorial y presentación de la dirección sin prefijos artificiales'
  const preview=readFileSync(new URL('../pages/address-selected-preview.js',import.meta.url),'utf8');
  assert.match(preview,/via-selected-street/);
  assert.match(preview,/via-selected-locality/);
- assert.match(html,/address-selected-preview\.js\?v=1/);
+ assert.match(html,/address-selected-preview\.js\?v=2/);
+});
+
+test('fallback móvil de bajo consumo e indicación del modo de mapa',()=>{
+ assert.match(js,/tileSize:512,zoomOffset:-1/);
+ assert.match(js,/Modo básico:/);
+ assert.match(js,/vectorSupported/);
+ assert.match(js,/Chrome desde el menú/);
 });
