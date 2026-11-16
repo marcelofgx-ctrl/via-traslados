@@ -27,7 +27,7 @@ test('el mapa permite seleccionar tanto origen como destino en ambos formularios
  assert.deepEqual(controls.map(c=>c.id),['home-origin','home-destination','origin','destination']);
  for(const item of controls){
   assert.equal(item.button.type,'button');
-  assert.match(item.button.attributes['aria-label'],/en mapa/);
+  assert.match(item.button.attributes['aria-label'],/en el mapa/);
   assert.equal(typeof item.button.on_click,'function');
  }
 });
@@ -35,8 +35,17 @@ test('la página no pide GPS por sí sola, solo cuando se pulsa el botón',()=>{
  const result=mount();assert.equal(result.gpsRequests,0);
 });
 test('el script y el estilo del selector se cargan en el inicio de reservas',()=>{
- assert.match(html,/map-point-picker\.css\?v=1/);
- assert.match(html,/map-point-picker\.js\?v=1/);
+ assert.match(html,/map-point-picker\.css\?v=2/);
+ assert.match(html,/map-point-picker\.js\?v=2/);
  assert.match(js,/accuracy:'map'/);
  assert.match(js,/dispatchEvent\(new CustomEvent\('via:address'/);
+});
+
+test('búsqueda integrada, recuperación manual de teselas y mapa GPS opcional',()=>{
+ assert.match(js,/via-picker-query/);
+ assert.match(js,/tileerror/);
+ assert.match(js,/via-picker-retry/);
+ assert.match(js,/getCurrentPosition/);
+ assert.match(js,/accuracy:'map'/);
+ assert.match(js,/lat:position.lat,lng:position.lng/);
 });
