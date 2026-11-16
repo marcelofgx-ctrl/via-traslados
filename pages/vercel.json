@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/direcciones.js": {
+    "api/direcciones.mjs": {
       "maxDuration": 10
     }
   }
