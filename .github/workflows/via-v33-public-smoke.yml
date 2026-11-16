@@ -1,4 +1,4 @@
-name: Vía Traslados V33 — descarga pública y firma de instalador
+name: Vía Traslados V34 — prueba pública de APK y conservación de V33
 on:
   push:
     branches: [via-apk-descarga-qa-20261112]
@@ -8,28 +8,42 @@ permissions:
   contents: read
 jobs:
   verify:
+    name: Validar descargas QA sin autenticación
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Página V33 pública y sin cuenta GitHub
+      - name: Portada V34 publicada y versiones anteriores preservadas
         run: |
           set -euo pipefail
           BASE=https://via-conductor-apk-qa.vercel.app
           ready=0
-          for n in $(seq 1 15); do
+          for n in $(seq 1 20); do
             code=$(curl -sSL --max-time 15 -o /tmp/via-home -w '%{http_code}' "$BASE/" || true)
-            if [ "$code" = "200" ] && grep -q 'Descargar V33 Registro QA' /tmp/via-home; then ready=1;break;fi
+            if [ "$code" = "200" ] &&
+                grep -q 'Descargar V34 Catálogo QA' /tmp/via-home &&
+                grep -q 'Descargar V33 Registro QA' /tmp/via-home; then ready=1;break;fi
             sleep 3
           done
           test "$ready" -eq 1
+          curl -fLsS --retry 3 "$BASE/v34-catalog-qa/" -o /tmp/via-v34-page
+          grep -q 'V34 Catálogo QA' /tmp/via-v34-page
+          grep -q 'via-conductor-v34-catalog-qa.apk' /tmp/via-v34-page
           curl -fLsS --retry 3 "$BASE/v33-registration-qa/" -o /tmp/via-v33-page
           grep -q 'V33 Registro QA' /tmp/via-v33-page
-      - name: Comprobar APK V33 SHA256, ZIP válido y V32 conservada
+      - name: Descargar V34 y verificar checksum SHA256 exacto
         run: |
           set -euo pipefail
           BASE=https://via-conductor-apk-qa.vercel.app
-          curl -fLsS --retry 4 --max-time 180 "$BASE/v33-registration-qa/via-conductor-v33-registration-qa.apk" -o /tmp/via-v33.apk
-          test "$(stat -c%s /tmp/via-v33.apk)" -eq 1453917
+          curl -fLsS --retry 3 --max-time 180 "$BASE/v34-catalog-qa/via-conductor-v34-catalog-qa.apk" -o /tmp/via-v34.apk
+          test "$(stat -c%s /tmp/via-v34.apk)" -gt 1000000
+          echo "e35f2b458a7318f46d22773a2bb0d469afc866f3ffc9e8395b0bef8ad253c14f  /tmp/via-v34.apk" | sha256sum -c -
+          unzip -t /tmp/via-v34.apk | tail -2
+          curl -fLsS --retry 3 "$BASE/v34-catalog-qa/SHA256SUMS.txt" | grep -F 'e35f2b458a7318f46d22773a2bb0d469afc866f3ffc9e8395b0bef8ad253c14f'
+      - name: Confirmar APK V33 anterior y V32 preservada
+        run: |
+          set -euo pipefail
+          BASE=https://via-conductor-apk-qa.vercel.app
+          curl -fLsS --retry 3 --max-time 180 "$BASE/v33-registration-qa/via-conductor-v33-registration-qa.apk" -o /tmp/via-v33.apk
           echo "b8c43d31d8c51901151ef7ff33fe029a93d7bce3bfe6129a40747103e3677b8b  /tmp/via-v33.apk" | sha256sum -c -
           unzip -t /tmp/via-v33.apk | tail -2
-          curl -fLsS "$BASE/v32-online-qa/SHA256SUMS.txt" | grep -q 'via-conductor-v32-online-qa.apk'
+          curl -fLsS --retry 3 "$BASE/v32-online-qa/SHA256SUMS.txt" | grep -q 'via-conductor-v32-online-qa.apk'
