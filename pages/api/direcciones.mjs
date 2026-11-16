@@ -12,18 +12,11 @@ function locality(q){
  const norm=' '+fold(q)+' ';
  return cities.find(city=>norm.includes(' '+city+' '))||'';
 }
-function knownLocality(street,city,department,q){
- if(fold(city)!=='lagomar'||(department&&fold(department)!=='canelones'))return city;
- const base=fold(street),nums=fold(q).match(/\b\d{3,5}\b/g)||[];
- if(nums.length&&!nums.includes('1711'))return city;
- if(/^(?:avenida |av )?roque saenz pena(?: 1711)?$/.test(base)&&/\b1711\b/.test(base+' '+fold(q)))return 'Shangrilá';
- return city;
-}
 function normalized(row,mode,q){
  if(!row||typeof row!=='object')return null;
  const street=clean(row.nomVia?[row.nomVia,row.portalNumber].filter(x=>x!==undefined&&x!==null&&x!=='').join(' '):row.calle||row.address||row.direccion||row.nombre||'');
  const department=clean(row.departamento||row.department||'');
- const city=knownLocality(street,clean(row.localidad||row.city||''),department,q);
+ const city=clean(row.localidad||row.city||'');
  const lat=numeric(row.lat??row.latitud),lng=numeric(row.lng??row.lon??row.longitud);
  if(!street)return null;
  const msg=String(row.stateMsg||'');
@@ -59,7 +52,7 @@ function relevantResolve(p,q){
  if(city&&city!=='canelones'&&city!=='montevideo'){
   const rowCity=fold(p.city);
   // No asumir otra localidad para un número exacto.
-  if(rowCity&&rowCity!==city&&!(city==='shangrila'&&rowCity==='lagomar'))return false;
+  if(rowCity&&rowCity!==city)return false;
  }
  return valid(p.lat,p.lng);
 }
@@ -122,7 +115,7 @@ export default async function handler(req,res){
  try{
   if(mode==='places')return res.status(200).json({results:await places(q,lat,lng,signal),mode,provider:'IDE Uruguay y lugares verificados',qa:true});
   const path=mode==='suggest'?'/api/v1/geocode/candidates':mode==='reverse'?'/api/v1/geocode/reverse':'/api/v1/geocode/direcUnica';
-  const params=mode==='reverse'?{latitud:lat,longitud:lng,limit:1}:{q,limit:mode==='suggest'?30:5};
+  const params=mode==='reverse'?{latitud:lat,longitud:lng,limit:8}:{q,limit:mode==='suggest'?30:5};
   const rows=await ide(path,params,signal);
   const results=rows.map(row=>normalized(row,mode,q)).filter(Boolean);
   if(mode==='resolve'){
@@ -137,10 +130,10 @@ export default async function handler(req,res){
   if(mode==='reverse'){
    // Evitar mostrar una dirección distante como si fuera la calle del marcador.
    const closest=results.filter(p=>valid(p.lat,p.lng))
-    .map(p=>({...p,distanceMeters:Math.round(km(lat,lng,p.lat,p.lng)*1000)}))
-    .filter(p=>p.distanceMeters<=800)
+    .map(p=>({...p,distanceMeters:Math.round(km(lat,lng,p.lat,p.lng)*1000),referenceOnly:true}))
+    .filter(p=>p.distanceMeters<=300)
     .sort((a,b)=>a.distanceMeters-b.distanceMeters);
-   return res.status(200).json({results:closest.slice(0,3),mode,provider:'IDE Uruguay',qa:true});
+   return res.status(200).json({results:closest.slice(0,8),mode,provider:'IDE Uruguay',qa:true,policy:'reference_only'});
   }
   if(mode==='suggest')results.sort((a,b)=>addrScore(b,q,lat,lng)-addrScore(a,q,lat,lng));
   return res.status(200).json({results:results.slice(0,12),mode,provider:'IDE Uruguay',qa:true});
