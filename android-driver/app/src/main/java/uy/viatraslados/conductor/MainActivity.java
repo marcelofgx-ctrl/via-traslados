@@ -172,7 +172,7 @@ public final class MainActivity extends Activity {
         addLine(page,"Accedé con tu cuenta o solicitá incorporarte "+
             "a nuestro equipo de traslados.",14,MUTED,false,20);
         LinearLayout info=card();
-        addLine(info,"V33 · ENTORNO DE PRUEBAS",11,TEAL_DARK,true,8);
+        addLine(info,BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA" : "V33 · ENTORNO DE PRUEBAS",11,TEAL_DARK,true,8);
         addLine(info,"Usá únicamente un nombre inventado, teléfono 099000xxx, "+
             "correo @qa.invalid, matrícula QA y una fotografía de prueba. "+
             "Todavía no cargues documentos ni fotografías personales reales.",
@@ -1386,7 +1386,7 @@ public final class MainActivity extends Activity {
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_ONLINE_QA) {
             TextView qa=text(BuildConfig.VIA_ONBOARD_QA?
-                "V33 · REGISTRO DE CONDUCTORES · QA AISLADA" :
+                (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
                 "V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
                 10,TEAL_DARK,true);
             qa.setGravity(Gravity.CENTER);
