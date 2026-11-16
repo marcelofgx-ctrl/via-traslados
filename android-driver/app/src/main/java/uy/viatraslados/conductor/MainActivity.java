@@ -6,6 +6,11 @@ import android.app.Dialog;
 import android.view.Window;
 import android.view.WindowManager;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.util.Base64;
+import android.widget.ImageView;
+import android.provider.MediaStore;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -52,6 +57,13 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout root;
+    private static final int QA_IMAGE_CAMERA=9303;
+    private static final int QA_IMAGE_GALLERY=9304;
+    private String qaPhotoData="";
+    private ImageView qaPhotoPreview;
+    private boolean qaPhotoRequired=true;
+    private int qaPendingCount=0;
+
     private String operatorKey;
     private String staffToken;
     private String staffRefreshToken;
@@ -90,7 +102,9 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(LIGHT);
         setContentView(root);
-        if(BuildConfig.VIA_ONLINE_QA){
+        if(BuildConfig.VIA_ONBOARD_QA){
+            qaWelcome();
+        }else if(BuildConfig.VIA_ONLINE_QA){
             startQaSession("admin");
         }else if (BuildConfig.VIA_PREVIEW) {
             // APK independiente, solo datos ficticios; no accede al Worker ni a D1.
@@ -136,6 +150,324 @@ public final class MainActivity extends Activity {
 
     // V32: sesiones temporales emitidas por el Worker QA real. Sin credenciales
     // dentro de la APK. Únicamente personas y viajes sintéticos en D1 QA.
+    // V33 — formulario real dentro de QA: no reutilizar datos personales
+    // ni cargar fotos auténticas mientras el administrador demo sea público.
+    private void qaWelcome(){
+        if(!BuildConfig.VIA_ONBOARD_QA)return;
+        authFlow=true;
+        staffToken=null;
+        staffRefreshToken=null;
+        operatorKey=null;
+        root.removeAllViews();
+        root.setBackgroundColor(LIGHT);
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        root.addView(scroll,new LinearLayout.LayoutParams(-1,-1));
+        LinearLayout page=column();
+        page.setPadding(dp(26),dp(35),dp(26),dp(26));
+        scroll.addView(page);
+        addLine(page,"VÍA / TRASLADOS",12,TEAL_DARK,true,24);
+        addLine(page,"Centro de conductores",27,INK,true,9);
+        addLine(page,"Accedé con tu cuenta o solicitá incorporarte "+
+            "a nuestro equipo de traslados.",14,MUTED,false,20);
+        LinearLayout info=card();
+        addLine(info,BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA" : "V33 · ENTORNO DE PRUEBAS",11,TEAL_DARK,true,8);
+        addLine(info,"Usá únicamente un nombre inventado, teléfono 099000xxx, "+
+            "correo @qa.invalid, matrícula QA y una fotografía de prueba. "+
+            "Todavía no cargues documentos ni fotografías personales reales.",
+            12,MUTED,false,0);
+        appendCard(page,info,20);
+        page.addView(button("Ingresar",true,v->qaLogin()),
+            new LinearLayout.LayoutParams(-1,dp(48)));
+        spacer(page,10);
+        page.addView(button("Solicitar inscripción",false,v->qaRegister()),
+            new LinearLayout.LayoutParams(-1,dp(46)));
+        spacer(page,20);
+        TextView demo=actionText("Acceder como administrador de demostración  ›",
+            TEAL_DARK,v->startQaSession("admin"));
+        demo.setTextSize(12);
+        page.addView(demo,new LinearLayout.LayoutParams(-1,dp(45)));
+        addLine(page,"El acceso del administrador de prueba es público. "+
+            "No constituye un mecanismo de autenticación para producción.",
+            11,MUTED,false,0);
+    }
+
+    private void qaLogin(){
+        LinearLayout page=authPage("CONDUCTORES · QA","Ingresar",
+            "Entrá con tu correo de ensayo y la contraseña que elegiste. "+
+            "Solo podrás acceder después de que se apruebe tu inscripción.");
+        EditText email=authField(page,"CORREO DE PRUEBA","conductor01@qa.invalid",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,false);
+        EditText password=authField(page,"CONTRASEÑA","Tu contraseña",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,true);
+        Button submit=button("Ingresar  →",true,null);
+        page.addView(submit,new LinearLayout.LayoutParams(-1,dp(46)));
+        LinearLayout wait=authWaiting(page);
+        TextView error=authError(page);
+        submit.setOnClickListener(v->{
+            String em=email.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+            String pw=password.getText().toString();
+            if(!em.endsWith("@qa.invalid")||pw.isEmpty()){
+                authErrorText(error,"Ingresá un correo @qa.invalid y tu contraseña.");
+                return;
+            }
+            authBusy(wait,submit,true,"Validando cuenta y autorización…");
+            JSONObject p=new JSONObject();
+            try{p.put("email",em).put("password",pw);}catch(Exception ignored){}
+            api("POST","/api/qa/driver-login",p,(status,result,problem)->{
+                authBusy(wait,submit,false,"");
+                password.setText("");
+                if(status!=200){
+                    authErrorText(error,problem.isEmpty()?
+                        "No se pudo ingresar. Revisá tu inscripción.":problem);
+                    return;
+                }
+                try{
+                    JSONObject json=new JSONObject(result),user=json.getJSONObject("user");
+                    staffToken=json.getString("token");
+                    staffRole="driver";
+                    staffName=user.optString("name","Conductor QA");
+                    staffUserId=user.getString("id");
+                    canManageRoles=false;adminLoaded=false;
+                    tab="solicitudes";subtab="nuevas";
+                    authFlow=false;
+                    lastPayload="";loading=false;
+                    fetchBookings(true);
+                }catch(Exception e){
+                    authErrorText(error,"No se pudo procesar la sesión de prueba.");
+                }
+            });
+        });
+    }
+
+    private void qaRegister(){
+        qaPhotoData="";
+        qaPhotoPreview=null;
+        LinearLayout page=authPage("INSCRIPCIÓN · PASO 1 DE 2",
+            "Unite como conductor",
+            "Completá tus datos y los del vehículo. El administrador "+
+            "revisará la solicitud antes de habilitarte.");
+        addLine(page,"DATOS DEL CONDUCTOR",11,TEAL_DARK,true,12);
+        EditText name=authField(page,"NOMBRE Y APELLIDO FICTICIO",
+            "Conductor QA 01",InputType.TYPE_CLASS_TEXT|
+            InputType.TYPE_TEXT_FLAG_CAP_WORDS,false);
+        EditText phone=authField(page,"CELULAR DE PRUEBA",
+            "099000123",InputType.TYPE_CLASS_PHONE,false);
+        EditText email=authField(page,"CORREO QA",
+            "conductor01@qa.invalid",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,false);
+        EditText password=authField(page,"CREAR CONTRASEÑA",
+            "12 caracteres o más",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,true);
+        spacer(page,8);
+        addLine(page,"DATOS DEL VEHÍCULO",11,TEAL_DARK,true,13);
+        // Selecciones buscables: la marca filtra modelos, pero ninguna lista
+        // impide escribir vehículos nuevos que todavía no figuren en QA.
+        android.widget.AutoCompleteTextView make=qaChoiceField(page,"MARCA",
+            "Elegí o escribí una marca",ViaVehicleCatalog.brands(),
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        android.widget.AutoCompleteTextView model=qaChoiceField(page,"MODELO",
+            "Elegí primero la marca",ViaVehicleCatalog.modelsFor(""),
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        model.setEnabled(false);
+        final String[] previousMake={""};
+        make.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence text,int start,int before,int count){
+                String selected=text.toString().trim();
+                if(selected.equalsIgnoreCase(previousMake[0]))return;
+                previousMake[0]=selected;
+                model.setText("",false);
+                model.setEnabled(!selected.isEmpty());
+                model.setHint(selected.isEmpty()?"Elegí primero la marca":
+                    "Elegí o escribí un modelo");
+                qaChoiceOptions(model,ViaVehicleCatalog.modelsFor(selected));
+            }
+            public void afterTextChanged(android.text.Editable e){}
+        });
+        qaAllowOther(make,"Escribí la marca que falta");
+        qaAllowOther(model,"Escribí el modelo que falta");
+        android.widget.AutoCompleteTextView year=qaChoiceField(page,
+            "AÑO DEL VEHÍCULO","Elegí el año",ViaVehicleCatalog.years(),
+            InputType.TYPE_CLASS_NUMBER);
+        EditText plate=authField(page,"MATRÍCULA FICTICIA","QA1234",
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS,false);
+        android.widget.AutoCompleteTextView color=qaChoiceField(page,"COLOR",
+            "Elegí o escribí un color",ViaVehicleCatalog.colors(),
+            InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        qaAllowOther(color,"Escribí el color que falta");
+        LinearLayout capacity=row();
+        EditText passengers=authFieldColumn("PASAJEROS","4",capacity);
+        EditText bags=authFieldColumn("VALIJAS","2",capacity);
+        page.addView(capacity,new LinearLayout.LayoutParams(-1,-2));
+        passengers.setInputType(InputType.TYPE_CLASS_NUMBER);
+        bags.setInputType(InputType.TYPE_CLASS_NUMBER);
+        spacer(page,14);
+        addLine(page,"FOTOGRAFÍA DEL VEHÍCULO",11,TEAL_DARK,true,9);
+        addLine(page,"Sacá una foto de ensayo o elegí una imagen "+
+            "de prueba de tu galería. Se reduce antes de enviarla.",
+            12,MUTED,false,9);
+        ImageView preview=new ImageView(this);
+        qaPhotoPreview=preview;
+        preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        preview.setContentDescription("Vista previa de la fotografía de prueba");
+        preview.setBackground(bg(SOFT,13,BORDER));
+        page.addView(preview,new LinearLayout.LayoutParams(-1,dp(158)));
+        spacer(page,10);
+        page.addView(button("Tomar foto o elegir de galería",false,
+            v->qaChooseVehiclePhoto()),new LinearLayout.LayoutParams(-1,dp(46)));
+        spacer(page,18);
+        TextView photoNotice=text("La foto será obligatoria en esta prueba.",12,MUTED,false);
+        page.addView(photoNotice);
+        spacer(page,14);
+        Button submit=button("Enviar solicitud para aprobación  →",true,null);
+        page.addView(submit,new LinearLayout.LayoutParams(-1,dp(50)));
+        LinearLayout wait=authWaiting(page);
+        TextView error=authError(page);
+        api("GET","/api/qa/driver-form",null,(status,result,problem)->{
+            if(status==200)try{
+                JSONObject config=new JSONObject(result).getJSONObject("config");
+                qaPhotoRequired=config.optBoolean("photoRequired",true);
+                photoNotice.setText(qaPhotoRequired?
+                    "La foto de prueba es obligatoria.":
+                    "La foto de prueba es opcional.");
+                if(!config.optBoolean("open",true)){
+                    submit.setEnabled(false);
+                    authErrorText(error,"Las inscripciones están temporalmente cerradas.");
+                }
+            }catch(Exception ignored){}
+        });
+        submit.setOnClickListener(v->{
+            String em=email.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+            String ph=phone.getText().toString().trim();
+            String yr=year.getText().toString().trim();
+            String pax=passengers.getText().toString().trim();
+            String luggage=bags.getText().toString().trim();
+            if(name.getText().length()<3||!ph.matches("099000[0-9]{3}")||
+                !em.matches("[a-z0-9._+-]+@qa\\.invalid")||
+                password.getText().length()<12){
+                authErrorText(error,"Solo datos ficticios: 099000xxx, "+
+                    "correo @qa.invalid y clave de 12 caracteres.");
+                return;
+            }
+            if(qaPhotoRequired&&qaPhotoData.isEmpty()){
+                authErrorText(error,"Agregá una fotografía de prueba del vehículo.");
+                return;
+            }
+            int y,n,b;
+            try{y=Integer.parseInt(yr);n=Integer.parseInt(pax);
+                b=Integer.parseInt(luggage);}catch(Exception e){
+                authErrorText(error,"Revisá el año y las capacidades.");
+                return;
+            }
+            JSONObject obj=new JSONObject(),car=new JSONObject();
+            try{
+                car.put("plate",plate.getText().toString().trim().toUpperCase(java.util.Locale.ROOT))
+                    .put("make",make.getText().toString().trim())
+                    .put("model",model.getText().toString().trim())
+                    .put("year",y)
+                    .put("color",color.getText().toString().trim())
+                    .put("passengers",n).put("bags",b);
+                obj.put("name",name.getText().toString().trim())
+                    .put("email",em).put("phone",ph)
+                    .put("password",password.getText().toString())
+                    .put("vehicle",car).put("photoJpegBase64",qaPhotoData);
+            }catch(Exception ignored){}
+            authErrorText(error,"");
+            authBusy(wait,submit,true,"Enviando solicitud y ficha del vehículo…");
+            api("POST","/api/qa/driver-applications",obj,(status,result,problem)->{
+                authBusy(wait,submit,false,"");
+                if(status==201){
+                    qaPhotoData="";password.setText("");
+                    qaAwaitApproval(em);
+                }else authErrorText(error,problem.isEmpty()?
+                    "No se pudo registrar la solicitud.":problem);
+            });
+        });
+    }
+
+    private EditText authFieldColumn(String label,String value,LinearLayout row){
+        LinearLayout box=column();
+        addLine(box,label,10,MUTED,true,5);
+        EditText input=new EditText(this);
+        input.setSingleLine(true);
+        input.setTextSize(15);input.setText(value);
+        input.setPadding(dp(13),dp(8),dp(13),dp(8));
+        input.setBackground(bg(Color.WHITE,10,BORDER));
+        box.addView(input,new LinearLayout.LayoutParams(-1,dp(46)));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);
+        lp.rightMargin=dp(8);
+        row.addView(box,lp);
+        return input;
+    }
+
+    private void qaAwaitApproval(String email){
+        LinearLayout page=authPage("SOLICITUD RECIBIDA · QA",
+            "Inscripción pendiente",
+            "Tus datos y la fotografía de prueba se registraron. "+
+            "El administrador podrá revisarlos en la bandeja de conductores.");
+        LinearLayout card=card();
+        addLine(card,"◷ Esperando autorización",17,TEAL_DARK,true,9);
+        addLine(card,"Cuenta: "+email,12,MUTED,false,7);
+        addLine(card,"Todavía no podés ver solicitudes ni cotizar viajes.",
+            13,INK,false,0);
+        appendCard(page,card,18);
+        page.addView(button("Ir a ingresar",true,v->qaLogin()),
+            new LinearLayout.LayoutParams(-1,dp(47)));
+    }
+
+    private void qaChooseVehiclePhoto(){
+        new AlertDialog.Builder(this)
+            .setTitle("Fotografía de prueba")
+            .setItems(new String[]{"Tomar con cámara","Elegir de galería"},
+                (dialog,index)->{
+                    try{
+                        Intent intent=index==0?
+                            new Intent(MediaStore.ACTION_IMAGE_CAPTURE):
+                            new Intent(Intent.ACTION_GET_CONTENT);
+                        if(index!=0)intent.setType("image/*");
+                        startActivityForResult(intent,index==0?
+                            QA_IMAGE_CAMERA:QA_IMAGE_GALLERY);
+                    }catch(Exception e){message("No se pudo abrir la cámara o la galería.");}
+                })
+            .setNegativeButton("Volver",null).show();
+    }
+
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(!BuildConfig.VIA_ONBOARD_QA||resultCode!=RESULT_OK||data==null||
+            (requestCode!=QA_IMAGE_CAMERA&&requestCode!=QA_IMAGE_GALLERY))return;
+        try{
+            Bitmap photo=null;
+            if(requestCode==QA_IMAGE_CAMERA){
+                Object small=data.getExtras()==null?null:data.getExtras().get("data");
+                if(small instanceof Bitmap)photo=(Bitmap)small;
+            }else if(data.getData()!=null){
+                try(InputStream stream=getContentResolver().openInputStream(data.getData())){
+                    BitmapFactory.Options opt=new BitmapFactory.Options();
+                    opt.inSampleSize=3;photo=BitmapFactory.decodeStream(stream,null,opt);
+                }
+            }
+            if(photo==null){message("No se pudo leer la fotografía.");return;}
+            int w=photo.getWidth(),h=photo.getHeight();
+            float ratio=Math.min(1.0f,600.0f/Math.max(w,h));
+            Bitmap reduced=Bitmap.createScaledBitmap(photo,
+                Math.max(1,Math.round(w*ratio)),Math.max(1,Math.round(h*ratio)),true);
+            ByteArrayOutputStream stream=new ByteArrayOutputStream();
+            reduced.compress(Bitmap.CompressFormat.JPEG,62,stream);
+            int quality=50;
+            while(stream.size()>118000&&quality>=20){
+                stream.reset();reduced.compress(Bitmap.CompressFormat.JPEG,quality,stream);
+                quality-=10;
+            }
+            if(stream.size()>118000){message("La imagen es muy grande.");return;}
+            qaPhotoData=Base64.encodeToString(stream.toByteArray(),Base64.NO_WRAP);
+            if(qaPhotoPreview!=null)qaPhotoPreview.setImageBitmap(reduced);
+            message("Fotografía de prueba incorporada.");
+        }catch(Exception e){message("No pudimos procesar la fotografía.");}
+    }
+
     private void startQaSession(String persona){
         if(!BuildConfig.VIA_ONLINE_QA)return;
         staffToken=null;
@@ -355,7 +687,11 @@ public final class MainActivity extends Activity {
     private String staffUserId = "";
 
     @Override public void onBackPressed() {
-        if (authFlow) { loginScreen(); return; }
+        if(authFlow){
+            if(BuildConfig.VIA_ONBOARD_QA)qaWelcome();
+            else loginScreen();
+            return;
+        }
         super.onBackPressed();
     }
 
@@ -372,7 +708,8 @@ public final class MainActivity extends Activity {
         page.setPadding(dp(25), dp(16), dp(25), dp(28));
         scroll.addView(page);
         LinearLayout top = row();
-        TextView back = actionText("‹  Volver", TEAL_DARK, v -> loginScreen());
+        TextView back = actionText("‹  Volver", TEAL_DARK,
+            v->{if(BuildConfig.VIA_ONBOARD_QA)qaWelcome();else loginScreen();});
         back.setTextSize(14);
         top.addView(back, new LinearLayout.LayoutParams(0, dp(44), 1));
         TextView signature = text("VÍA  /  TRASLADOS", 11, MUTED, true);
@@ -403,6 +740,61 @@ public final class MainActivity extends Activity {
             new LinearLayout.LayoutParams(-1, dp(52)));
         spacer(page, 15);
         return input;
+    }
+
+    // Menú de sugerencias con búsqueda y escritura manual. Reutiliza la
+    // apariencia de los campos premium y no requiere acceso a internet.
+    private android.widget.AutoCompleteTextView qaChoiceField(
+            LinearLayout page,String label,String hint,String[] options,int type){
+        TextView caption=text(label,11,MUTED,true);
+        caption.setLetterSpacing(0.10f);
+        page.addView(caption);
+        spacer(page,7);
+        android.widget.AutoCompleteTextView input=
+            new android.widget.AutoCompleteTextView(this);
+        input.setHint(hint);
+        input.setInputType(type);
+        input.setThreshold(1);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        input.setDropDownHeight(dp(288));
+        input.setDropDownBackgroundDrawable(bg(Color.WHITE,12,BORDER));
+        qaChoiceOptions(input,options);
+        LinearLayout shell=inputShell("·",input,false);
+        TextView arrow=actionText("▾",TEAL_DARK,v->{
+            input.requestFocus();
+            input.showDropDown();
+        });
+        arrow.setTextSize(23);
+        arrow.setGravity(Gravity.CENTER);
+        arrow.setContentDescription("Mostrar opciones de "+label.toLowerCase(
+            java.util.Locale.ROOT));
+        shell.addView(arrow,new LinearLayout.LayoutParams(dp(34),dp(48)));
+        page.addView(shell,new LinearLayout.LayoutParams(-1,dp(52)));
+        input.setOnClickListener(v->input.showDropDown());
+        spacer(page,15);
+        return input;
+    }
+
+    private void qaChoiceOptions(android.widget.AutoCompleteTextView field,
+            String[] values){
+        field.setAdapter(new android.widget.ArrayAdapter<String>(this,
+            android.R.layout.simple_dropdown_item_1line,values));
+    }
+
+    private void qaAllowOther(android.widget.AutoCompleteTextView field,
+            String placeholder){
+        field.setOnItemClickListener((parent,view,position,id)->{
+            if(!ViaVehicleCatalog.OTHER.equals(
+                String.valueOf(parent.getItemAtPosition(position))))return;
+            field.setText("",false);
+            field.setHint(placeholder);
+            field.requestFocus();
+            android.view.inputmethod.InputMethodManager keyboard=
+                (android.view.inputmethod.InputMethodManager)
+                getSystemService(INPUT_METHOD_SERVICE);
+            if(keyboard!=null)keyboard.showSoftInput(field,
+                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        });
     }
 
     private LinearLayout authWaiting(LinearLayout page) {
@@ -778,12 +1170,16 @@ public final class MainActivity extends Activity {
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
                     if(login){
-                        if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
+                        if(BuildConfig.VIA_ONBOARD_QA)qaWelcome();
+                        else if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
                         else loginScreen();
                     }
                 }
             } else if (status == 401 || status == 403) {
-                if(BuildConfig.VIA_ONLINE_QA){
+                if(BuildConfig.VIA_ONBOARD_QA){
+                    message("La sesión de prueba expiró. Ingresá nuevamente.");
+                    qaWelcome();
+                }else if(BuildConfig.VIA_ONLINE_QA){
                     message("La sesión QA expiró. Volviendo a conectar.");
                     startQaSession("admin");
                 }else if(login){
@@ -989,7 +1385,9 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         if (BuildConfig.VIA_ONLINE_QA) {
-            TextView qa=text("V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
+            TextView qa=text(BuildConfig.VIA_ONBOARD_QA?
+                (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
+                "V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
                 10,TEAL_DARK,true);
             qa.setGravity(Gravity.CENTER);
             qa.setBackgroundColor(SOFT);
@@ -2583,6 +2981,18 @@ public final class MainActivity extends Activity {
             if (status != 200) { message(error.isEmpty()?"No se pudieron consultar conductores":error); return; }
             try { managedDrivers = new JSONObject(result).getJSONArray("drivers"); }
             catch (Exception e) { message("Lista de conductores inválida"); return; }
+            if(BuildConfig.VIA_ONBOARD_QA&&"admin".equals(staffRole)){
+                api("GET","/api/qa/driver-applications",null,
+                    (code,body,problem)->{
+                        if(code==200)try{
+                            int next=new JSONObject(body).optInt("pending",0);
+                            boolean changed=qaPendingCount!=next;
+                            qaPendingCount=next;
+                            if(changed&&"administrar".equals(tab)&&adminLoaded)
+                                dashboard();
+                        }catch(Exception ignored){}
+                    });
+            }
             api("GET", "/api/admin/settings", null, (code, data, err) -> {
                 if (code != 200) { message(err.isEmpty()?"No se pudo consultar configuración":err); return; }
                 try {
@@ -2640,6 +3050,29 @@ public final class MainActivity extends Activity {
         second.leftMargin=dp(8);
         stats.addView(statTile(String.valueOf(approved),"Habilitados",false),second);
         content.addView(stats);
+        if(BuildConfig.VIA_ONBOARD_QA){
+            spacer(content,11);
+            LinearLayout intake=card();
+            LinearLayout top=row();
+            TextView title=text("Inscripciones de conductores",16,INK,true);
+            top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+            TextView counter=text(qaPendingCount+" pendiente"+(qaPendingCount==1?"":"s"),
+                11,qaPendingCount>0?ORANGE:TEAL_DARK,true);
+            counter.setPadding(dp(10),dp(6),dp(10),dp(6));
+            counter.setBackground(bg(qaPendingCount>0?
+                Color.rgb(255,245,234):SOFT,13,0));
+            top.addView(counter);
+            intake.addView(top);
+            spacer(intake,8);
+            addLine(intake,"Revisá identidad ficticia, vehículo y fotografía "+
+                "antes de habilitar un nuevo conductor.",12,MUTED,false,12);
+            intake.addView(button("Abrir bandeja de solicitudes",true,
+                v->openQaApplications()),new LinearLayout.LayoutParams(-1,dp(46)));
+            spacer(intake,8);
+            intake.addView(button("Configurar formulario de inscripción",false,
+                v->configureQaEnrollment()),new LinearLayout.LayoutParams(-1,dp(44)));
+            appendCard(content,intake,17);
+        }
         spacer(content,18);
 
         LinearLayout service=card();
@@ -2770,6 +3203,198 @@ public final class MainActivity extends Activity {
         spacer(content,5);
         addLine(content,"Los conductores bloqueados pierden acceso a sus viajes y a las sesiones con huella.",
             12,MUTED,false,13);
+    }
+
+    // V33: bandeja de aprobación. Solo se usa en D1 QA con identidades ficticias.
+    private void openQaApplications(){
+        if(!BuildConfig.VIA_ONBOARD_QA||!"admin".equals(staffRole))return;
+        LinearLayout[] panels=new LinearLayout[2];
+        Dialog dialog=premiumPage("ADMISIÓN DE CONDUCTORES",
+            "Solicitudes pendientes","Fotos y vehículos de ensayo","QA",panels);
+        LinearLayout list=panels[0];
+        addLine(list,"Consultando registros de prueba…",12,MUTED,false,0);
+        api("GET","/api/qa/driver-applications",null,(status,result,error)->{
+            if(!dialog.isShowing())return;
+            list.removeAllViews();
+            if(status!=200){
+                addLine(list,error.isEmpty()?"No se pudo consultar la bandeja.":error,
+                    13,ORANGE,false,0);
+                return;
+            }
+            try{
+                JSONObject answer=new JSONObject(result);
+                JSONArray items=answer.getJSONArray("items");
+                qaPendingCount=answer.optInt("pending",0);
+                addLine(list,qaPendingCount+" solicitud(es) por revisar",
+                    14,qaPendingCount>0?TEAL_DARK:MUTED,true,14);
+                for(int i=0;i<items.length();i++){
+                    JSONObject entry=items.optJSONObject(i);
+                    if(entry==null)continue;
+                    JSONObject car=entry.optJSONObject("vehicle");
+                    String name=entry.optString("name","Conductor QA");
+                    boolean pending="pending".equals(entry.optString("status"));
+                    LinearLayout tile=card();
+                    LinearLayout heading=row();
+                    TextView person=text(name,15,INK,true);
+                    heading.addView(person,new LinearLayout.LayoutParams(0,-2,1));
+                    TextView badge=text(pending?"PENDIENTE":
+                        "approved".equals(entry.optString("status"))?"APROBADO":"RECHAZADO",
+                        10,pending?ORANGE:TEAL_DARK,true);
+                    heading.addView(badge);
+                    tile.addView(heading);
+                    spacer(tile,8);
+                    addLine(tile,car==null?"Sin vehículo":
+                        car.optString("make")+" "+car.optString("model")+" · "+
+                        car.optInt("year")+" · "+car.optString("plate"),
+                        12,TEAL_DARK,true,6);
+                    addLine(tile,entry.optString("email"),11,MUTED,false,10);
+                    tile.addView(button("Ver solicitud y fotografía",false,
+                        v->openQaApplication(entry)),new LinearLayout.LayoutParams(-1,dp(44)));
+                    appendCard(list,tile,10);
+                }
+                if(items.length()==0)addLine(list,"No hay solicitudes registradas.",
+                    13,MUTED,false,0);
+            }catch(Exception e){
+                addLine(list,"No se pudo interpretar la bandeja.",13,ORANGE,false,0);
+            }
+        });
+    }
+
+    private void openQaApplication(JSONObject entry){
+        if(!BuildConfig.VIA_ONBOARD_QA||!"admin".equals(staffRole))return;
+        String id=entry.optString("id"),name=entry.optString("name","Conductor");
+        JSONObject car=entry.optJSONObject("vehicle");
+        LinearLayout[] panels=new LinearLayout[2];
+        Dialog dialog=premiumPage("REVISIÓN DE INSCRIPCIÓN",
+            name,"Datos y fotografía del vehículo","QA",panels);
+        LinearLayout body=panels[0],footer=panels[1];
+        addLine(body,"DATOS DE CONTACTO",10,TEAL_DARK,true,10);
+        LinearLayout personal=card();
+        addLine(personal,entry.optString("email"),13,INK,true,6);
+        addLine(personal,entry.optString("phone"),12,MUTED,false,0);
+        appendCard(body,personal,13);
+        addLine(body,"VEHÍCULO SOLICITADO",10,TEAL_DARK,true,10);
+        LinearLayout vehicle=card();
+        if(car!=null){
+            addLine(vehicle,car.optString("make")+" "+car.optString("model"),
+                18,INK,true,8);
+            addLine(vehicle,"Año "+car.optInt("year")+" · Matrícula "+
+                car.optString("plate"),13,TEAL_DARK,true,5);
+            addLine(vehicle,"Color: "+car.optString("color")+
+                " · "+car.optInt("passengers")+" pasajeros · "+
+                car.optInt("bags")+" valijas",12,MUTED,false,10);
+        }
+        ImageView image=new ImageView(this);
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setContentDescription("Fotografía del vehículo de prueba");
+        image.setBackground(bg(SOFT,12,BORDER));
+        vehicle.addView(image,new LinearLayout.LayoutParams(-1,dp(190)));
+        appendCard(body,vehicle,14);
+        if(car!=null&&car.optBoolean("hasPhoto",false)){
+            api("GET","/api/qa/driver-applications/"+Uri.encode(id)+"/photo",
+                null,(status,result,error)->{
+                    if(!dialog.isShowing())return;
+                    if(status==200)try{
+                        String photo=new JSONObject(result).optString("jpegBase64","");
+                        byte[] bytes=Base64.decode(photo,Base64.DEFAULT);
+                        Bitmap bmp=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                        if(bmp!=null)image.setImageBitmap(bmp);
+                    }catch(Exception ignored){}
+                });
+        }else addLine(body,"Sin fotografía adjunta.",12,MUTED,false,7);
+        if("pending".equals(entry.optString("status"))){
+            LinearLayout actions=row();
+            Button reject=button("Rechazar",false,
+                v->qaDecide(id,"reject",name,dialog));
+            actions.addView(reject,new LinearLayout.LayoutParams(0,dp(46),1));
+            Button approve=button("Aprobar inscripción",true,
+                v->qaDecide(id,"approve",name,dialog));
+            LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(46),1);
+            p.leftMargin=dp(9);
+            actions.addView(approve,p);
+            footer.addView(actions);
+        }else addLine(body,"Solicitud "+entry.optString("status")+
+            ". No se puede modificar una solicitud ya procesada.",
+            12,MUTED,false,0);
+    }
+
+    private void qaDecide(String id,String action,String name,Dialog parent){
+        boolean approve="approve".equals(action);
+        LinearLayout form=formContainer();
+        EditText note=formInput(form,"Nota de revisión (opcional)",
+            InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+            .setTitle(approve?"Aprobar conductor":"Rechazar solicitud")
+            .setMessage(approve?
+                "¿Confirmás que "+name+" podrá ingresar y, según sus permisos, "+
+                    "ver solicitudes liberadas?":
+                "El conductor no podrá ingresar mientras su solicitud esté rechazada.")
+            .setView(form)
+            .setNegativeButton("Volver",null)
+            .setPositiveButton(approve?"Aprobar":"Rechazar",(dialog,which)->{
+                JSONObject p=new JSONObject();
+                try{p.put("action",action).put("note",
+                    note.getText().toString().trim());}catch(Exception ignored){}
+                api("PATCH","/api/qa/driver-applications/"+Uri.encode(id),
+                    p,(status,result,error)->{
+                        if(status==200){
+                            parent.dismiss();
+                            message(approve?"Inscripción aprobada en QA.":
+                                "Solicitud rechazada en QA.");
+                            loadAdmin();
+                            openQaApplications();
+                        }else message(error.isEmpty()?
+                            "No se pudo procesar la solicitud.":error);
+                    });
+            }).show();
+    }
+
+    private void configureQaEnrollment(){
+        if(!BuildConfig.VIA_ONBOARD_QA||!"admin".equals(staffRole))return;
+        LinearLayout[] panels=new LinearLayout[2];
+        Dialog dialog=premiumPage("FORMULARIO DE INSCRIPCIÓN",
+            "Configuración de altas","Solo entornos QA","Admin",panels);
+        LinearLayout body=panels[0],footer=panels[1];
+        addLine(body,"El administrador controla si se reciben nuevas solicitudes "+
+            "y si debe adjuntarse una fotografía.",13,MUTED,false,13);
+        android.widget.CheckBox open=new android.widget.CheckBox(this);
+        open.setText("Permitir nuevas inscripciones");
+        open.setTextColor(INK);
+        open.setTextSize(14);
+        open.setChecked(true);
+        body.addView(open);
+        android.widget.CheckBox photo=new android.widget.CheckBox(this);
+        photo.setText("Exigir fotografía del vehículo");
+        photo.setTextColor(INK);
+        photo.setTextSize(14);
+        photo.setChecked(true);
+        body.addView(photo);
+        spacer(body,14);
+        addLine(body,"Siempre obligatorios: nombre, celular, correo, "+
+            "contraseña, marca, modelo, año, matrícula y capacidad.",
+            12,MUTED,false,14);
+        api("GET","/api/qa/driver-form",null,(status,result,error)->{
+            if(status==200)try{
+                JSONObject config=new JSONObject(result).getJSONObject("config");
+                open.setChecked(config.optBoolean("open",true));
+                photo.setChecked(config.optBoolean("photoRequired",true));
+            }catch(Exception ignored){}
+        });
+        Button save=button("Guardar configuración",true,null);
+        footer.addView(save,new LinearLayout.LayoutParams(-1,dp(46)));
+        save.setOnClickListener(v->{
+            JSONObject p=new JSONObject();
+            try{p.put("open",open.isChecked())
+                .put("photoRequired",photo.isChecked());}catch(Exception ignored){}
+            save.setEnabled(false);
+            api("PATCH","/api/qa/driver-form",p,(status,result,error)->{
+                save.setEnabled(true);
+                if(status==200){dialog.dismiss();
+                    message("Formulario de inscripción actualizado.");}
+                else message(error.isEmpty()?
+                    "No se pudo guardar la configuración.":error);
+            });
+        });
     }
 
     // Modalidad comercial visible exclusivamente al administrador fundador.
@@ -3408,7 +4033,9 @@ public final class MainActivity extends Activity {
     private void settings(LinearLayout body) {
         addLine(body,"Ajustes",25,INK,true,4);
         if(BuildConfig.VIA_ONLINE_QA){
-            addLine(body,"Pruebas reales de API con usuarios ficticios",
+            addLine(body,BuildConfig.VIA_ONBOARD_QA?
+                "Cuenta y pruebas de inscripciones en D1 QA":
+                "Pruebas reales de API con usuarios ficticios",
                 13,MUTED,false,14);
             LinearLayout qa=card();
             addLine(qa,"ENTORNO",10,TEAL_DARK,true,8);
@@ -3417,6 +4044,13 @@ public final class MainActivity extends Activity {
                 "No utiliza reservas ni usuarios productivos.",13,MUTED,false,13);
             addLine(qa,"PERFIL ACTUAL",10,MUTED,true,5);
             addLine(qa,staffName,15,INK,true,10);
+            if(BuildConfig.VIA_ONBOARD_QA){
+                qa.addView(button("Cerrar sesión de prueba",false,v->{
+                    staffToken=null;staffRefreshToken=null;operatorKey=null;
+                    qaWelcome();
+                }),new LinearLayout.LayoutParams(-1,dp(46)));
+                spacer(qa,8);
+            }
             qa.addView(button("Cambiar perfil de prueba",false,v->chooseQaRole()),
                 new LinearLayout.LayoutParams(-1,dp(46)));
             if("admin".equals(staffRole)){

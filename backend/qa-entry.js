@@ -2,6 +2,7 @@
 // No añadir esta ruta al Worker productivo. Las cuentas QA son sintéticas y públicas.
 import worker from './worker.js';
 import {identity} from './staff.js';
+import {onboarding} from './qa-driver-onboarding.js';
 
 const PERSONAS={
  admin:{id:'00000000-0000-4000-8000-000000000001',role:'admin',name:'Administración QA'},
@@ -103,15 +104,28 @@ export default {async fetch(request,env,ctx){
  if(path==='/api/health'&&method==='GET'){
   const db=await env.DB.prepare('SELECT COUNT(*) AS n FROM bookings WHERE id LIKE ?')
    .bind('VIA-QA-%').first();
-  return reply({ok:true,qa:true,environment:'V32',bookings:db?.n||0,
-   login:'perfiles sintéticos, sin contraseña',production:false});
+  return reply({ok:true,qa:true,environment:'V33',bookings:db?.n||0,
+   onboarding:true,login:'perfiles de ensayo y cuentas QA pendientes de aprobación',production:false});
  }
  if(path==='/api/qa/session'&&method==='POST')return session(request,env);
+ // Las solicitudes y el acceso con contraseña NO se confunden con los perfiles
+ // sintéticos públicos; el estado pendiente no genera sesión.
+ if(path==='/api/qa/driver-applications'&&method==='POST'||
+    path==='/api/qa/driver-login'&&method==='POST'){
+   if(!await limit(env,'registration:'+request.headers.get('CF-Connecting-IP'),12,3600))
+     return reply({error:'Límite de registros de prueba alcanzado'},429);
+   return onboarding(request,env,path,null);
+ }
+ if(path==='/api/qa/driver-form'&&method==='GET')
+   return onboarding(request,env,path,null);
  const actor=await identity(request,env);
  if(!actor)return reply({error:'Sesión QA requerida'},401);
  const ip=request.headers.get('CF-Connecting-IP')||'unknown';
  if(method!=='GET'&&!await limit(env,'mutate:'+ip,150,86400))
    return reply({error:'Límite diario QA alcanzado'},429);
+ if(path.startsWith('/api/qa/driver-applications')||
+    path==='/api/qa/driver-form')
+   return onboarding(request,env,path,actor);
  if(path==='/api/qa/accept'&&method==='POST')return accept(request,env,actor);
  if(path==='/api/qa/reset'&&method==='POST')return reset(request,env,actor);
  if(!allowed(path,method))return reply({error:'Ruta no habilitada en QA aislada'},404);

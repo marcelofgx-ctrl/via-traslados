@@ -1,0 +1,177 @@
+name: Vía Traslados V34 — registro y catálogo Android QA
+on:
+  push:
+    branches: [via-registro-conductores-v33-qa-20261113]
+    paths:
+      - ".github/workflows/via-v33-onboarding-qa.yml"
+      - "scripts/v33-onboarding-e2e.mjs"
+      - "backend/qa-driver-onboarding.js"
+      - "backend/qa-entry.js"
+      - "backend/schema-qa-v33.sql"
+      - "android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java"
+      - "android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java"
+      - "tests/ViaVehicleCatalogTest.java"
+      - "android-driver/app/build.gradle"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-v34-catalog-qa
+  cancel-in-progress: false
+jobs:
+  qa-backend:
+    name: Desplegar exclusivamente QA, sin producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Revisar código, reglas comerciales y sintaxis
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/qa-entry.js
+          node --check backend/qa-driver-onboarding.js
+          node --check scripts/v33-onboarding-e2e.mjs
+          node --check scripts/qa-provision.mjs
+          node --check scripts/qa-seed.mjs
+          python3 scripts/v29-dispatch-sql-test.py
+      - name: Exigir credenciales existentes sin imprimirlas
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[0-9a-fA-F]{32}$ ]]
+      - name: Provisionar solo D1 via-traslados-qa-db
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/qa-provision.mjs
+      - name: Confirmar que no apunta a producción
+        run: |
+          set -euo pipefail
+          grep -F 'name = "via-traslados-api-qa"' wrangler.qa.toml
+          grep -F 'database_name = "via-traslados-qa-db"' wrangler.qa.toml
+          grep -F 'VIA_QA_MODE = "1"' wrangler.qa.toml
+          if grep -F 'name = "via-traslados-api"' wrangler.qa.toml; then exit 1; fi
+          if grep -F 'database_name = "via-traslados-db"' wrangler.qa.toml; then exit 1; fi
+      - name: Crear tablas solamente en D1 QA
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute via-traslados-qa-db --remote --config wrangler.qa.toml --file backend/schema.sql
+      - name: Crear tablas de inscripciones SOLO EN D1 QA
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 execute via-traslados-qa-db --remote --config wrangler.qa.toml --file backend/schema-qa-v33.sql
+      - name: Insertar cuentas y viajes sintéticos solamente en QA
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/qa-seed.mjs
+          npx --yes wrangler@4 d1 execute via-traslados-qa-db --remote --config wrangler.qa.toml --file qa-seed.sql
+      - name: Desplegar solo via-traslados-api-qa
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 deploy --config wrangler.qa.toml
+      - name: Prueba real de sesión y lectura en D1 QA, sin crear cotizaciones
+        run: |
+          set -euo pipefail
+          BASE=https://via-traslados-api-qa.marcelof-gx.workers.dev
+          ready=0
+          for attempt in $(seq 1 25); do
+            code=$(curl -sSL --max-time 12 -o /tmp/via-qa-health.json -w '%{http_code}' "$BASE/api/health" || true)
+            if [ "$code" = 200 ] && node -e "let x=require('/tmp/via-qa-health.json');process.exit(x.ok&&x.qa&&x.production===false&&x.bookings>=5?0:1)"; then
+              ready=1
+              break
+            fi
+            sleep 4
+          done
+          test "$ready" -eq 1
+          node -e "let x=require('/tmp/via-qa-health.json');console.log('Worker y D1 QA confirmados con',x.bookings,'viajes ficticios')"
+          curl -fLsS --retry 3 -H 'Content-Type: application/json' -d '{"role":"admin"}' "$BASE/api/qa/session" -o /tmp/via-qa-session.json
+          TOKEN=$(node -e "console.log(require('/tmp/via-qa-session.json').token)")
+          curl -fLsS --retry 3 -H "Authorization: Bearer $TOKEN" "$BASE/api/operator/requests" -o /tmp/via-qa-requests.json
+          node -e "const x=require('/tmp/via-qa-requests.json');if(!Array.isArray(x)||x.length<5||x.some(v=>!v.id.startsWith('VIA-QA-')))process.exit(1);console.log('Solicitudes reales en D1 QA con datos sintéticos')"
+          test "$(curl -sS -o /tmp/blocked -w '%{http_code}' "$BASE/api/staff/login-phone")" = "401"
+          rm -f /tmp/via-qa-session.json /tmp/via-qa-requests.json
+      - name: Probar circuito real V32 en QA y restaurar datos
+        run: node scripts/v32-online-e2e.mjs
+      - name: Probar inscripción V33, aprobación y fotografía JPEG
+        run: node scripts/v33-onboarding-e2e.mjs
+  android:
+    name: Generar instalador real conectado solo a QA
+    needs: qa-backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Instalar Android SDK
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Verificar catálogos de marcas, modelos, colores y años
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/via-catalog-v33
+          javac -encoding UTF-8 -d /tmp/via-catalog-v33 \
+            android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java \
+            tests/ViaVehicleCatalogTest.java
+          java -cp /tmp/via-catalog-v33 uy.viatraslados.conductor.ViaVehicleCatalogTest
+      - name: Compilar APK V34 catálogo QA y verificar aislamiento
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaCatalogQa=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v34catalogqa'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='34'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+          sha256sum "$APK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v34-catalog-qa-apk
+          path: android-driver/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 21
+      - name: Publicar V34 QA sin modificar V33, V32 ni producción
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin via-apk-descarga-qa-20261112
+          git worktree add /tmp/via-v33-site FETCH_HEAD
+          mkdir -p /tmp/via-v33-site/qa-apk-download/v34-catalog-qa
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk /tmp/via-v33-site/qa-apk-download/v34-catalog-qa/via-conductor-v34-catalog-qa.apk
+          cd /tmp/via-v33-site/qa-apk-download/v34-catalog-qa
+          sha256sum via-conductor-v34-catalog-qa.apk > SHA256SUMS.txt
+          cat > index.html <<'HTML'
+          <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vía Traslados V34 Catálogo QA</title>
+          <style>*{box-sizing:border-box}body{font:15px system-ui;background:#f3f8f7;color:#173a39;max-width:520px;margin:28px auto;padding:16px}main{padding:24px;border:1px solid #d7e8e4;border-radius:18px;background:white}a{display:block;background:#00736e;color:white;border-radius:13px;padding:16px;text-align:center;text-decoration:none;font-weight:bold}p{line-height:1.5;color:#586b6a}</style></head><body><main><h1>Vía Traslados V34</h1><p>Formulario de incorporación de conductores con marca, modelo dependiente, año y color desplegables, opción de escribir otros, foto, contraseña y bandeja de aprobación. Servidor y D1 QA aislados, sin producción.</p><a href="./via-conductor-v34-catalog-qa.apk" download>Descargar V34 Catálogo QA</a><p>Podés probar ingreso, inscripción, fotografía del vehículo y aprobación desde la bandeja del administrador. Usá solamente datos y fotos sintéticos: teléfono 099000xxx, correo @qa.invalid y matrícula QA. No hay cuentas ni pagos reales.</p></main></body></html>
+          HTML
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f via-conductor-v34-catalog-qa.apk
+          git add index.html SHA256SUMS.txt
+          git commit -m "qa(via): distribuir V34 con catálogo en Android QA aislado"
+          git push origin HEAD:via-apk-descarga-qa-20261112
