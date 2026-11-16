@@ -19,7 +19,8 @@ test('número de portal cercano jamás es domicilio confirmado',()=>{
   street:'Calle Ficticia 1234',city:'Localidad Alfa',department:'Departamento Uno',distanceMeters:12
  }]});
  assert.equal(r.postalStatus,'suggested');
- assert.equal(r.title,'Cerca de Calle Ficticia');
+ assert.equal(r.title,'Cerca de Calle Ficticia 1234');
+ assert.equal(r.numberIsApproximate,true);
  assert.equal(r.nearbyReference.nearbyPortal,'Calle Ficticia 1234');
  assert.deepEqual(r.point,point);
 });
@@ -45,7 +46,8 @@ test('resultado de otro lugar no introduce números ni excepciones regionales',(
  for(const street of ['Camino del Bosque 149','Ruta del Sur 2000','Av. Principal 55']){
   const r=buildPickupDisplay({point,reverseCandidates:[{street,city:'Ciudad de prueba',distanceMeters:20}]});
   assert.equal(r.postalStatus,'suggested');
-  assert.ok(!/\d/.test(r.title));assert.ok(r.nearbyReference?.nearbyPortal);
+  assert.equal(r.title,'Cerca de '+street);
+  assert.equal(r.numberIsApproximate,true);
  }
 });
 
@@ -59,4 +61,12 @@ test('misma calle con localidades contradictorias conserva la calle pero no adiv
  assert.equal(r.reference.city,'');
  assert.equal(r.reference.department,'Canelones');
  assert.equal(r.reason,'locality_ambiguous');
+});
+
+test('un portal distante no se muestra como número orientativo del GPS',()=>{
+ const r=buildPickupDisplay({point,reverseCandidates:[{
+  street:'Calle Distante 120',city:'Ciudad Z',department:'Canelones',distanceMeters:70
+ }]});
+ assert.equal(r.title,'Cerca de Calle Distante');
+ assert.equal(r.numberIsApproximate,false);
 });
