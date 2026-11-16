@@ -31,7 +31,7 @@ test('GPS muestra la dirección cercana y conserva el punto medido',async()=>{
  const app=session([{street:'ROQUE SAENZ PEÑA 1711',city:'SHANGRILA',
   department:'CANELONES',distanceMeters:20}]);
  await app.click();
- assert.equal(app.input.value,'ROQUE SAENZ PEÑA 1711, SHANGRILA, CANELONES');
+ assert.equal(app.input.value,'Cerca de ROQUE SAENZ PEÑA, CANELONES');
  assert.equal(Number(app.input.dataset.lat),app.gps.lat);
  assert.equal(Number(app.input.dataset.lng),app.gps.lng);
  assert.equal(app.input.dataset.accuracy,'gps');
@@ -40,7 +40,7 @@ test('GPS distingue la dirección no confirmada',async()=>{
  const app=session([{street:'AVENIDA DISTANTE 400',city:'MONTEVIDEO',
   department:'MONTEVIDEO',distanceMeters:700}]);
  await app.click();
- assert.equal(app.input.value,'Punto GPS sin dirección confirmada');
+ assert.equal(app.input.value,'Punto GPS sin dirección postal confirmada');
  assert.equal(app.input.dataset.accuracy,'gps');
 });
 test('respuesta tardía no reemplaza una dirección escrita por el usuario',async()=>{
@@ -53,4 +53,10 @@ test('respuesta tardía no reemplaza una dirección escrita por el usuario',asyn
   department:'MONTEVIDEO',distanceMeters:5}]})});
  await finished;
  assert.equal(app.input.value,'Dirección elegida manualmente');
+});
+
+test('el GPS no reescala la portada y no publica números de puerta aproximados',()=>{
+ assert.doesNotMatch(source,/home\.style\.zoom/);
+ assert.match(source,/stripDoor/);
+ assert.match(source,/input\.value===original/);
 });
