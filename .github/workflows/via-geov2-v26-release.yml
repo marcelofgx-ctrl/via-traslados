@@ -1,0 +1,73 @@
+name: Via Traslados V26 - publicar GeoV2 sobre V25 con rollback
+on:
+  push:
+    branches:
+      - via-geov2-v25-production-candidate-20261116
+    paths:
+      - .github/workflows/via-geov2-v26-release.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-traslados-web-prod-geo-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Descargar exactamente la rama de entrega
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificaciones del código sin secretos
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/geo_v2_v26_release.py
+          node --check pages/reference.js
+          node --check pages/address-autocomplete.js
+          node --check pages/map-point-picker.js
+          node --check pages/address-selected-preview.js
+          node --check pages/app.js
+          node --check pages/store.js
+          node --test tests/production-geov2-v26.test.mjs
+      - name: Reconstruir desde el Worker activo y conservar V25
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/geo_v2_v26_release.py prepare
+      - name: Compilar sin publicar
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config geo-v2-prod-package/wrangler.qa.jsonc --dry-run
+      - name: Instalar únicamente un Worker QA independiente
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config geo-v2-prod-package/wrangler.qa.jsonc
+      - name: Comprobar estáticos, geocodificación, reserva y acceso en QA
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/geo_v2_v26_release.py verify-qa
+      - name: Instalar navegador de prueba
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Probar GPS, mapa, selector y diseño móvil de la QA
+        env:
+          VIA_QA_URL: https://via-traslados-web-geov2-v26-qa.marcelof-gx.workers.dev
+        run: node tests/geo_v2_v26_browser.cjs
+      - name: Actualizar SOLO el Worker de pasajeros y comprobar rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/geo_v2_v26_release.py release
