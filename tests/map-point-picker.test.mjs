@@ -36,7 +36,7 @@ test('la página no pide GPS por sí sola, solo cuando se pulsa el botón',()=>{
 });
 test('el script y el estilo del selector se cargan en el inicio de reservas',()=>{
  assert.match(html,/map-point-picker\.css\?v=3/);
- assert.match(html,/map-point-picker\.js\?v=4/);
+ assert.match(html,/map-point-picker\.js\?v=5/);
  assert.match(js,/accuracy:'map'/);
  assert.match(js,/dispatchEvent\(new CustomEvent\('via:address'/);
 });
@@ -59,7 +59,7 @@ test('mapa vectorial y presentación de la dirección sin prefijos artificiales'
  const preview=readFileSync(new URL('../pages/address-selected-preview.js',import.meta.url),'utf8');
  assert.match(preview,/via-selected-street/);
  assert.match(preview,/via-selected-locality/);
- assert.match(html,/address-selected-preview\.js\?v=2/);
+ assert.match(html,/address-selected-preview\.js\?v=3/);
 });
 
 test('fallback móvil de bajo consumo e indicación del modo de mapa',()=>{
@@ -67,4 +67,10 @@ test('fallback móvil de bajo consumo e indicación del modo de mapa',()=>{
  assert.match(js,/Modo básico:/);
  assert.match(js,/vectorSupported/);
  assert.match(js,/Chrome desde el menú/);
+});
+
+test('MapLibre 6 se carga exclusivamente por importación ESM, sin script clásico inválido',()=>{
+ assert.match(html,/await import\('https:\/\/unpkg\.com\/maplibre-gl@6\.18\.0\/dist\/maplibre-gl\.mjs'\)/);
+ assert.doesNotMatch(html,/dist\/maplibre-gl\.js/);
+ assert.match(html,/qa-stable-layout\.css\?v=1/);
 });
