@@ -30,59 +30,60 @@ function gpsMessage(message){
 gpsButton?.addEventListener('click',()=>{
  if(locating)return;
  if(!navigator.geolocation){
-  gpsMessage('No hay acceso al GPS. Podés escribir la dirección o elegirla en el mapa.');
+  gpsMessage('Este dispositivo no permite obtener el GPS. Usá la búsqueda o el mapa.');
   return;
  }
- const input=$('home-origin');
- const original=input?.value||'';
- let completed=false;
- locating=true;gpsButton.disabled=true;
- gpsButton.setAttribute('aria-busy','true');
- gpsButton.setAttribute('aria-label','Buscando dirección cercana');
- // No cambiar el campo mientras se resuelve: evita el salto de toda la portada.
- const done=()=>{if(completed)return;completed=true;locating=false;gpsButton.disabled=false;
-  gpsButton.removeAttribute('aria-busy');gpsButton.setAttribute('aria-label','Utilizar mi ubicación')};
- const valid=(lat,lng)=>Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-36&&lat<=-30&&lng>=-59&&lng<=-52;
+ const input=$('home-origin'),previousValue=input?.value||'';
+ let done=false;
+ locating=true;gpsButton.disabled=true;gpsButton.setAttribute('aria-busy','true');
+ gpsMessage('Buscando tu posición…');
+ const finish=()=>{if(done)return;done=true;locating=false;gpsButton.disabled=false;gpsButton.removeAttribute('aria-busy')};
  try{
- navigator.geolocation.getCurrentPosition(async position=>{
-  const {latitude:lat,longitude:lng,accuracy}=position.coords;
-  if(!valid(lat,lng)){done();gpsMessage('La ubicación está fuera de Uruguay.');return}
-  window.ViaSearchLocation?.update(lat,lng);
-  let postal=null;
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),5200);
-  try{
-   const url='/api/direcciones?mode=reverse&lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng);
-   const response=await fetch(url,{signal:controller.signal});
-   if(response.ok){
-    const payload=await response.json();
-    postal=(payload.results||[]).filter(r=>r.street&&
-      Number.isFinite(Number(r.distanceMeters))&&r.distanceMeters<=100)
-      .sort((a,b)=>a.distanceMeters-b.distanceMeters)[0]||null;
-   }
-  }catch{/* La posición GPS sigue disponible, aunque IDE no responda. */}
-  finally{clearTimeout(timeout)}
-  // Nunca modificar una dirección que el usuario ya escribió o eligió mientras esperaba.
-  if(input&&input.value===original){
-   const stripDoor=s=>String(s||'').trim().replace(/\s+(?:N[°ºo]?\s*)?\d{1,6}\s*$/i,'').trim();
-   const roadway=postal?stripDoor(postal.street):'';
-   const municipality=postal?.department||'';
-   const label=roadway?'Cerca de '+roadway+(municipality?', '+municipality:''):
-     'Punto GPS sin dirección postal confirmada';
-   const picked={label,lat,lng,accuracy:'gps',city:'',department:municipality};
-   window.ViaAddress?.set('home-origin',picked);
-   input.dataset.gpsAccuracy=Number.isFinite(Number(accuracy))?String(Math.round(accuracy)):'';
-   input.dataset.nearby=roadway;
-   input.dataset.referenceDistance=postal?String(postal.distanceMeters):'';
-   input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:picked}));
+ navigator.geolocation.getCurrentPosition(async fix=>{
+  const v2=window.ViaGeoV2;
+  const pos=v2?.assessGpsFix?.(fix)||{
+   valid:Number.isFinite(fix.coords.latitude)&&Number.isFinite(fix.coords.longitude),
+   lat:fix.coords.latitude,lng:fix.coords.longitude,
+   accuracyMeters:fix.coords.accuracy,quality:'approximate',ageMs:0
+  };
+  if(!pos.valid||!(pos.lat>=-36&&pos.lat<=-30&&pos.lng>=-59&&pos.lng<=-52)){
+   gpsMessage('No pudimos obtener una ubicación válida. Elegí el punto en el mapa.');
+   finish();return;
   }
-  done();
-  if(Number.isFinite(Number(accuracy))&&accuracy>80)
-   gpsMessage('La ubicación GPS es aproximada (±'+Math.round(accuracy)+' m). Ajustá la entrada en el mapa.');
-  else gpsMessage('');
- },()=>{done();gpsMessage('No pudimos obtener el GPS. Podés ingresar la dirección manualmente.');},
- {enableHighAccuracy:true,timeout:12000,maximumAge:60000});
- }catch{done();gpsMessage('GPS no disponible. Podés ingresar la dirección manualmente.')}
+  window.ViaSearchLocation?.update(pos.lat,pos.lng);
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),6500);
+  let rows=[];
+  try{
+   const result=await fetch('/api/direcciones?mode=reverse&lat='+encodeURIComponent(pos.lat)+
+    '&lng='+encodeURIComponent(pos.lng),{signal:controller.signal});
+   if(result.ok)rows=(await result.json()).results||[];
+  }catch{/* GPS válido sin domicilio confirmado */}
+  finally{clearTimeout(timeout)}
+  if(input&&input.value===previousValue){
+   let decision;
+   try{decision=v2?.buildPickupDisplay?.({
+    point:{lat:pos.lat,lng:pos.lng,source:'gps',accuracyMeters:pos.accuracyMeters,
+     timestamp:fix.timestamp||Date.now()},reverseCandidates:rows
+   })}catch{}
+   let label=decision?.title||'Punto GPS sin dirección postal confirmada';
+   const info=decision?.nearbyReference;
+   if(info)label+=[info.city,info.department].filter(Boolean).length?
+     ', '+[info.city,info.department].filter(Boolean).join(', '):'';
+   const chosen={label,lat:pos.lat,lng:pos.lng,accuracy:'gps',source:'gps',
+    postalStatus:decision?.postalStatus||'unknown',
+    city:info?.city||'',department:info?.department||'',
+    gpsAccuracy:pos.accuracyMeters,timestamp:fix.timestamp||Date.now()};
+   window.ViaAddress?.set('home-origin',chosen);
+   input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:chosen}));
+  }
+  gpsMessage(pos.quality==='low'||pos.quality==='stale'?
+   'El GPS tiene una precisión limitada (±'+Math.round(pos.accuracyMeters)+
+   ' m). Abrí el mapa y ajustá el punto de recogida.':'');
+  finish();
+ },()=>{gpsMessage('No pudimos acceder al GPS. Podés buscar el origen o elegirlo en el mapa.');finish()},
+ {enableHighAccuracy:true,timeout:12000,maximumAge:0});
+ }catch{gpsMessage('GPS no disponible. Podés ingresar la dirección manualmente.');finish()}
 });
 })();
 
