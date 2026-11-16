@@ -1,0 +1,62 @@
+/* Vía Traslados QA: estabilidad de la portada en móviles.
+   Nunca reescalar dinámicamente en respuesta a GPS/autocompletado. */
+html,body{max-width:100%;overflow-x:hidden}
+body.premium-page:not(.in-booking) .reference-home,
+body.premium-page:not(.in-booking) .reference-tabs{
+ zoom:1!important;
+ transform:none!important;
+}
+body.premium-page:not(.in-booking) .premium-main{
+ overflow-x:hidden!important;
+ overflow-y:auto!important;
+ overscroll-behavior-x:none;
+ min-width:0;
+}
+body.premium-page:not(.in-booking) .sheet-stack{
+ min-width:0;
+ flex:1 0 auto;
+}
+body.premium-page:not(.in-booking) .reference-home{
+ height:auto!important;
+ min-height:0!important;
+ overflow:visible!important;
+ width:100%;
+ min-width:0;
+ flex:1 0 auto;
+ box-sizing:border-box;
+}
+body.premium-page:not(.in-booking) .reference-booking{
+ width:100%;
+ max-width:100%;
+ min-width:0;
+ box-sizing:border-box;
+}
+body.premium-page:not(.in-booking) .reference-route-fields,
+body.premium-page:not(.in-booking) .reference-field,
+body.premium-page:not(.in-booking) .field-copy,
+body.premium-page:not(.in-booking) .reference-options{
+ min-width:0;max-width:100%;box-sizing:border-box;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-preview{
+ min-width:0;max-width:100%;box-sizing:border-box;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-street{
+ line-height:1.15;max-width:100%;
+}
+body.premium-page:not(.in-booking) .reference-tabs{
+ max-width:100%;box-sizing:border-box;
+}
+@media(max-width:650px){
+ body.premium-page:not(.in-booking) .reference-home{
+   padding-left:12px!important;padding-right:12px!important;
+ }
+ body.premium-page:not(.in-booking) .reference-field{
+   min-height:60px!important;
+ }
+ body.premium-page:not(.in-booking) .field-copy{
+   flex:1 1 0;overflow:hidden;
+ }
+ .reference-field .via-selected-locality{
+   max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ }
+}
