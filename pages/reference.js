@@ -56,17 +56,26 @@ gpsButton?.addEventListener('click',()=>{
      return;
     }
     window.ViaSearchLocation?.update(lat,lng);
-    const fallback={label:'Ubicación GPS ('+lat.toFixed(5)+', '+lng.toFixed(5)+')',lat,lng,accuracy:'gps',city:'',department:''};
+    // La interfaz muestra un nombre breve. Coordenadas y precisión quedan en metadatos.
+    const fallback={label:'Mi ubicación actual',lat,lng,accuracy:'gps',city:'',department:''};
+    const input=$('home-origin');
+    window.ViaAddress?.set('home-origin',fallback);
+    input?.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:fallback}));
     try{
      const r=await fetch('/api/direcciones?mode=reverse&lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng));
      if(!r.ok)throw Error('Dirección no disponible');
      const d=await r.json();
-     const addr=d.results?.[0];
-     window.ViaAddress?.set('home-origin',addr?{...addr,lat,lng,accuracy:'gps'}:fallback);
-    }catch{
-     window.ViaAddress?.set('home-origin',fallback);
-    }
-    gpsMessage('');
+     const addr=(d.results||[]).find(x=>x.street&&x.city);
+     // No sustituir el GPS por el centroide o una puerta de IDE.
+     if(input&&input.dataset.accuracy==='gps'&&
+        Number(input.dataset.lat)===lat&&Number(input.dataset.lng)===lng){
+       const place=addr?[addr.street,addr.city].filter(Boolean).join(', '):'';
+       input.title=place?'Calle cercana: '+place:'Ubicación GPS';
+       input.dataset.nearby=place;
+     }
+    }catch{/* El punto GPS ya está seleccionado: no hace falta una calle. */}
+    gpsMessage(Number(pos.coords.accuracy)>100?
+      'El GPS es aproximado. Usá el mapa para ajustar el punto exacto.':'');
    }catch{
     gpsMessage('No pudimos interpretar tu ubicación. Escribí la dirección de origen.');
    }finally{done();}
