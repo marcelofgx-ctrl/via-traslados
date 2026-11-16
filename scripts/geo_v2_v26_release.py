@@ -139,7 +139,12 @@ def prepare():
         target.parent.mkdir(parents=True,exist_ok=True)
         target.write_bytes(data)
     for name in EXTRA:
-        data,_=get(LIVE+"/"+name)
+        try:
+            data,_=get(LIVE+"/"+name)
+        except urllib.error.HTTPError as e:
+            if e.code!=404:raise
+            print("OPTIONAL_COMPAT_ASSET_NOT_PRESENT",name)
+            continue
         (ASSETS/name).write_bytes(data)
     assert b"demo: false" in (ASSETS/"config.js").read_bytes()
     assert b"app.js?v=25" in (ASSETS/"index.html").read_bytes()
