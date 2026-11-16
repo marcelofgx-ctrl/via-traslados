@@ -302,7 +302,7 @@ function open(input,button){
  requestAnimationFrame(()=>{
   if(!isOpen)return;
   m.invalidateSize({pan:false});
-  m.setView([position.lat,position.lng],chosen?17:fromGps?16:13,{animate:false});
+  m.setView([position.lat,position.lng],chosen?18:fromGps?17:13,{animate:false});
   requestAnimationFrame(()=>{m.invalidateSize({pan:false});onMove()});
  });
  if(!chosen&&!fromGps)locate(false); // GPS solo luego de pulsar explícitamente Mapa.
