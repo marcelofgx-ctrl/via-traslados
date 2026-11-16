@@ -36,7 +36,7 @@ test('la página no pide GPS por sí sola, solo cuando se pulsa el botón',()=>{
 });
 test('el script y el estilo del selector se cargan en el inicio de reservas',()=>{
  assert.match(html,/map-point-picker\.css\?v=4/);
- assert.match(html,/map-point-picker\.js\?v=8/);
+ assert.match(html,/map-point-picker\.js\?v=9/);
  assert.match(js,/accuracy:'map'/);
  assert.match(js,/dispatchEvent\(new CustomEvent\('via:address'/);
 });
