@@ -9,6 +9,7 @@ const coordsFor=input=>{const lat=Number(input?.dataset?.lat),lng=Number(input?.
 const compact=(str,max=75)=>String(str||'').trim().slice(0,max);
 let root,map,tileLayer,glMap=null,mapMode=null,tileFailures=0,inputTarget,previousFocus,heading,reference,coords,searchBox,results,warning;
 let gpsGeneration=0,searchGeneration=0,reverseGeneration=0,searchController,reverseController,searchTimer,reverseTimer,moved=false,nearby='',selectedPostal=null,isOpen=false;
+let lastGeoPoint=null,lastReference=null,lastMapDimensions=null,resizeFrame=0;
 function overlay(){
  if(root)return;
  root=document.createElement('div');root.className='via-picker-backdrop';root.hidden=true;
@@ -64,7 +65,7 @@ function mapInit(){
     invalidateSize:()=>gl.resize()
    };
    gl.on('dragstart',()=>{moved=true;selectedPostal=null;++searchGeneration;searchController?.abort();clearResults()});
-   gl.on('click',evt=>{moved=true;map.panTo({lat:evt.lngLat.lat,lng:evt.lngLat.lng});clearResults()});
+   // La chincheta se ajusta arrastrando. No animar el mapa al tocarlo accidentalmente.
    gl.on('moveend',onMove);
    gl.on('error',()=>{
     if(!isOpen)return;
@@ -85,7 +86,15 @@ function mapInit(){
      }
     }catch{/* La ausencia de numeración nunca debe impedir usar el mapa. */}
    });
-   if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(isOpen)requestAnimationFrame(()=>gl.resize())}).observe(node);
+   if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{
+    if(!isOpen)return;
+    const rect=node.getBoundingClientRect(),width=Math.round(rect.width),height=Math.round(rect.height);
+    if(lastMapDimensions&&Math.abs(lastMapDimensions.width-width)<3&&
+       Math.abs(lastMapDimensions.height-height)<3)return;
+    lastMapDimensions={width,height};
+    if(resizeFrame)cancelAnimationFrame(resizeFrame);
+    resizeFrame=requestAnimationFrame(()=>{resizeFrame=0;if(isOpen)gl.resize()});
+   }).observe(node);
    return map;
   }catch(e){
    try{gl?.remove()}catch{}
@@ -115,7 +124,7 @@ function mapInit(){
  tileLayer.on('load',()=>{if(tileFailures>0)warning.hidden=false});
  L.control.zoom({position:'topright'}).addTo(map);
  map.on('dragstart',()=>{moved=true;selectedPostal=null;++searchGeneration;searchController?.abort();clearResults()});
- map.on('click',e=>{moved=true;map.panTo(e.latlng);clearResults()});
+ // No desplazar automáticamente el mapa con un toque; el ajuste se hace arrastrando.
  map.on('moveend',onMove);
  if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(isOpen)requestAnimationFrame(()=>map.invalidateSize({pan:false}))}).observe(node);
  return map;
@@ -156,34 +165,68 @@ function retryTiles(){
   requestAnimationFrame(()=>map.invalidateSize({pan:false}));
  }
 }
+// Distancia real entre coordenadas: ignora los subpíxeles debidos a redimensionar.
+function meters(a,b){
+ if(!a||!b)return Infinity;
+ const p=Math.PI/180,dlat=(a.lat-b.lat)*p,dlng=(a.lng-b.lng)*p;
+ const h=Math.sin(dlat/2)**2+
+  Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(dlng/2)**2;
+ return 12742000*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+function referenceFromResults(point,rows){
+ const result=window.ViaGeoV2?.buildPickupDisplay?.({point,reverseCandidates:rows||[]});
+ const ref=result?.nearbyReference;
+ if(!ref||result.postalStatus!=='suggested')return null;
+ const short=[result.title,ref.city,ref.department].filter(Boolean).join(', ');
+ return {point:{lat:point.lat,lng:point.lng},label:short,
+  headline:result.title,city:ref.city||'',department:ref.department||'',
+  distanceMeters:ref.distanceMeters,numberIsApproximate:!!result.numberIsApproximate};
+}
+function showReference(result){
+ if(result){
+  const metersAway=Math.round(result.distanceMeters);
+  reference.textContent=result.headline+' · aprox. '+metersAway+' m';
+  nearby=result.label;
+ }else{
+  nearby='';
+  reference.textContent='Sin dirección postal identificada. El punto queda fijado por coordenadas.';
+ }
+}
+async function getReverse(point,signal){
+ const url='/api/direcciones?mode=reverse&lat='+encodeURIComponent(point.lat)+
+  '&lng='+encodeURIComponent(point.lng);
+ const response=await fetch(url,{signal});
+ if(!response.ok)throw Error('Servicio de direcciones no disponible');
+ const data=await response.json();
+ return {rows:data.results||[],choice:referenceFromResults(point,data.results||[])};
+}
 function onMove(){
  if(!map||!isOpen)return;
- const point=map.getCenter(),lat=point.lat,lng=point.lng;
- if(!valid(lat,lng)){reference.textContent='Elegí un punto dentro de Uruguay.';coords.textContent='';return}
- coords.textContent='Punto marcado: '+lat.toFixed(6)+', '+lng.toFixed(6);
- reference.textContent='Punto listo para confirmar · podés ajustar el mapa';
- nearby='';updatePortalLabels([]);clearTimeout(reverseTimer);reverseController?.abort();const serial=++reverseGeneration;
+ const p=map.getCenter(),point={lat:p.lat,lng:p.lng};
+ if(!valid(point.lat,point.lng)){
+  reference.textContent='Elegí un punto dentro de Uruguay.';coords.textContent='';return
+ }
+ // Las llamadas repetidas de MapLibre durante resize / repintado NO son
+ // desplazamientos del usuario ni justifican otra consulta de direcciones.
+ if(meters(lastGeoPoint,point)<1.5)return;
+ lastGeoPoint=point;lastReference=null;nearby='';
+ coords.textContent='Punto marcado: '+point.lat.toFixed(6)+', '+point.lng.toFixed(6);
+ reference.textContent='Identificando la dirección cercana…';
+ clearTimeout(reverseTimer);reverseController?.abort();const serial=++reverseGeneration;
  reverseTimer=setTimeout(async()=>{
   const ctl=new AbortController();reverseController=ctl;
   const timeout=setTimeout(()=>ctl.abort(),5200);
   try{
-   const url='/api/direcciones?mode=reverse&lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng);
-   const response=await fetch(url,{signal:ctl.signal});
-   if(!response.ok)throw Error('IDE no disponible');
-   const data=await response.json();
-   if(serial!==reverseGeneration||!isOpen)return;
-   updatePortalLabels(data.results||[]);
-   const evaluated=window.ViaGeoV2?.evaluateReverseCandidates?.(data.results||[]);
-   const p=evaluated?.status==='suggested'?evaluated.reference:null;
-   nearby=p?compact([p.street,p.city,p.department].filter(Boolean).join(', '),100):'';
-   if(nearby)reference.textContent='Referencia cercana: '+nearby+' (puerta sin confirmar)';
-   else if(evaluated?.status==='ambiguous')reference.textContent='Varias calles próximas: confirmá dónde esperás.';
-   else reference.textContent='Punto marcado sin dirección postal confirmada';
+   const data=await getReverse(point,ctl.signal);
+   if(serial!==reverseGeneration||!isOpen||meters(map.getCenter(),point)>2)return;
+   updatePortalLabels(data.rows);
+   lastReference=data.choice;
+   showReference(data.choice);
   }catch(e){
    if(serial!==reverseGeneration||!isOpen)return;
-   reference.textContent='Punto marcado · confirmá aunque no se encuentre la calle';
+   showReference(null);
   }finally{clearTimeout(timeout)}
- },550);
+ },450);
 }
 function locate(force){
  if(!navigator.geolocation){reference.textContent='GPS no disponible. Podés elegir el punto moviendo el mapa.';return}
@@ -267,6 +310,10 @@ function open(input,button){
  overlay();
  if(!input)return;
  inputTarget=input;previousFocus=button||document.activeElement;isOpen=true;moved=false;nearby='';selectedPostal=null;
+ lastGeoPoint=null;lastReference=null;lastMapDimensions=null;
+ const meta=window.ViaAddress?.get?.(input.id);
+ if(meta?.postalStatus==='user_confirmed'&&meta?.lat!=null&&meta?.lng!=null)
+   selectedPostal={label:meta.label,lat:meta.lat,lng:meta.lng,city:meta.city,department:meta.department};
  heading.textContent=input.id.includes('origin')?'Elegí el origen en el mapa':'Elegí el destino en el mapa';
  root.hidden=false;document.body.classList.add('via-map-picker-open');
  searchBox.value='';clearResults();warning.hidden=mapMode!=='raster';tileFailures=0;
@@ -290,24 +337,57 @@ function close(){
  ++gpsGeneration;++searchGeneration;++reverseGeneration;
  clearTimeout(searchTimer);clearTimeout(reverseTimer);
  searchController?.abort();reverseController?.abort();clearResults();
+ if(resizeFrame){cancelAnimationFrame(resizeFrame);resizeFrame=0}
  inputTarget=null;previousFocus?.focus?.();
 }
-function confirm(){
+async function confirm(){
  if(!map||!inputTarget)return;
- const position=map.getCenter();
- if(!valid(position.lat,position.lng)){reference.textContent='Elegí un punto dentro de Uruguay.';return}
- const retained=selectedPostal&&!moved?selectedPostal:null;
- const label=retained?.label||(nearby?'Punto en mapa cerca de '+nearby:'Punto confirmado en el mapa');
- const selection={label:compact(label,125),lat:position.lat,lng:position.lng,
-   accuracy:'map',source:'map',postalStatus:retained?'user_confirmed':'suggested',
-   city:retained?.city||'',department:retained?.department||'',kind:'map'};
- const input=inputTarget;
- if(window.ViaAddress?.set)window.ViaAddress.set(input.id,selection);
- else{input.value=selection.label;Object.assign(input.dataset,{lat:position.lat,lng:position.lng,accuracy:'map',addressSelected:'true'})}
- input.title='Punto confirmado en el mapa';
- input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:selection}));
- input.dispatchEvent(new Event('change',{bubbles:true}));
- close();
+ const p=map.getCenter(),point={lat:p.lat,lng:p.lng};
+ if(!valid(point.lat,point.lng)){
+  reference.textContent='Elegí un punto dentro de Uruguay.';return
+ }
+ const input=inputTarget,button=root.querySelector('.via-picker-confirm');
+ if(button.disabled)return;
+ button.disabled=true;button.textContent='Confirmando ubicación…';
+ let match=lastReference&&meters(lastReference.point,point)<3?lastReference:null;
+ const prior=window.ViaAddress?.get?.(input.id);
+ try{
+  // Esperar la dirección correspondiente a la chincheta FINAL. No conservar
+  // una calle antigua después de desplazar el mapa.
+  if(!match&&!(selectedPostal&&!moved)){
+   clearTimeout(reverseTimer);reverseController?.abort();++reverseGeneration;
+   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),4500);
+   try{match=(await getReverse(point,controller.signal)).choice}
+   catch{/* El punto geográfico sigue siendo válido sin calle. */}
+   finally{clearTimeout(timeout)}
+  }
+  if(!isOpen||inputTarget!==input)return;
+  const retained=selectedPostal&&!moved&&meters(selectedPostal,point)<5?selectedPostal:null;
+  // Si el usuario solo entró a mirar, conservar la dirección que ya tenía,
+  // siempre que no haya cambiado la ubicación.
+  const keepExisting=!moved&&prior?.lat!=null&&prior?.lng!=null&&
+   meters(prior,point)<5&&prior.label&&prior.postalStatus!=='unknown';
+  const label=retained?.label||(
+   keepExisting?prior.label:
+   match?.label||'Punto confirmado en el mapa (sin dirección postal)');
+  const selection={
+   label:compact(label,140),lat:point.lat,lng:point.lng,
+   accuracy:'map',source:'map',
+   postalStatus:retained?'user_confirmed':keepExisting?prior.postalStatus:match?'suggested':'unknown',
+   city:retained?.city||(!moved&&keepExisting?prior.city:match?.city)||'',
+   department:retained?.department||(!moved&&keepExisting?prior.department:match?.department)||'',
+   referenceDistance:match?.distanceMeters??null,
+   numberIsApproximate:!!match?.numberIsApproximate,
+   kind:'map'
+  };
+  if(window.ViaAddress?.set)window.ViaAddress.set(input.id,selection);
+  else{input.value=selection.label;Object.assign(input.dataset,{lat:point.lat,lng:point.lng,
+   accuracy:'map',postalStatus:selection.postalStatus,addressSelected:'true'})}
+  input.title='Punto seleccionado: '+selection.label;
+  input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:selection}));
+  input.dispatchEvent(new Event('change',{bubbles:true}));
+  close();
+ }finally{button.disabled=false;button.textContent='Confirmar punto'}
 }
 const icon='<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2z"/><path d="M9 3v16M15 5v16"/><circle cx="12" cy="11" r="2.3" fill="currentColor" stroke="none"/></svg>';
 ids.forEach(id=>{
