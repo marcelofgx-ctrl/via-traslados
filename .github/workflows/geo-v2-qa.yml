@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - via-geo-v2-validacion-20261116
+      - via-geo-v2-pulido-qa-20261116
   workflow_dispatch:
 jobs:
   geolocalizacion-v2:
@@ -16,4 +17,4 @@ jobs:
           node-version: '22'
       - name: Ejecutar pruebas del motor geográfico e integración
         run: |
-          node --test tests/geo-v2-core.test.mjs tests/address-precision-qa.test.mjs tests/gps-reverse-qa.test.mjs tests/map-point-picker.test.mjs
+          node --test tests/geo-v2-core.test.mjs tests/address-precision-qa.test.mjs tests/gps-reverse-qa.test.mjs tests/map-point-picker.test.mjs tests/geo-v2-map-stability.test.mjs
