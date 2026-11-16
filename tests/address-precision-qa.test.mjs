@@ -73,3 +73,17 @@ test('números de puerta cortos se reconocen en cualquier calle',async()=>{
  assert.equal(r.results[0].accuracy,'portal');
  assert.equal(r.results[0].street,'Calle Ejemplo 31');
 });
+
+test('prioriza la calle frente a una localidad homónima en autocompletado',async()=>{
+ const search=candidates([
+  row('MONTEVIDEO','', 'MONTEVIDEO','MONTEVIDEO',-34.90,-56.17),
+  row('AVENIDA 18 DE JULIO',1360,'MONTEVIDEO','MONTEVIDEO',-34.90,-56.18)
+ ]);
+ const r=await search({q:'18 de Julio 1234, Montevideo',mode:'suggest'});
+ assert.equal(r.results[0].street,'AVENIDA 18 DE JULIO 1360');
+});
+test('número inexistente no se resuelve con otro portal cercano',async()=>{
+ const search=candidates([row('AVENIDA 18 DE JULIO',2345,'MONTEVIDEO','MONTEVIDEO',-34.90,-56.18)]);
+ const r=await search({q:'18 de Julio 999999, Montevideo',mode:'resolve'});
+ assert.equal(r.results.length,0);
+});
