@@ -73,7 +73,9 @@ gpsButton?.addEventListener('click',()=>{
    const chosen={label,lat:pos.lat,lng:pos.lng,accuracy:'gps',source:'gps',
     postalStatus:decision?.postalStatus||'unknown',
     city:info?.city||'',department:info?.department||'',
-    gpsAccuracy:pos.accuracyMeters,timestamp:fix.timestamp||Date.now()};
+    gpsAccuracy:pos.accuracyMeters,timestamp:fix.timestamp||Date.now(),
+    referenceDistance:info?.distanceMeters??null,
+    numberIsApproximate:!!decision?.numberIsApproximate};
    window.ViaAddress?.set('home-origin',chosen);
    input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:chosen}));
   }
