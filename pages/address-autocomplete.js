@@ -13,7 +13,7 @@ const clear=()=>{panel.replaceChildren();panel.classList.add('hidden');active=nu
 const correctLocality = place => place;
 
 const setMeta=(input,place)=>{
- for(const key of ['lat','lng','accuracy','city','department','kind','source','postalStatus','gpsAccuracy','timestamp']){
+ for(const key of ['lat','lng','accuracy','city','department','kind','source','postalStatus','gpsAccuracy','timestamp','referenceDistance','numberIsApproximate']){
   if(place&&place[key]!=null)input.dataset[key]=String(place[key]);else delete input.dataset[key];
  }
  input.dataset.addressSelected=place?'true':'false';
@@ -34,7 +34,9 @@ window.ViaAddress={
    source:el.dataset.source||'',postalStatus:el.dataset.postalStatus||'unknown',
    city:el.dataset.city||'',department:el.dataset.department||'',
    gpsAccuracy:el.dataset.gpsAccuracy!==undefined?Number(el.dataset.gpsAccuracy):null,
-   timestamp:el.dataset.timestamp?Number(el.dataset.timestamp):null};
+   timestamp:el.dataset.timestamp?Number(el.dataset.timestamp):null,
+   referenceDistance:el.dataset.referenceDistance?Number(el.dataset.referenceDistance):null,
+   numberIsApproximate:el.dataset.numberIsApproximate==='true'};
  }
 };
 function position(input){const r=input.getBoundingClientRect(),w=Math.min(Math.max(r.width,286),window.innerWidth-20);panel.style.width=w+'px';panel.style.left=Math.min(Math.max(10,r.left),window.innerWidth-w-10)+'px';const bottomSpace=window.innerHeight-r.bottom;const h=Math.min(295,Math.max(138,bottomSpace-12));panel.style.maxHeight=h+'px';panel.style.top=(r.bottom+3)+'px';if(bottomSpace<152){panel.style.top='auto';panel.style.bottom='10px';panel.style.maxHeight='min(34dvh,235px)'}else panel.style.bottom='auto'}
