@@ -61,10 +61,14 @@ def active_version():
     assert len(versions)==1 and float(versions[0]["percentage"])==100, "Multiple active versions"
     return versions[0]["version_id"]
 
+def without_auto_analytics(data):
+    # Cloudflare puede insertar este script al servir un dominio personalizado.
+    # Nunca subir un HTML que ya lo contenga: evitar doble inyección.
+    return re.sub(rb'<script\b[^>]*static\.cloudflareinsights\.com[^>]*>.*?</script>',
+        b'',data,flags=re.I|re.S)
+
 def stripped_html(data):
-    text=data.decode("utf-8","replace")
-    text=re.sub(r'<script\b[^>]*static\.cloudflareinsights\.com[^>]*>.*?</script>',
-        "",text,flags=re.I|re.S)
+    text=without_auto_analytics(data).decode("utf-8","replace")
     return re.sub(r'>\s+<','><',re.sub(r'\s+',' ',text)).strip()
 
 def write_config(name,filename):
@@ -135,6 +139,8 @@ def prepare():
                 # También guardamos sus bytes en el paquete para compararlos antes
                 # y después de publicar. No se introduce una versión antigua.
                 print("PRESERVING_LIVE_V25_ASSET",name,sha(data)[:12])
+        if name.endswith(".html") and name not in CHANGED:
+            data=without_auto_analytics(data)
         target=ASSETS/name
         target.parent.mkdir(parents=True,exist_ok=True)
         target.write_bytes(data)
@@ -145,7 +151,7 @@ def prepare():
             if e.code!=404:raise
             print("OPTIONAL_COMPAT_ASSET_NOT_PRESENT",name)
             continue
-        (ASSETS/name).write_bytes(data)
+        (ASSETS/name).write_bytes(without_auto_analytics(data) if name.endswith(".html") else data)
     assert b"demo: false" in (ASSETS/"config.js").read_bytes()
     assert b"app.js?v=25" in (ASSETS/"index.html").read_bytes()
     assert b"via-ux-v25.css?v=25" in (ASSETS/"index.html").read_bytes()
@@ -161,7 +167,11 @@ def prepare():
 def check_asset(url,name):
     actual,_=get(url+"/"+name)
     expected=(ASSETS/name).read_bytes()
-    assert actual==expected, "Asset inconsistente "+name
+    if name.endswith(".html"):
+        assert stripped_html(actual)==stripped_html(expected),(
+            "HTML diferente tras quitar script analítico de Cloudflare: "+name)
+    else:
+        assert actual==expected, "Asset inconsistente "+name
     return len(actual)
 
 def verify_qa():
