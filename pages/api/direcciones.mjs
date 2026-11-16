@@ -5,7 +5,7 @@ const clean=v=>String(v??'').trim().replace(/\s+/g,' ').slice(0,140);
 const fold=v=>clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
 const valid=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&a>=-36&&a<=-30&&b>=-59&&b<=-52;
 const numeric=v=>v==null||v===''?null:Number(v);
-const number=v=>(fold(v).match(/\b[1-9]\d{2,4}\b/g)||[]).pop()||'';
+const number=v=>(fold(v).match(/(?:^|\s)(\d{1,6}[a-z]?)$/)||[])[1]||'';
 const km=(a,b,c,d)=>{const r=Math.PI/180,x=Math.sin((c-a)*r/2),y=Math.sin((d-b)*r/2);return 12742*Math.asin(Math.sqrt(x*x+Math.cos(a*r)*Math.cos(c*r)*y*y))};
 const cities=['shangrila','lagomar','ciudad de la costa','colonia nicolich','paso carrasco','solymar','el pinar','pinar','salinas','atlantida','neptunia','parque del plata','pando','carrasco','montevideo','canelones','maldonado','punta del este','la paz','las piedras','sauce'];
 function locality(q){
@@ -26,8 +26,8 @@ function normalized(row,mode,q){
  return {label:[street,city,department].filter(Boolean).join(', '),street,city,department,lat:valid(lat,lng)?lat:null,lng:valid(lat,lng)?lng:null,accuracy,kind:'address',source:'IDE Uruguay'};
 }
 function addrScore(row,q,la,lo){
- const full=fold(q),streetQuery=fold(q.split(',')[0]).replace(/\b[1-9]\d{2,4}\b/g,'').trim();
- const street=fold(row.street),streetName=street.replace(/\b[1-9]\d{2,4}\b/g,'').trim();
+ const full=fold(q),streetQuery=fold(q.split(',')[0]).replace(/\s+\d{1,6}[a-z]?$/,'').trim();
+ const street=fold(row.street),streetName=street.replace(/\s+\d{1,6}[a-z]?$/,'').trim();
  const tokens=streetQuery.split(' ').filter(t=>t.length>=3),matched=tokens.filter(t=>streetName.includes(t)).length;
  const qn=number(q),rn=number(row.street),city=locality(q),rowCity=fold(row.city),dept=fold(row.department);
  let score=(streetQuery===streetName?26:streetName.startsWith(streetQuery)?16:streetName.includes(streetQuery)?10:0)+matched*3;
@@ -44,8 +44,8 @@ function relevantResolve(p,q){
  const n=number(q),got=number(p.street);
  if(n&&n!==got)return false;
  if(n&&p.accuracy!=='portal')return false;
- const streetQuery=fold(q.split(',')[0]).replace(/\b[1-9]\d{2,4}\b/g,'').trim();
- const gotStreet=fold(p.street).replace(/\b[1-9]\d{2,4}\b/g,'').trim();
+ const streetQuery=fold(q.split(',')[0]).replace(/\s+\d{1,6}[a-z]?$/,'').trim();
+ const gotStreet=fold(p.street).replace(/\s+\d{1,6}[a-z]?$/,'').trim();
  const tokens=streetQuery.split(' ').filter(t=>t.length>=3);
  if(tokens.length&&tokens.filter(t=>gotStreet.includes(t)).length<Math.min(tokens.length,2))return false;
  const city=locality(q);
