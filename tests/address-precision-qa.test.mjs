@@ -65,3 +65,11 @@ test('geocodificación inversa no certifica domicilio aunque el portal esté cer
  assert.equal(r.policy,'reference_only');
  assert.equal(r.results[0].referenceOnly,true);
 });
+
+test('números de puerta cortos se reconocen en cualquier calle',async()=>{
+ const search=candidates([row('Calle Ejemplo',31,'Localidad Alfa','Canelones',-34.84,-56.04)]);
+ const r=await search({q:'Calle Ejemplo 31, Localidad Alfa',mode:'resolve'});
+ assert.equal(r.results.length,1);
+ assert.equal(r.results[0].accuracy,'portal');
+ assert.equal(r.results[0].street,'Calle Ejemplo 31');
+});
