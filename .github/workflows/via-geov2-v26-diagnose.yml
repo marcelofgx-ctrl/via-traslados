@@ -25,7 +25,7 @@ jobs:
             bstatus,b=grab(QA+'/'+file)
             aa=noanalytics(a);bb=noanalytics(b)
             digest=lambda x:hashlib.sha256(x.encode()).hexdigest()[:12]
-            print('ASSET',file,'http',astatus,bstatus,'len',len(a),len(b),'raw',digest(a),digest(b),'without_analytics',digest(aa),digest(bb),'same_after_strip',aa==bb)
+            print('ASSET',file,'http',astatus,bstatus,'len',len(a),len(b),'raw',digest(a),digest(b),'without_analytics',digest(aa),digest(bb),'same_after_strip',aa==bb,'analytics_script_count',a.count('static.cloudflareinsights.com'),b.count('static.cloudflareinsights.com'))
             if file.endswith('.html') and aa!=bb:
               seq=difflib.SequenceMatcher(None,aa,bb,autojunk=False)
               for tag,i,j,k,l in seq.get_opcodes():
