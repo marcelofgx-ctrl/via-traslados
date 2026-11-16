@@ -41,10 +41,10 @@ function position(input){const r=input.getBoundingClientRect(),w=Math.min(Math.m
 function line(message,css){const node=document.createElement('div');node.className='address-line '+(css||'');node.textContent=message;panel.appendChild(node)}
 function display(input,items){if(active!==input)return;panel.replaceChildren();position(input);panel.classList.remove('hidden');if(!items.length){line('No encontramos coincidencias. Probá con calle, número y localidad.','address-empty');return}
  items.map(place=>correctLocality(place,input.value)).forEach(place=>{const btn=document.createElement('button');btn.type='button';btn.className='address-choice';btn.setAttribute('role','option');const main=document.createElement('strong'),sub=document.createElement('small');main.textContent=place.street;sub.textContent=([place.city,place.department].filter(Boolean).join(' · ')||'Uruguay')+(place.kind==='place'?' · Lugar de interés'+(Number.isFinite(place.distanceKm)?' · '+place.distanceKm+' km en línea recta':''):place.accuracy==='portal'?' · Número identificado (ubicación al seleccionar)':' · Verificá el número');btn.append(main,sub);btn.addEventListener('pointerdown',e=>e.preventDefault());btn.addEventListener('click',async()=>{const source=input;
-  const written=source.value;const number=(written.match(/\b[1-9]\d{2,4}\b/g)||[]).pop();
+  const written=source.value;const number=(written.split(',')[0].trim().match(/(?:^|\s)(\d{1,6}[a-z]?)$/i)||[])[1];
   let chosen=correctLocality(place,written);
-  if(number&&chosen.kind!=='place'){const endNumber=(place.street.match(/\b[1-9]\d{2,4}\b$/)||[])[0];
-   if(endNumber!==number){const street=place.street.replace(/\s+[1-9]\d{2,4}$/, '')+' '+number;
+  if(number&&chosen.kind!=='place'){const endNumber=(place.street.match(/(?:^|\s)(\d{1,6}[a-z]?)$/i)||[])[1];
+   if(endNumber!==number){const street=place.street.replace(/\s+\d{1,6}[a-z]?$/i, '')+' '+number;
     chosen=correctLocality({...chosen,street,label:[street,chosen.city,chosen.department].filter(Boolean).join(', '),accuracy:'unconfirmed',lat:null,lng:null},written);
    }
   }
