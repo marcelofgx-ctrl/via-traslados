@@ -29,104 +29,61 @@ function gpsMessage(message){
 }
 gpsButton?.addEventListener('click',()=>{
  if(locating)return;
- // Si el usuario no usa el atajo, la búsqueda manual no requiere GPS.
  if(!navigator.geolocation){
-  gpsMessage('Tu navegador no permite usar GPS. Escribí la dirección de origen.');
+  gpsMessage('No hay acceso al GPS. Podés escribir la dirección o elegirla en el mapa.');
   return;
  }
- locating=true;
- gpsButton.disabled=true;
+ const input=$('home-origin');
+ const original=input?.value||'';
+ let completed=false;
+ locating=true;gpsButton.disabled=true;
  gpsButton.setAttribute('aria-busy','true');
- gpsMessage('');
- const done=()=>{
-  locating=false;
-  gpsButton.disabled=false;
-  gpsButton.removeAttribute('aria-busy');
- };
- const denied=()=>{
-  done();
-  gpsMessage('No pudimos usar tu ubicación. Podés escribir el origen manualmente sin dar permisos.');
- };
+ gpsButton.setAttribute('aria-label','Buscando dirección cercana');
+ // No cambiar el campo mientras se resuelve: evita el salto de toda la portada.
+ const done=()=>{if(completed)return;completed=true;locating=false;gpsButton.disabled=false;
+  gpsButton.removeAttribute('aria-busy');gpsButton.setAttribute('aria-label','Utilizar mi ubicación')};
+ const valid=(lat,lng)=>Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-36&&lat<=-30&&lng>=-59&&lng<=-52;
  try{
-  navigator.geolocation.getCurrentPosition(async pos=>{
-   try{
-    const lat=pos.coords.latitude,lng=pos.coords.longitude;
-    if(!(-36<=lat&&lat<=-30&&-59<=lng&&lng<=-52)){
-     gpsMessage('La ubicación está fuera de Uruguay. Escribí tu dirección.');
-     return;
-    }
-    window.ViaSearchLocation?.update(lat,lng);
-    // Las coordenadas exactas del teléfono quedan siempre asociadas al punto.
-    // El texto inicial es transitorio, no la etiqueta final.
-    const input=$('home-origin');
-    const accuracyMeters=Number(pos.coords.accuracy)||null;
-    const selectGps=(label,place=null)=>{
-      if(!input)return;
-      const chosen={label,lat,lng,accuracy:'gps',
-        city:place?.city||'',department:place?.department||''};
-      window.ViaAddress?.set('home-origin',chosen);
-      input.dataset.gpsAccuracy=accuracyMeters==null?'':String(Math.round(accuracyMeters));
-      input.title='Ubicación GPS ('+lat.toFixed(6)+', '+lng.toFixed(6)+')';
-      input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:chosen}));
-    };
-    selectGps('Localizando dirección…');
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),5500);
-    try{
-      const response=await fetch('/api/direcciones?mode=reverse&lat='+
-        encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng),{signal:controller.signal});
-      if(!response.ok)throw Error('Dirección no disponible');
-      const data=await response.json();
-      // IDE devuelve números de puerta con coordenadas propias; solo se usan
-      // como referencia postal. Nunca reemplazar lat/lng GPS por lat/lng IDE.
-      const nearby=(data.results||[]).filter(row=>row.street&&row.city&&
-        Number.isFinite(Number(row.distanceMeters))&&Number(row.distanceMeters)<=130)
-        .sort((a,b)=>a.distanceMeters-b.distanceMeters)[0];
-      if(input?.dataset.accuracy==='gps'&&
-        Number(input.dataset.lat)===lat&&Number(input.dataset.lng)===lng){
-        if(nearby){
-          const street=String(nearby.street).trim();
-          const city=String(nearby.city).trim();
-          const dept=String(nearby.department||'').trim();
-          // Si el portal está a varios metros, no afirmamos que sea la puerta exacta.
-          const heading=nearby.distanceMeters<=35?street:'Cerca de '+street;
-          selectGps([heading,city,dept].filter(Boolean).join(', '),{city,department:dept});
-          input.dataset.referenceDistance=String(nearby.distanceMeters);
-        }else{
-          selectGps('Punto GPS sin dirección confirmada');
-        }
-      }
-    }catch{
-      if(input?.dataset.accuracy==='gps'&&
-         Number(input.dataset.lat)===lat&&Number(input.dataset.lng)===lng)
-        selectGps('Punto GPS sin dirección confirmada');
-    }finally{clearTimeout(timeout)}
-    gpsMessage(accuracyMeters!=null&&accuracyMeters>80?
-      'El GPS tiene una precisión aproximada de ±'+Math.round(accuracyMeters)+
-      ' m. Ajustá la recogida desde el mapa.':'');
-   }catch{
-    gpsMessage('No pudimos interpretar tu ubicación. Escribí la dirección de origen.');
-   }finally{done();}
-  },denied,{enableHighAccuracy:true,timeout:12000,maximumAge:120000});
- }catch{denied();}
+ navigator.geolocation.getCurrentPosition(async position=>{
+  const {latitude:lat,longitude:lng,accuracy}=position.coords;
+  if(!valid(lat,lng)){done();gpsMessage('La ubicación está fuera de Uruguay.');return}
+  window.ViaSearchLocation?.update(lat,lng);
+  let postal=null;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),5200);
+  try{
+   const url='/api/direcciones?mode=reverse&lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng);
+   const response=await fetch(url,{signal:controller.signal});
+   if(response.ok){
+    const payload=await response.json();
+    postal=(payload.results||[]).filter(r=>r.street&&
+      Number.isFinite(Number(r.distanceMeters))&&r.distanceMeters<=100)
+      .sort((a,b)=>a.distanceMeters-b.distanceMeters)[0]||null;
+   }
+  }catch{/* La posición GPS sigue disponible, aunque IDE no responda. */}
+  finally{clearTimeout(timeout)}
+  // Nunca modificar una dirección que el usuario ya escribió o eligió mientras esperaba.
+  if(input&&input.value===original){
+   const stripDoor=s=>String(s||'').trim().replace(/\s+(?:N[°ºo]?\s*)?\d{1,6}\s*$/i,'').trim();
+   const roadway=postal?stripDoor(postal.street):'';
+   const municipality=postal?.department||'';
+   const label=roadway?'Cerca de '+roadway+(municipality?', '+municipality:''):
+     'Punto GPS sin dirección postal confirmada';
+   const picked={label,lat,lng,accuracy:'gps',city:'',department:municipality};
+   window.ViaAddress?.set('home-origin',picked);
+   input.dataset.gpsAccuracy=Number.isFinite(Number(accuracy))?String(Math.round(accuracy)):'';
+   input.dataset.nearby=roadway;
+   input.dataset.referenceDistance=postal?String(postal.distanceMeters):'';
+   input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:picked}));
+  }
+  done();
+  if(Number.isFinite(Number(accuracy))&&accuracy>80)
+   gpsMessage('La ubicación GPS es aproximada (±'+Math.round(accuracy)+' m). Ajustá la entrada en el mapa.');
+  else gpsMessage('');
+ },()=>{done();gpsMessage('No pudimos obtener el GPS. Podés ingresar la dirección manualmente.');},
+ {enableHighAccuracy:true,timeout:12000,maximumAge:60000});
+ }catch{done();gpsMessage('GPS no disponible. Podés ingresar la dirección manualmente.')}
 });
 })();
 
-(()=>{
- const shell=document.querySelector('.premium-shell'), main=document.querySelector('.premium-main');
- const home=document.querySelector('.reference-home'), tabs=document.querySelector('.reference-tabs');
- if(!shell||!main||!home||!tabs)return;
- const adjust=()=>{
-  if(document.body.classList.contains('in-booking'))return;
-  home.style.zoom='1';tabs.style.zoom='1';
-  const usable=main.clientHeight;
-  const needed=home.scrollHeight+tabs.offsetHeight;
-  if(usable>0&&needed>usable+2){
-   const fit=Math.max(.68,Math.min(1,(usable-4)/needed));
-   home.style.zoom=String(fit);tabs.style.zoom=String(fit);
-  }
- };
- window.addEventListener('resize',adjust,{passive:true});
- requestAnimationFrame(adjust);
- window.addEventListener('load',adjust,{once:true});
-})();
+/* El diseño utiliza medidas CSS estables: nunca reescalar con JS al recibir GPS. */
