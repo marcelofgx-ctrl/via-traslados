@@ -165,7 +165,7 @@ def verify_qa():
         "map-point-picker.js","geo-v2/core.mjs","sw.js","conductor.html","reserva.html",
         "mis-reservas.html","via-ux-v25.css"):
         check_asset(QA_URL,path)
-    q=urllib.parse.urlencode({"mode":"reverse","lat":-34.854306,"lng":-56.003147})
+    q=urllib.parse.urlencode({"mode":"reverse","lat":-34.905000,"lng":-56.185000})
     geo,_=get(QA_URL+"/api/direcciones?"+q)
     assert isinstance(json.loads(geo).get("results"),list),"Reverse API inaccesible"
     print("ISOLATED_QA_WORKER_OK",QA_URL)
@@ -222,7 +222,7 @@ def release():
                 except Exception:
                     time.sleep(3)
             else:raise AssertionError("Asset V26 no está listo: "+path)
-        q=urllib.parse.urlencode({"mode":"reverse","lat":-34.854306,"lng":-56.003147})
+        q=urllib.parse.urlencode({"mode":"reverse","lat":-34.905000,"lng":-56.185000})
         data,_=get(LIVE+"/api/direcciones?"+q)
         assert isinstance(json.loads(data).get("results"),list)
         new=active_version()
