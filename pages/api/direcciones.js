@@ -109,7 +109,7 @@ async function places(q,lat,lng,signal){
  });
  return unique.slice(0,10);
 }
-module.exports=async function handler(req,res){
+export default async function handler(req,res){
  res.setHeader('Cache-Control','no-store');
  res.setHeader('X-Content-Type-Options','nosniff');
  if(req.method!=='GET')return res.status(405).json({error:'Método no permitido'});
