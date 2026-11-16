@@ -25,7 +25,7 @@ body.via-map-picker-open{overflow:hidden!important;overscroll-behavior:none}
 .via-picker-result:last-child{border-bottom:0}.via-picker-result:hover,.via-picker-result:focus-visible{background:#eaf6f0;outline:1px solid #9bcdbd}
 .via-picker-result strong{font-size:13px;font-weight:750}.via-picker-result small{font-size:11px;color:#617970}
 .via-picker-hint{margin:0;padding:12px 10px;font-size:13px;line-height:1.4;color:#58746a}
-.via-picker-map{flex:1 1 auto;min-height:160px;position:relative!important;display:block;width:100%;background:#dfece8;overflow:hidden;contain:layout paint}
+.via-picker-map{flex:1 1 auto;min-height:160px;position:relative!important;display:block;width:100%;background:#dfece8;overflow:hidden}
 .via-picker-map.leaflet-container{width:100%!important;height:auto!important;min-height:160px!important;flex:1 1 auto!important;outline:none}
 .via-picker-map .leaflet-control-attribution{font-size:10px!important;max-width:calc(100vw - 50px);white-space:normal;background:#ffffffd9!important}
 .via-picker-map .leaflet-control-zoom a{width:38px;height:38px;line-height:38px}
@@ -50,3 +50,13 @@ body.via-map-picker-open{overflow:hidden!important;overscroll-behavior:none}
  .via-picker-controls{padding-bottom:max(11px,env(safe-area-inset-bottom))}
 }
 @media(max-height:590px){.via-picker-help{display:none}.via-picker-top{padding-top:7px}.via-picker-map{min-height:130px}.via-picker-status{min-height:43px;padding:6px 12px}.via-picker-controls p{display:none}}
+
+/* MapLibre vectorial: el contenedor debe admitir el canvas GPU completo. */
+.via-picker-map.maplibregl-map{position:relative!important;flex:1 1 auto!important;min-height:160px!important;overflow:hidden!important}
+.via-picker-map .maplibregl-canvas-container,
+.via-picker-map .maplibregl-canvas{width:100%;height:100%}
+.via-picker-map .maplibregl-ctrl-bottom-right{max-width:calc(100% - 15px)}
+.via-picker-map .maplibregl-ctrl-attrib{font-size:10px;line-height:1.2;background:#ffffffe8!important}
+.via-picker-map .maplibregl-ctrl-attrib a{color:#2c615b}
+.via-picker-map .maplibregl-ctrl-group button{width:38px;height:38px}
+.via-picker-pin{z-index:15}
