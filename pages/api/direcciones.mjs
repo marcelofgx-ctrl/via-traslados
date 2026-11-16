@@ -31,7 +31,13 @@ function addrScore(row,q,la,lo){
  const tokens=streetQuery.split(' ').filter(t=>t.length>=3),matched=tokens.filter(t=>streetName.includes(t)).length;
  const qn=number(q),rn=number(row.street),city=locality(q),rowCity=fold(row.city),dept=fold(row.department);
  let score=(streetQuery===streetName?26:streetName.startsWith(streetQuery)?16:streetName.includes(streetQuery)?10:0)+matched*3;
- if(qn)score+=rn===qn?36:rn?-28:-8;
+ // Una coincidencia en la ciudad no puede superar a una coincidencia con la calle.
+ if(tokens.length){
+  const ratio=matched/tokens.length;
+  score+=Math.round(ratio*40);
+  if(ratio<0.4)score-=65;
+ }
+ if(qn)score+=rn===qn?70:rn?-40:-20;
  if(city)score+=rowCity===city?28:rowCity.includes(city)||city.includes(rowCity)&&!!rowCity?12:-14;
  if(full.includes('montevideo'))score+=dept==='montevideo'?13:-10;
  else if(full.includes('canelones'))score+=dept==='canelones'?13:-10;
