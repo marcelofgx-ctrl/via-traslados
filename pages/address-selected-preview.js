@@ -39,10 +39,11 @@ for(const id of ['home-origin','home-destination']){
   if(!selected||!label){hide();return}
   const segments=label.split(',').map(x=>x.trim()).filter(Boolean);
   street.textContent=pretty(segments[0]||label);
+  const cityInfo=segments.slice(1).map(pretty).join(' · ');
   locality.textContent=quality==='gps'
-   ?(input.dataset.nearby?'Cerca de '+pretty(input.dataset.nearby):'Ubicación tomada del GPS · ajustá en el mapa')
-   :segments.slice(1).map(pretty).join(' · ')||(
-      quality==='map'?'Punto confirmado en el mapa':'Dirección seleccionada');
+    ?(cityInfo?(cityInfo+' · ubicación GPS'):
+       'Sin dirección postal confirmada · marcá el punto en el mapa')
+    :cityInfo||(quality==='map'?'Punto confirmado en el mapa':'Dirección seleccionada');
   input.title=label;
   preview.setAttribute('aria-label','Dirección: '+label+'. Tocar para editar');
   preview.hidden=false;input.classList.add('via-previewed-input');
