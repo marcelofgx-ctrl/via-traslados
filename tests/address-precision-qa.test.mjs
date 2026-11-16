@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 
-const source=readFileSync(new URL('../pages/api/direcciones.js',import.meta.url),'utf8');
+const source=readFileSync(new URL('../pages/api/direcciones.js',import.meta.url),'utf8').replace('export default async function handler(', 'module.exports=async function handler(');
 function setup(mockFetch){
  const module={exports:{}};
  runInNewContext(source,{module,exports:module.exports,URL,AbortSignal,fetch:mockFetch});
