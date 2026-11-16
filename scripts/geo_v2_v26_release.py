@@ -165,8 +165,19 @@ def check_asset(url,name):
     return len(actual)
 
 def verify_qa():
-    html,_=get(QA_URL+"/")
-    assert b"app.js?v=25" in html and b"geo-v2/core.mjs?v=3" in html
+    # La ruta workers.dev puede tardar en propagarse después de Wrangler deploy.
+    # No ignorar otros fallos ni continuar a producción sin verificar HTML real.
+    for attempt in range(18):
+        try:
+            html,_=get(QA_URL+"/")
+            assert b"app.js?v=25" in html and b"geo-v2/core.mjs?v=3" in html
+            break
+        except urllib.error.HTTPError as e:
+            if e.code!=404:raise
+            print("WAITING_QA_WORKER_EDGE",attempt+1)
+            time.sleep(4)
+    else:
+        raise AssertionError("QA Worker no quedó accesible tras comprobar propagación")
     config,_=get(QA_URL+"/config.js")
     assert b"demo: false" in config
     for path in ("app.js","store.js","config.js","reference.js","address-autocomplete.js",
