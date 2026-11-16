@@ -56,26 +56,54 @@ gpsButton?.addEventListener('click',()=>{
      return;
     }
     window.ViaSearchLocation?.update(lat,lng);
-    // La interfaz muestra un nombre breve. Coordenadas y precisión quedan en metadatos.
-    const fallback={label:'Mi ubicación actual',lat,lng,accuracy:'gps',city:'',department:''};
+    // Las coordenadas exactas del teléfono quedan siempre asociadas al punto.
+    // El texto inicial es transitorio, no la etiqueta final.
     const input=$('home-origin');
-    window.ViaAddress?.set('home-origin',fallback);
-    input?.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:fallback}));
+    const accuracyMeters=Number(pos.coords.accuracy)||null;
+    const selectGps=(label,place=null)=>{
+      if(!input)return;
+      const chosen={label,lat,lng,accuracy:'gps',
+        city:place?.city||'',department:place?.department||''};
+      window.ViaAddress?.set('home-origin',chosen);
+      input.dataset.gpsAccuracy=accuracyMeters==null?'':String(Math.round(accuracyMeters));
+      input.title='Ubicación GPS ('+lat.toFixed(6)+', '+lng.toFixed(6)+')';
+      input.dispatchEvent(new CustomEvent('via:address',{bubbles:true,detail:chosen}));
+    };
+    selectGps('Localizando dirección…');
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),5500);
     try{
-     const r=await fetch('/api/direcciones?mode=reverse&lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng));
-     if(!r.ok)throw Error('Dirección no disponible');
-     const d=await r.json();
-     const addr=(d.results||[]).find(x=>x.street&&x.city);
-     // No sustituir el GPS por el centroide o una puerta de IDE.
-     if(input&&input.dataset.accuracy==='gps'&&
+      const response=await fetch('/api/direcciones?mode=reverse&lat='+
+        encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng),{signal:controller.signal});
+      if(!response.ok)throw Error('Dirección no disponible');
+      const data=await response.json();
+      // IDE devuelve números de puerta con coordenadas propias; solo se usan
+      // como referencia postal. Nunca reemplazar lat/lng GPS por lat/lng IDE.
+      const nearby=(data.results||[]).filter(row=>row.street&&row.city&&
+        Number.isFinite(Number(row.distanceMeters))&&Number(row.distanceMeters)<=130)
+        .sort((a,b)=>a.distanceMeters-b.distanceMeters)[0];
+      if(input?.dataset.accuracy==='gps'&&
         Number(input.dataset.lat)===lat&&Number(input.dataset.lng)===lng){
-       const place=addr?[addr.street,addr.city].filter(Boolean).join(', '):'';
-       input.title=place?'Calle cercana: '+place:'Ubicación GPS';
-       input.dataset.nearby=place;
-     }
-    }catch{/* El punto GPS ya está seleccionado: no hace falta una calle. */}
-    gpsMessage(Number(pos.coords.accuracy)>100?
-      'El GPS es aproximado. Usá el mapa para ajustar el punto exacto.':'');
+        if(nearby){
+          const street=String(nearby.street).trim();
+          const city=String(nearby.city).trim();
+          const dept=String(nearby.department||'').trim();
+          // Si el portal está a varios metros, no afirmamos que sea la puerta exacta.
+          const heading=nearby.distanceMeters<=35?street:'Cerca de '+street;
+          selectGps([heading,city,dept].filter(Boolean).join(', '),{city,department:dept});
+          input.dataset.referenceDistance=String(nearby.distanceMeters);
+        }else{
+          selectGps('Punto GPS sin dirección confirmada');
+        }
+      }
+    }catch{
+      if(input?.dataset.accuracy==='gps'&&
+         Number(input.dataset.lat)===lat&&Number(input.dataset.lng)===lng)
+        selectGps('Punto GPS sin dirección confirmada');
+    }finally{clearTimeout(timeout)}
+    gpsMessage(accuracyMeters!=null&&accuracyMeters>80?
+      'El GPS tiene una precisión aproximada de ±'+Math.round(accuracyMeters)+
+      ' m. Ajustá la recogida desde el mapa.':'');
    }catch{
     gpsMessage('No pudimos interpretar tu ubicación. Escribí la dirección de origen.');
    }finally{done();}
