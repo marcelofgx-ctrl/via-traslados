@@ -45,12 +45,18 @@ function display(input,items){if(active!==input)return;panel.replaceChildren();p
   let chosen=correctLocality(place,written);
   if(number&&chosen.kind!=='place'){const endNumber=(place.street.match(/\b[1-9]\d{2,4}\b$/)||[])[0];
    if(endNumber!==number){const street=place.street.replace(/\s+[1-9]\d{2,4}$/, '')+' '+number;
-    chosen=correctLocality({...chosen,street,label:[street,chosen.city,chosen.department].filter(Boolean).join(', '),accuracy:'street',lat:null,lng:null},written);
+    chosen=correctLocality({...chosen,street,label:[street,chosen.city,chosen.department].filter(Boolean).join(', '),accuracy:'unconfirmed',lat:null,lng:null},written);
    }
   }
+  // Una sugerencia no equivale a un portal certificado por IDE.
+  if(chosen.kind!=='place'&&chosen.accuracy!=='portal')chosen={...chosen,lat:null,lng:null,accuracy:'unconfirmed'};
   source.value=chosen.label;setMeta(source,chosen);clear();source.blur();/* resolver portal o calle de manera asíncrona */
   if(chosen.kind==='place'){source.dispatchEvent(new CustomEvent('via:address',{detail:chosen}));return;}
-  try{const r=await fetch('/api/direcciones?mode=resolve&q='+encodeURIComponent(chosen.label));if(!r.ok)return;const d=await r.json();const best=(d.results||[])[0];if(best&&source.value===chosen.label){const fixed=correctLocality(best,chosen.label);setMeta(source,fixed);source.dispatchEvent(new CustomEvent('via:address',{detail:fixed}))}}catch{/* se conserva la calle seleccionada */}
+  try{const r=await fetch('/api/direcciones?mode=resolve&q='+encodeURIComponent(chosen.label));if(!r.ok)return;const d=await r.json();const best=(d.results||[])[0];if(best&&source.value===chosen.label&&best.accuracy==='portal'){
+   // Si IDE no confirmó la puerta, mantener el texto sin geocodificar.
+   const fixed=correctLocality(best,chosen.label);setMeta(source,fixed);
+   source.dispatchEvent(new CustomEvent('via:address',{detail:fixed}));
+  }}catch{/* se conserva la calle escrita sin inventar el portal */}
  });panel.append(btn)})}
 function search(input){const q=input.value.trim();clearTimeout(timer);if(abort)abort.abort();const mySeq=++seq;if(q.length<3){clear();return}active=input;position(input);panel.replaceChildren();line('Buscando direcciones y lugares…','address-loading');panel.classList.remove('hidden');timer=setTimeout(async()=>{
  abort=new AbortController();try{
@@ -59,7 +65,12 @@ function search(input){const q=input.value.trim();clearTimeout(timer);if(abort)a
   const endpoint='/api/direcciones?q='+encodeURIComponent(q)+position;
   const [streets,places]=await Promise.allSettled([fetch(endpoint+'&mode=suggest',{signal:abort.signal}).then(r=>{if(!r.ok)throw Error();return r.json()}),fetch(endpoint+'&mode=places',{signal:abort.signal}).then(r=>{if(!r.ok)throw Error();return r.json()})]);
   if(mySeq!==seq||active!==input)return;
-  const results=[...(places.status==='fulfilled'?places.value.results||[]:[]),...(streets.status==='fulfilled'?streets.value.results||[]:[])];
+  const poiResults=places.status==='fulfilled'?places.value.results||[]:[];
+  const streetResults=streets.status==='fulfilled'?streets.value.results||[]:[];
+  const looksLikePlace=/\b(aeropuerto|shopping|hotel|hospital|terminal|estadio|universidad|centro comercial)\b/i.test(q);
+  const looksLikeAddress=/\b\d{3,5}\b/.test(q)||/\b(calle|avenida|av\.?|ruta|camino|pasaje|bulevar|blvr\.?|esquina)\b/i.test(q);
+  // Las consultas con calle o número deben priorizar direcciones; los POI, lugares.
+  const results=(looksLikePlace&&!looksLikeAddress)?[...poiResults,...streetResults]:[...streetResults,...poiResults];
   const unique=new Map();for(const p of results){const key=(p.label||'').toLocaleLowerCase('es');if(!unique.has(key))unique.set(key,p)}
   display(input,[...unique.values()].slice(0,12));
  }catch(e){if(mySeq!==seq||e.name==='AbortError')return;panel.replaceChildren();line('No se pudo buscar. Podés escribir la dirección manualmente.','address-empty')}
