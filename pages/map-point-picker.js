@@ -39,10 +39,12 @@ function clearResults(){
 function mapInit(){
  if(map)return map;
  const node=root.querySelector('#via-picker-map');
- // Motor vectorial (OpenFreeMap) para evitar mosaicos raster aislados.
- // Leaflet queda como alternativa si WebGL o la librería no están disponibles.
- if(window.maplibregl&&typeof window.maplibregl.Map==='function'&&
-    (typeof window.maplibregl.supported!=='function'||window.maplibregl.supported())){
+ // Intentar mapas vectoriales primero; algunos navegadores integrados Android
+ // deshabilitan WebGL y obligan a usar una vista raster de menor detalle.
+ const vectorLoaded=!!(window.maplibregl&&typeof window.maplibregl.Map==='function');
+ const vectorSupported=vectorLoaded&&(
+   typeof window.maplibregl.supported!=='function'||window.maplibregl.supported());
+ if(vectorSupported){
   let gl=null;
   try{
    gl=new window.maplibregl.Map({
@@ -75,7 +77,7 @@ function mapInit(){
   }catch(e){
    try{gl?.remove()}catch{}
    glMap=null;map=null;mapMode=null;
-   // El fallback no exige WebGL.
+   // El fallback no exige WebGL; informamos la degradación al usuario.
   }
  }
  if(!window.L){
@@ -83,14 +85,21 @@ function mapInit(){
   return null;
  }
  mapMode='raster';
+ const info=warning.querySelector('span');
+ info.textContent=vectorLoaded?
+   'Modo básico: este navegador no habilita el mapa vectorial. Si faltan calles, abrí la página en Chrome desde el menú ⋮.':
+   'Modo básico: el mapa avanzado no pudo cargarse. Si faltan calles, abrí la página en Chrome desde el menú ⋮.';
+ warning.hidden=false;
  map=L.map(node,{zoomControl:false,scrollWheelZoom:false,attributionControl:true,zoomSnap:0.5,zoomDelta:0.5,maxZoom:19,
   updateWhenIdle:true,preferCanvas:true}).setView([centerDefault.lat,centerDefault.lng],13);
+ // Se requieren menos imágenes por pantalla en navegadores embebidos, sin
+ // perder precisión en la chincheta ni modificar coordenadas.
  tileLayer=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  maxNativeZoom:19,maxZoom:19,keepBuffer:2,updateWhenIdle:true,
+  tileSize:512,zoomOffset:-1,maxNativeZoom:18,maxZoom:19,keepBuffer:0,updateWhenIdle:true,
   attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
  }).addTo(map);
- tileLayer.on('tileerror',()=>{tileFailures++;if(tileFailures>=2)warning.hidden=false});
- tileLayer.on('load',()=>{if(tileFailures===0)warning.hidden=true});
+ tileLayer.on('tileerror',()=>{tileFailures++;warning.hidden=false});
+ tileLayer.on('load',()=>{if(tileFailures>0)warning.hidden=false});
  L.control.zoom({position:'topright'}).addTo(map);
  map.on('dragstart',()=>{moved=true;++searchGeneration;searchController?.abort();clearResults()});
  map.on('click',e=>{moved=true;map.panTo(e.latlng);clearResults()});
@@ -100,7 +109,7 @@ function mapInit(){
 }
 function retryTiles(){
  if(!map)return;
- warning.hidden=true;tileFailures=0;
+ warning.hidden=mapMode!=='raster';tileFailures=0;
  if(mapMode==='vector'&&glMap){
   // Reiniciar estilo vectorial solo a petición del usuario; conservar la chincheta.
   glMap.setStyle('https://tiles.openfreemap.org/styles/liberty');
@@ -217,7 +226,7 @@ function open(input,button){
  inputTarget=input;previousFocus=button||document.activeElement;isOpen=true;moved=false;nearby='';
  heading.textContent=input.id.includes('origin')?'Elegí el origen en el mapa':'Elegí el destino en el mapa';
  root.hidden=false;document.body.classList.add('via-map-picker-open');
- searchBox.value='';clearResults();warning.hidden=true;tileFailures=0;
+ searchBox.value='';clearResults();warning.hidden=mapMode!=='raster';tileFailures=0;
  const chosen=coordsFor(input),fromGps=window.ViaSearchLocation?.get();
  const position=chosen||(fromGps&&valid(Number(fromGps.lat),Number(fromGps.lng))?fromGps:null)||centerDefault;
  const m=mapInit();
