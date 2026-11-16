@@ -20,7 +20,7 @@ jobs:
       - name: Descargar exactamente la rama de entrega
         uses: actions/checkout@v4
         with:
-          ref: 9db6c488e04a26068388e9a2b46a7bc6f4feb978
+          ref: 962e39433955fb9015fd5b62157cc96c9b30c3d3
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -88,6 +88,7 @@ jobs:
           success=os.environ['RESULT']=='success'
           payload=json.dumps({'state':'success' if success else 'failure',
            'context':'via-geov2-v26-production',
+           'target_url':'https://github.com/'+os.environ['REPO']+'/actions/runs/'+os.environ['GITHUB_RUN_ID'],
            'description':'Geolocalización V26 publicada y verificada' if success else 'Liberación detenida o revertida; revisar workflow'}).encode()
           req=urllib.request.Request('https://api.github.com/repos/'+os.environ['REPO']+'/statuses/'+os.environ['TARGET_SHA'],
             data=payload,method='POST',headers={
