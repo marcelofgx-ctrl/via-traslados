@@ -40,10 +40,15 @@ for(const id of ['home-origin','home-destination']){
   const segments=label.split(',').map(x=>x.trim()).filter(Boolean);
   street.textContent=pretty(segments[0]||label);
   const cityInfo=segments.slice(1).map(pretty).join(' · ');
+  const distance=Number(input.dataset.referenceDistance);
+  const approximate=input.dataset.numberIsApproximate==='true';
+  const hint=approximate?'Número orientativo'+(distance>0?' · '+Math.round(distance)+' m':''):'';
   locality.textContent=quality==='gps'
-    ?(cityInfo?(cityInfo+' · ubicación GPS'):
-       'Sin dirección postal confirmada · marcá el punto en el mapa')
-    :cityInfo||(quality==='map'?'Punto confirmado en el mapa':'Dirección seleccionada');
+    ?([cityInfo,hint||'ubicación GPS'].filter(Boolean).join(' · ')||
+      'Sin dirección postal confirmada · marcá el punto en el mapa')
+    :quality==='map'
+      ?([cityInfo,hint||'punto ajustado en el mapa'].filter(Boolean).join(' · '))
+      :cityInfo||'Dirección seleccionada';
   input.title=label;
   preview.setAttribute('aria-label','Dirección: '+label+'. Tocar para editar');
   preview.hidden=false;input.classList.add('via-previewed-input');
