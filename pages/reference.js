@@ -40,7 +40,9 @@ gpsButton?.addEventListener('click',()=>{
  const finish=()=>{if(done)return;done=true;locating=false;gpsButton.disabled=false;gpsButton.removeAttribute('aria-busy')};
  try{
  navigator.geolocation.getCurrentPosition(async fix=>{
-  const v2=window.ViaGeoV2;
+  // El GPS puede usarse antes de que termine de cargar el mapa pesado.
+  let v2=window.ViaGeoV2;
+  if(!v2)try{v2=await import('./geo-v2/core.mjs?v=3');window.ViaGeoV2=v2}catch{}
   const pos=v2?.assessGpsFix?.(fix)||{
    valid:Number.isFinite(fix.coords.latitude)&&Number.isFinite(fix.coords.longitude),
    lat:fix.coords.latitude,lng:fix.coords.longitude,
