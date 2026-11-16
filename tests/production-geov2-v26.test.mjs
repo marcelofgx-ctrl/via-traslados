@@ -13,10 +13,10 @@ test('versión candidata conserva auth y reservas reales V25, nunca demo',()=>{
  assert.match(get('sw.js'),/url\.pathname\.includes\('\/api\/'\)/);
 });
 test('GPS nunca sustituye la coordenada con la de una puerta cercana',()=>{
- const p={lat:-34.854306,lng:-56.003147,source:'gps'};
+ const p={lat:-34.905000,lng:-56.185000,source:'gps'};
  const r=buildPickupDisplay({point:p,reverseCandidates:[
   {street:'Calle de Prueba 31',city:'Ciudad Uno',department:'Canelones',
-   lat:-34.85431,lng:-56.00314,accuracy:'portal'}]});
+   lat:-34.905004,lng:-56.184996,accuracy:'portal'}]});
  assert.equal(r.postalStatus,'suggested');
  assert.match(r.title,/Cerca de Calle de Prueba 31/);
  assert.equal(r.numberIsApproximate,true);
