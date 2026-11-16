@@ -24,8 +24,19 @@ export function assessGpsFix(fix, now=Date.now()) {
 const houseNumber = s => /\b\d{1,6}[A-Za-z]?\s*$/.test(s);
 const withoutNumber = s => text(s).replace(/\s+(?:N[º°o.]?\s*)?\d{1,6}[A-Za-z]?\s*$/i,'').trim();
 
-export function evaluateReverseCandidates(rows=[],maxReferenceMeters=100){
- const candidates=rows.filter(row=>row && text(row.street) &&
+function haversineMeters(a,b){
+ if(!a||!b||!finite(a.lat)||!finite(a.lng)||!finite(b.lat)||!finite(b.lng))return Infinity;
+ const r=Math.PI/180,dp=(b.lat-a.lat)*r,dl=(b.lng-a.lng)*r;
+ const x=Math.sin(dp/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dl/2)**2;
+ return 12742000*Math.asin(Math.min(1,Math.sqrt(x)));
+}
+export function evaluateReverseCandidates(rows=[],maxReferenceMeters=100,point=null){
+ const candidates=rows.map(row=>{
+  if(!row)return null;
+  const distanceMeters=finite(row.distanceMeters)?row.distanceMeters:
+    haversineMeters(point,{lat:Number(row.lat),lng:Number(row.lng)});
+  return {...row,distanceMeters};
+ }).filter(row=>row && text(row.street) &&
   finite(row.distanceMeters) && row.distanceMeters>=0 && row.distanceMeters<=maxReferenceMeters)
   .sort((a,b)=>a.distanceMeters-b.distanceMeters);
  if(!candidates.length)return {status:'unknown',reference:null,reason:'no_nearby_street'};
@@ -59,7 +70,7 @@ export function buildPickupDisplay({point,postalAddress=null,reverseCandidates=[
   return {point:{...point},title:line,subtitle:[postalAddress.city,postalAddress.department].map(text).filter(Boolean).join(' · '),
    postalStatus:'user_confirmed',nearbyReference:null};
  }
- const nearby=evaluateReverseCandidates(reverseCandidates);
+ const nearby=evaluateReverseCandidates(reverseCandidates,100,point);
  if(nearby.status==='suggested'){
   // El número es una referencia del portal cercano, NUNCA la puerta exacta
   // del GPS. Mostrarlo resulta útil, pero siempre con "Cerca de" y distancia.
