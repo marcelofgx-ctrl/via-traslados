@@ -35,8 +35,8 @@ test('la página no pide GPS por sí sola, solo cuando se pulsa el botón',()=>{
  const result=mount();assert.equal(result.gpsRequests,0);
 });
 test('el script y el estilo del selector se cargan en el inicio de reservas',()=>{
- assert.match(html,/map-point-picker\.css\?v=2/);
- assert.match(html,/map-point-picker\.js\?v=2/);
+ assert.match(html,/map-point-picker\.css\?v=3/);
+ assert.match(html,/map-point-picker\.js\?v=3/);
  assert.match(js,/accuracy:'map'/);
  assert.match(js,/dispatchEvent\(new CustomEvent\('via:address'/);
 });
@@ -48,4 +48,16 @@ test('búsqueda integrada, recuperación manual de teselas y mapa GPS opcional',
  assert.match(js,/getCurrentPosition/);
  assert.match(js,/accuracy:'map'/);
  assert.match(js,/lat:position.lat,lng:position.lng/);
+});
+
+test('mapa vectorial y presentación de la dirección sin prefijos artificiales',()=>{
+ assert.match(js,/tiles\.openfreemap\.org\/styles\/liberty/);
+ assert.match(js,/maplibregl\.Map/);
+ assert.match(html,/maplibre-gl@6\.18\.0/);
+ const before=js.indexOf("const label=nearby||'Punto elegido en el mapa'");
+ assert.ok(before>0,'Se conserva la dirección en lugar del prefijo «Punto seleccionado»');
+ const preview=readFileSync(new URL('../pages/address-selected-preview.js',import.meta.url),'utf8');
+ assert.match(preview,/via-selected-street/);
+ assert.match(preview,/via-selected-locality/);
+ assert.match(html,/address-selected-preview\.js\?v=1/);
 });
