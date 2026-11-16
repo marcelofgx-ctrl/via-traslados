@@ -120,6 +120,30 @@ function mapInit(){
  if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(isOpen)requestAnimationFrame(()=>map.invalidateSize({pan:false}))}).observe(node);
  return map;
 }
+// Opcional: números de puertas identificadas por IDE cerca del marcador.
+// Nunca se generan números ni se muestran portales aproximados.
+function updatePortalLabels(rows=[]){
+ if(mapMode!=='vector'||!glMap)return;
+ try{
+  const data={type:'FeatureCollection',features:rows
+   .filter(row=>row?.accuracy==='portal'&&row?.distanceMeters<=130&&
+     Number.isFinite(row.lat)&&Number.isFinite(row.lng))
+   .map(row=>{
+    const match=String(row.street||'').match(/\b(\d{1,6}[a-z]?)\s*$/i);
+    return match?{type:'Feature',properties:{number:match[1]},
+      geometry:{type:'Point',coordinates:[row.lng,row.lat]}}:null;
+   }).filter(Boolean)};
+  let target=glMap.getSource('via-ide-numbered-portals');
+  if(!target){
+   glMap.addSource('via-ide-numbered-portals',{type:'geojson',data});
+   glMap.addLayer({id:'via-ide-number-labels',type:'symbol',source:'via-ide-numbered-portals',
+     minzoom:16,layout:{'text-field':['get','number'],'text-size':13,
+       'text-anchor':'bottom','text-offset':[0,-0.3],
+       'text-allow-overlap':false},
+     paint:{'text-color':'#234e43','text-halo-color':'#ffffff','text-halo-width':2}});
+  }else target.setData(data);
+ }catch{/* El servicio de direcciones no debe bloquear el mapa. */}
+}
 function retryTiles(){
  if(!map)return;
  warning.hidden=mapMode!=='raster';tileFailures=0;
@@ -138,7 +162,7 @@ function onMove(){
  if(!valid(lat,lng)){reference.textContent='Elegí un punto dentro de Uruguay.';coords.textContent='';return}
  coords.textContent='Punto marcado: '+lat.toFixed(6)+', '+lng.toFixed(6);
  reference.textContent='Punto listo para confirmar · podés ajustar el mapa';
- nearby='';clearTimeout(reverseTimer);reverseController?.abort();const serial=++reverseGeneration;
+ nearby='';updatePortalLabels([]);clearTimeout(reverseTimer);reverseController?.abort();const serial=++reverseGeneration;
  reverseTimer=setTimeout(async()=>{
   const ctl=new AbortController();reverseController=ctl;
   const timeout=setTimeout(()=>ctl.abort(),5200);
@@ -148,6 +172,7 @@ function onMove(){
    if(!response.ok)throw Error('IDE no disponible');
    const data=await response.json();
    if(serial!==reverseGeneration||!isOpen)return;
+   updatePortalLabels(data.results||[]);
    const evaluated=window.ViaGeoV2?.evaluateReverseCandidates?.(data.results||[]);
    const p=evaluated?.status==='suggested'?evaluated.reference:null;
    nearby=p?compact([p.street,p.city,p.department].filter(Boolean).join(', '),100):'';
