@@ -1,0 +1,77 @@
+name: Via Traslados V26 - auditoria publica de produccion
+on:
+  push:
+    branches: [via-geov2-v25-production-candidate-20261116]
+    paths: ['.github/workflows/via-geov2-v26-audit.yml']
+permissions:
+  contents: read
+  statuses: write
+jobs:
+  public-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Comprobar publicacion sin crear reservas ni tocar usuarios
+        id: audit
+        continue-on-error: true
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import time,urllib.request,json,sys
+          root='https://viatraslados.com'
+          def get(path):
+            req=urllib.request.Request(root+path,headers={'User-Agent':'ViaGeoV26Audit/1','Cache-Control':'no-cache'})
+            with urllib.request.urlopen(req,timeout=22) as r:
+              assert r.status==200
+              return r.read()
+          for attempt in range(20):
+            try:
+              html=get('/').decode('utf-8','replace')
+              assert 'geo-v2/core.mjs?v=3' in html and 'map-point-picker.js?v=26' in html
+              assert 'app.js?v=25' in html and 'via-ux-v25.css?v=25' in html
+              assert 'demo: false' in get('/config.js').decode()
+              core=get('/geo-v2/core.mjs?v=3').decode()
+              assert 'haversineMeters' in core and 'buildPickupDisplay' in core
+              asset=get('/map-point-picker.js?v=26').decode()
+              assert 'getReverse(point,controller.signal)' in asset
+              sw=get('/sw.js?v=26').decode()
+              assert 'passenger-driver-geov2-v26' in sw and "url.pathname.includes('/api/')" in sw
+              for filename,marker in [('reserva.html','app.js?v=25'),('mis-reservas.html','app.js?v=25'),('conductor.html','app.js?v=25')]:
+                assert marker in get('/'+filename).decode('utf-8','replace')
+              print('PRODUCTION_V26_AUDIT_SUCCESS',root)
+              sys.exit(0)
+            except Exception as exc:
+              print('AUDIT_PENDING',attempt,type(exc).__name__,str(exc)[:150])
+              time.sleep(8)
+          print('PRODUCTION_V26_AUDIT_FAILED')
+          sys.exit(1)
+          PY
+      - name: Registrar resultado verificable en estado del commit
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+          RESULT: ${{ steps.audit.outcome }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,urllib.request,json
+          ok=os.environ['RESULT']=='success'
+          body=json.dumps({
+            'state':'success' if ok else 'failure',
+            'context':'via-geov2-v26-production-audit',
+            'description':'V26 real en dominio y V25 preservada' if ok else 'V26 no verificada en dominio real'
+          }).encode()
+          req=urllib.request.Request(
+            'https://api.github.com/repos/'+os.environ['REPO']+'/statuses/'+os.environ['TARGET_SHA'],
+            data=body,method='POST',headers={
+              'Authorization':'Bearer '+os.environ['GITHUB_TOKEN'],
+              'Accept':'application/vnd.github+json',
+              'Content-Type':'application/json',
+              'X-GitHub-Api-Version':'2022-11-28'
+            })
+          with urllib.request.urlopen(req,timeout=15) as r:
+            assert r.status==201
+            print('PUBLIC_STATUS_POSTED',ok)
+          PY
