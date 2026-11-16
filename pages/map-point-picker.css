@@ -1,0 +1,61 @@
+/* Vía Traslados QA · selección móvil precisa, accesible, sin scroll del fondo. */
+.via-map-shortcut{flex:0 0 38px;width:38px;height:42px;align-self:center;display:grid;place-items:center;border:1px solid #b9dbd1;background:#eaf5f1;color:#006f67;border-radius:11px;cursor:pointer;padding:0;box-shadow:none}
+.via-map-shortcut:focus-visible,.via-map-shortcut:hover{background:#d6eee7;outline:2px solid #128a80;outline-offset:2px}
+.reference-field>.via-map-shortcut{margin-left:1px}
+.route-field>.via-map-shortcut{margin-left:auto}
+.reference-field .field-copy{min-width:0;flex:1}
+.reference-field .field-copy input{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.via-map-picker-open{overflow:hidden!important;overscroll-behavior:none}
+.via-picker-backdrop[hidden],.via-picker-results[hidden],.via-picker-tile-warning[hidden]{display:none!important}
+.via-picker-backdrop{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:#102f31b8;padding:12px;overscroll-behavior:contain}
+.via-picker-sheet{width:min(100%,680px);height:min(95dvh,820px);display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:20px;color:#173d36;box-shadow:0 20px 55px #001e2050;isolation:isolate}
+.via-picker-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 17px 6px;flex-shrink:0}
+.via-picker-top h2{font-size:19px!important;line-height:1.2!important;margin:3px 0!important;color:#183b35;letter-spacing:-.025em}
+.via-picker-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.1px;color:#147b70}
+.via-picker-close{width:42px;height:42px;flex-shrink:0;border:1px solid #d7e4df;border-radius:12px;background:#f7fbf9;font-size:27px;color:#31574e;cursor:pointer}
+.via-picker-help{padding:0 17px 8px;margin:0;font-size:12px;color:#506c63;line-height:1.35;flex-shrink:0}
+.sr-map-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.via-picker-search-wrap{display:flex;flex-shrink:0;position:relative;align-items:center;margin:0 12px 9px;z-index:1200;background:#f5faf8;border:1px solid #cfe2db;border-radius:13px;min-height:48px;box-shadow:0 2px 7px #163e3420}
+.via-picker-search-icon{width:38px;flex-shrink:0;font-size:28px;text-align:center;color:#08796e;line-height:1}
+#via-picker-query{appearance:none!important;-webkit-appearance:none!important;border:0!important;outline:none!important;box-shadow:none!important;background:transparent!important;color:#1d3933!important;font:500 14px/1.35 system-ui,-apple-system,Arial,sans-serif!important;width:100%;min-width:0;padding:8px 0!important;margin:0!important}
+#via-picker-query::placeholder{color:#668078;opacity:1}
+.via-picker-clear{flex-shrink:0;margin:0 7px 0 3px;background:#e1efea;border:0;border-radius:10px;width:29px;height:29px;color:#24574b;font-size:20px;cursor:pointer}
+.via-picker-results{position:absolute;z-index:1500;top:calc(100% + 5px);left:0;right:0;max-height:min(37dvh,285px);overflow:auto;overscroll-behavior:contain;background:#fff;border:1px solid #cfdfda;border-radius:13px;box-shadow:0 14px 32px #122b2a35;padding:4px}
+.via-picker-result{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;min-height:47px;padding:9px 10px;border:0;border-bottom:1px solid #e7eeeb;background:#fff;text-align:left;cursor:pointer;color:#173c35}
+.via-picker-result:last-child{border-bottom:0}.via-picker-result:hover,.via-picker-result:focus-visible{background:#eaf6f0;outline:1px solid #9bcdbd}
+.via-picker-result strong{font-size:13px;font-weight:750}.via-picker-result small{font-size:11px;color:#617970}
+.via-picker-hint{margin:0;padding:12px 10px;font-size:13px;line-height:1.4;color:#58746a}
+.via-picker-map{flex:1 1 auto;min-height:160px;position:relative!important;display:block;width:100%;background:#dfece8;overflow:hidden}
+.via-picker-map.leaflet-container{width:100%!important;height:auto!important;min-height:160px!important;flex:1 1 auto!important;outline:none}
+.via-picker-map .leaflet-control-attribution{font-size:10px!important;max-width:calc(100vw - 50px);white-space:normal;background:#ffffffd9!important}
+.via-picker-map .leaflet-control-zoom a{width:38px;height:38px;line-height:38px}
+.via-picker-pin{position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);z-index:1001;pointer-events:none;filter:drop-shadow(0 2px 4px #001a2055);height:56px;width:44px}
+.via-picker-pin svg{display:block}
+.via-picker-tile-warning{position:absolute;z-index:1100;bottom:24px;left:12px;right:12px;display:flex;gap:9px;justify-content:space-between;align-items:center;background:#fffef1ee;border:1px solid #dacb8b;border-radius:11px;padding:7px 9px;font-size:12px;font-weight:650;color:#685321;box-shadow:0 5px 15px #0002}
+.via-picker-retry{background:#fff;border:1px solid #baaf82;border-radius:9px;padding:7px 10px;color:#584a22;font-size:12px;font-weight:750;cursor:pointer}
+.via-picker-status{padding:10px 16px;min-height:76px;max-height:76px;height:76px;overflow:hidden;background:#f3faf7;border-top:1px solid #e1ede8;display:flex;flex-direction:column;justify-content:center;gap:5px;flex-shrink:0}
+.via-picker-status strong{font-size:12.5px;line-height:1.35;color:#285b50;font-weight:700;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.via-picker-status small{font-size:11px;font-variant-numeric:tabular-nums;color:#647d74;line-height:1.25}
+.via-picker-controls{padding:9px 13px 10px;flex-shrink:0}
+.via-picker-buttons{display:grid;grid-template-columns:minmax(90px,.8fr) minmax(140px,1.4fr);gap:9px}
+.via-picker-buttons button{min-height:49px;border-radius:12px;font-size:14px;font-weight:750;cursor:pointer;padding:5px 8px}
+.via-picker-recenter{border:1px solid #c6d9d2;color:#076f66;background:#fff}
+.via-picker-confirm{background:#007b72;color:#fff;border:1px solid #007b72}
+.via-picker-controls p{font-size:11px;color:#64786e;line-height:1.3;margin:8px 1px 0}
+@media(max-width:550px){
+ .via-map-shortcut{flex:0 0 34px;width:34px;height:39px}.reference-field{gap:6px!important}.reference-field .locate-btn{padding:3px!important;font-size:24px;flex-shrink:0}
+ .via-picker-backdrop{padding:0}.via-picker-sheet{border-radius:0;height:100svh;min-height:0;max-height:100svh;width:100%}
+ .via-picker-top{padding-top:max(10px,env(safe-area-inset-top));padding-left:15px;padding-right:15px}
+ .via-picker-help{padding-left:15px;padding-right:15px}.via-picker-map{min-height:160px}
+ .via-picker-controls{padding-bottom:max(11px,env(safe-area-inset-bottom))}
+}
+@media(max-height:590px){.via-picker-help{display:none}.via-picker-top{padding-top:7px}.via-picker-map{min-height:130px}.via-picker-status{min-height:43px;padding:6px 12px}.via-picker-controls p{display:none}}
+
+/* MapLibre vectorial: el contenedor debe admitir el canvas GPU completo. */
+.via-picker-map.maplibregl-map{position:relative!important;flex:1 1 auto!important;min-height:160px!important;overflow:hidden!important}
+/* MapLibre administra el tamaño de su canvas. No forzar width/height con CSS. */
+.via-picker-map .maplibregl-ctrl-bottom-right{max-width:calc(100% - 15px)}
+.via-picker-map .maplibregl-ctrl-attrib{font-size:10px;line-height:1.2;background:#ffffffe8!important}
+.via-picker-map .maplibregl-ctrl-attrib a{color:#2c615b}
+.via-picker-map .maplibregl-ctrl-group button{width:38px;height:38px}
+.via-picker-pin{z-index:15}
