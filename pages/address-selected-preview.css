@@ -7,3 +7,12 @@
 .reference-field .field-copy input.via-previewed-input{position:absolute!important;pointer-events:none!important;opacity:0!important;width:1px!important;height:1px!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
 .reference-field .via-selected-preview:focus-visible{outline:2px solid #079385;border-radius:4px;outline-offset:3px}
 @media(max-width:550px){.reference-field .via-selected-preview{min-height:32px;gap:1px}.reference-field .via-selected-street{font-size:14px}}
+
+/* La fecha debe mostrar el año completo incluso en pantallas compactas. */
+@media(max-width:550px){
+ .reference-options{gap:5px!important}
+ .reference-option{gap:4px!important;padding:9px 5px!important}
+ .reference-option svg{width:18px!important;height:18px!important;flex:0 0 18px!important}
+ .reference-option input[type=date]{font-size:11px!important;letter-spacing:-.4px!important;min-width:0!important}
+ .reference-option input[type=time]{font-size:11px!important;letter-spacing:-.2px!important}
+}
