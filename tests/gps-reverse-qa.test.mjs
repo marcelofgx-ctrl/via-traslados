@@ -27,11 +27,11 @@ function session(rows,opts={}){
  runInNewContext(source,context);
  return {input,async click(){handler();await pending},fix};
 }
-test('GPS muestra la referencia como aproximada, sin adjudicar el número',async()=>{
+test('GPS muestra número cercano señalado expresamente como aproximado',async()=>{
  const app=session([{street:'CALLE FICTICIA 1711',city:'LOCALIDAD A',
   department:'CANELONES',distanceMeters:12,accuracy:'portal'}]);
  await app.click();
- assert.equal(app.input.value,'Cerca de CALLE FICTICIA, LOCALIDAD A, CANELONES');
+ assert.equal(app.input.value,'Cerca de CALLE FICTICIA 1711, LOCALIDAD A, CANELONES');
  assert.equal(Number(app.input.dataset.lat),app.fix.coords.latitude);
  assert.equal(Number(app.input.dataset.lng),app.fix.coords.longitude);
  assert.equal(app.input.dataset.accuracy,'gps');
@@ -61,4 +61,11 @@ test('respuesta tardía no sobrescribe una dirección posterior',async()=>{
  release({ok:true,json:async()=>({results:[{street:'OTRA 2000',city:'MONTEVIDEO',distanceMeters:5}]})});
  await finished;
  assert.equal(app.input.value,'Dirección elegida por usuario');
+});
+
+test('GPS conserva el portal solo como referencia si está dentro de 35 m',async()=>{
+ const app=session([{street:'AVENIDA DE PRUEBA 50',city:'Ciudad Uno',department:'Canelones',distanceMeters:22}]);
+ await app.click();
+ assert.match(app.input.value,/Cerca de AVENIDA DE PRUEBA 50/);
+ assert.equal(app.input.dataset.postalStatus,'suggested');
 });
