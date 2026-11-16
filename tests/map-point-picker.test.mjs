@@ -35,8 +35,8 @@ test('la página no pide GPS por sí sola, solo cuando se pulsa el botón',()=>{
  const result=mount();assert.equal(result.gpsRequests,0);
 });
 test('el script y el estilo del selector se cargan en el inicio de reservas',()=>{
- assert.match(html,/map-point-picker\.css\?v=3/);
- assert.match(html,/map-point-picker\.js\?v=7/);
+ assert.match(html,/map-point-picker\.css\?v=4/);
+ assert.match(html,/map-point-picker\.js\?v=8/);
  assert.match(js,/accuracy:'map'/);
  assert.match(js,/dispatchEvent\(new CustomEvent\('via:address'/);
 });
@@ -47,15 +47,15 @@ test('búsqueda integrada, recuperación manual de teselas y mapa GPS opcional',
  assert.match(js,/via-picker-retry/);
  assert.match(js,/getCurrentPosition/);
  assert.match(js,/accuracy:'map'/);
- assert.match(js,/lat:position.lat,lng:position.lng/);
+ assert.match(js,/lat:point.lat,lng:point.lng/);
 });
 
 test('mapa vectorial y presentación de la dirección sin prefijos artificiales',()=>{
  assert.match(js,/tiles\.openfreemap\.org\/styles\/liberty/);
  assert.match(js,/maplibregl\.Map/);
  assert.match(html,/maplibre-gl@6\.18\.0/);
- const before=js.indexOf("const label=nearby||'Punto elegido en el mapa'");
- assert.ok(before>0,'Se conserva la dirección en lugar del prefijo «Punto seleccionado»');
+ assert.match(js,/match\?\.label\|\|'Punto confirmado en el mapa/);
+ assert.match(js,/async function confirm\(\)/);
  const preview=readFileSync(new URL('../pages/address-selected-preview.js',import.meta.url),'utf8');
  assert.match(preview,/via-selected-street/);
  assert.match(preview,/via-selected-locality/);
@@ -80,5 +80,15 @@ test('mapa usa núcleo geográfico y solo muestra numeración confirmada',()=>{
  assert.match(js,/via-housenumbers/);
  assert.match(js,/via-ide-number-labels/);
  assert.match(js,/accuracy==='portal'/);
- assert.match(js,/evaluateReverseCandidates/);
+ assert.match(js,/buildPickupDisplay/);
+});
+
+test('sin temblor por resize y confirmación con dirección final',()=>{
+ assert.match(js,/if\(meters\(lastGeoPoint,point\)<1\.5\)return/);
+ assert.match(js,/lastMapDimensions/);
+ assert.match(js,/getReverse\(point,controller\.signal\)/);
+ assert.match(js,/match\?\.label/);
+ const css=readFileSync(new URL('../pages/map-point-picker.css',import.meta.url),'utf8');
+ assert.match(css,/height:100svh/);
+ assert.match(css,/max-height:76px/);
 });
