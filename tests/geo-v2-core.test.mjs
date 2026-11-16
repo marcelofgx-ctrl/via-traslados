@@ -48,3 +48,15 @@ test('resultado de otro lugar no introduce números ni excepciones regionales',(
   assert.ok(!/\d/.test(r.title));assert.ok(r.nearbyReference?.nearbyPortal);
  }
 });
+
+test('misma calle con localidades contradictorias conserva la calle pero no adivina localidad',()=>{
+ const r=evaluateReverseCandidates([
+  {street:'Calle de Prueba 31',city:'Localidad A',department:'Canelones',distanceMeters:12},
+  {street:'Calle de Prueba 31',city:'Localidad B',department:'Canelones',distanceMeters:12}
+ ]);
+ assert.equal(r.status,'suggested');
+ assert.equal(r.reference.street,'Calle de Prueba');
+ assert.equal(r.reference.city,'');
+ assert.equal(r.reference.department,'Canelones');
+ assert.equal(r.reason,'locality_ambiguous');
+});
