@@ -1,0 +1,19 @@
+name: Geolocalizacion V2 QA
+on:
+  push:
+    branches:
+      - via-geo-v2-validacion-20261116
+  workflow_dispatch:
+jobs:
+  geolocalizacion-v2:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Ejecutar pruebas del motor geográfico e integración
+        run: |
+          node --test tests/geo-v2-core.test.mjs tests/address-precision-qa.test.mjs tests/gps-reverse-qa.test.mjs tests/map-point-picker.test.mjs
