@@ -50,7 +50,7 @@ function mapInit(){
  tileLayer.on('tileerror',()=>{tileFailures++;if(tileFailures>=2)warning.hidden=false});
  tileLayer.on('load',()=>{if(tileFailures===0)warning.hidden=true});
  L.control.zoom({position:'topright'}).addTo(map);
- map.on('dragstart',()=>{moved=true;clearResults()});
+ map.on('dragstart',()=>{moved=true;++searchGeneration;searchController?.abort();clearResults()});
  map.on('click',e=>{moved=true;map.panTo(e.latlng);clearResults()});
  map.on('moveend',onMove);
  if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(isOpen)requestAnimationFrame(()=>map.invalidateSize({pan:false}))}).observe(node);
@@ -138,7 +138,8 @@ function search(){
 }
 function addHint(message){const p=document.createElement('p');p.className='via-picker-hint';p.textContent=message;results.appendChild(p)}
 async function selectSuggestion(item){
- clearTimeout(searchTimer);searchController?.abort();++searchGeneration;
+ clearTimeout(searchTimer);searchController?.abort();const selectionId=++searchGeneration;
+ const hadMoved=moved;
  clearResults();
  searchBox.value=item.label||item.street||'';
  root.querySelector('.via-picker-clear').hidden=false;
@@ -153,7 +154,7 @@ async function selectSuggestion(item){
    if(response.ok){const payload=await response.json();point=(payload.results||[]).find(p=>p.accuracy==='portal'&&p.lat!=null&&p.lng!=null&&valid(Number(p.lat),Number(p.lng)))||null}
   }catch{}finally{clearTimeout(timeout)}
  }
- if(!isOpen)return;
+ if(!isOpen||selectionId!==searchGeneration||hadMoved!==moved)return;
  if(point){
   map?.setView([Number(point.lat),Number(point.lng)],17,{animate:false});
   reference.textContent='Ajustá la chincheta hasta la entrada exacta.';
