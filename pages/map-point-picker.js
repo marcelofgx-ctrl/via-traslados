@@ -8,7 +8,7 @@ const normal=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').to
 const coordsFor=input=>{const lat=Number(input?.dataset?.lat),lng=Number(input?.dataset?.lng);return input?.dataset?.lat&&input?.dataset?.lng&&valid(lat,lng)?{lat,lng}:null};
 const compact=(str,max=75)=>String(str||'').trim().slice(0,max);
 let root,map,tileLayer,glMap=null,mapMode=null,tileFailures=0,inputTarget,previousFocus,heading,reference,coords,searchBox,results,warning;
-let gpsGeneration=0,searchGeneration=0,reverseGeneration=0,searchController,reverseController,searchTimer,reverseTimer,moved=false,nearby='',isOpen=false;
+let gpsGeneration=0,searchGeneration=0,reverseGeneration=0,searchController,reverseController,searchTimer,reverseTimer,moved=false,nearby='',selectedPostal=null,isOpen=false;
 function overlay(){
  if(root)return;
  root=document.createElement('div');root.className='via-picker-backdrop';root.hidden=true;
@@ -63,7 +63,7 @@ function mapInit(){
     panTo:point=>gl.easeTo({center:[point.lng,point.lat],duration:250}),
     invalidateSize:()=>gl.resize()
    };
-   gl.on('dragstart',()=>{moved=true;++searchGeneration;searchController?.abort();clearResults()});
+   gl.on('dragstart',()=>{moved=true;selectedPostal=null;++searchGeneration;searchController?.abort();clearResults()});
    gl.on('click',evt=>{moved=true;map.panTo({lat:evt.lngLat.lat,lng:evt.lngLat.lng});clearResults()});
    gl.on('moveend',onMove);
    gl.on('error',()=>{
@@ -71,7 +71,20 @@ function mapInit(){
     tileFailures++;
     if(tileFailures>=2)warning.hidden=false;
    });
-   gl.on('load',()=>{if(isOpen){tileFailures=0;warning.hidden=true;requestAnimationFrame(()=>gl.resize())}});
+   gl.on('load',()=>{
+    if(isOpen){tileFailures=0;warning.hidden=true;requestAnimationFrame(()=>gl.resize())}
+    // Mostrar números reales de OSM solo cuando el proveedor los incluya.
+    try{
+     const vector=Object.entries(gl.getStyle()?.sources||{}).find(([,src])=>src?.type==='vector');
+     if(vector&&!gl.getLayer('via-housenumbers')){
+      gl.addLayer({id:'via-housenumbers',type:'symbol',source:vector[0],
+       'source-layer':'housenumber',minzoom:16.5,
+       layout:{'text-field':['coalesce',['get','housenumber'],['get','addr:housenumber'],''],
+        'text-size':12,'text-allow-overlap':false,'text-padding':3},
+       paint:{'text-color':'#36554b','text-halo-color':'#ffffff','text-halo-width':1.5}});
+     }
+    }catch{/* La ausencia de numeración nunca debe impedir usar el mapa. */}
+   });
    if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(isOpen)requestAnimationFrame(()=>gl.resize())}).observe(node);
    return map;
   }catch(e){
@@ -101,7 +114,7 @@ function mapInit(){
  tileLayer.on('tileerror',()=>{tileFailures++;warning.hidden=false});
  tileLayer.on('load',()=>{if(tileFailures>0)warning.hidden=false});
  L.control.zoom({position:'topright'}).addTo(map);
- map.on('dragstart',()=>{moved=true;++searchGeneration;searchController?.abort();clearResults()});
+ map.on('dragstart',()=>{moved=true;selectedPostal=null;++searchGeneration;searchController?.abort();clearResults()});
  map.on('click',e=>{moved=true;map.panTo(e.latlng);clearResults()});
  map.on('moveend',onMove);
  if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(isOpen)requestAnimationFrame(()=>map.invalidateSize({pan:false}))}).observe(node);
@@ -135,10 +148,12 @@ function onMove(){
    if(!response.ok)throw Error('IDE no disponible');
    const data=await response.json();
    if(serial!==reverseGeneration||!isOpen)return;
-   const p=(data.results||[]).find(place=>place.street&&place.city);
-   nearby=p?compact(p.street+', '+p.city,90):'';
-   if(nearby)reference.textContent='Calle cercana: '+nearby;
-   else reference.textContent='Punto marcado (sin calle identificada)';
+   const evaluated=window.ViaGeoV2?.evaluateReverseCandidates?.(data.results||[]);
+   const p=evaluated?.status==='suggested'?evaluated.reference:null;
+   nearby=p?compact([p.street,p.city,p.department].filter(Boolean).join(', '),100):'';
+   if(nearby)reference.textContent='Referencia cercana: '+nearby+' (puerta sin confirmar)';
+   else if(evaluated?.status==='ambiguous')reference.textContent='Varias calles próximas: confirmá dónde esperás.';
+   else reference.textContent='Punto marcado sin dirección postal confirmada';
   }catch(e){
    if(serial!==reverseGeneration||!isOpen)return;
    reference.textContent='Punto marcado · confirmá aunque no se encuentre la calle';
@@ -214,8 +229,11 @@ async function selectSuggestion(item){
  }
  if(!isOpen||selectionId!==searchGeneration||hadMoved!==moved)return;
  if(point){
-  map?.setView([Number(point.lat),Number(point.lng)],17,{animate:false});
-  reference.textContent='Ajustá la chincheta hasta la entrada exacta.';
+  selectedPostal=point.accuracy==='portal'?{label:point.label,lat:Number(point.lat),lng:Number(point.lng),
+   city:point.city,department:point.department}:null;
+  map?.setView([Number(point.lat),Number(point.lng)],18,{animate:false});
+  reference.textContent=selectedPostal?'Dirección identificada. Ajustá si la entrada está en otro punto.':
+   'Ajustá la chincheta hasta la entrada exacta.';
  }else{
   reference.textContent='No se ubicó ese número con precisión. Mové la chincheta manualmente.';
  }
@@ -223,7 +241,7 @@ async function selectSuggestion(item){
 function open(input,button){
  overlay();
  if(!input)return;
- inputTarget=input;previousFocus=button||document.activeElement;isOpen=true;moved=false;nearby='';
+ inputTarget=input;previousFocus=button||document.activeElement;isOpen=true;moved=false;nearby='';selectedPostal=null;
  heading.textContent=input.id.includes('origin')?'Elegí el origen en el mapa':'Elegí el destino en el mapa';
  root.hidden=false;document.body.classList.add('via-map-picker-open');
  searchBox.value='';clearResults();warning.hidden=mapMode!=='raster';tileFailures=0;
@@ -253,9 +271,11 @@ function confirm(){
  if(!map||!inputTarget)return;
  const position=map.getCenter();
  if(!valid(position.lat,position.lng)){reference.textContent='Elegí un punto dentro de Uruguay.';return}
- const label=nearby||'Punto elegido en el mapa';
+ const retained=selectedPostal&&!moved?selectedPostal:null;
+ const label=retained?.label||(nearby?'Punto en mapa cerca de '+nearby:'Punto confirmado en el mapa');
  const selection={label:compact(label,125),lat:position.lat,lng:position.lng,
-   accuracy:'map',city:'',department:'',kind:'map'};
+   accuracy:'map',source:'map',postalStatus:retained?'user_confirmed':'suggested',
+   city:retained?.city||'',department:retained?.department||'',kind:'map'};
  const input=inputTarget;
  if(window.ViaAddress?.set)window.ViaAddress.set(input.id,selection);
  else{input.value=selection.label;Object.assign(input.dataset,{lat:position.lat,lng:position.lng,accuracy:'map',addressSelected:'true'})}
