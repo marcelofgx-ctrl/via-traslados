@@ -78,7 +78,7 @@ test('MapLibre 6 se carga exclusivamente por importación ESM, sin script clási
 test('mapa usa núcleo geográfico y solo muestra numeración confirmada',()=>{
  assert.match(html,/ViaGeoV2 = await import/);
  assert.match(js,/via-housenumbers/);
- assert.match(js,/via-ide-number-labels/);
+ assert.doesNotMatch(js,/via-ide-number-labels/);
  assert.match(js,/accuracy==='portal'/);
  assert.match(js,/buildPickupDisplay/);
 });
