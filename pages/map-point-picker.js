@@ -7,7 +7,7 @@ const valid=(lat,lng)=>Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-36&&lat
 const normal=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const coordsFor=input=>{const lat=Number(input?.dataset?.lat),lng=Number(input?.dataset?.lng);return input?.dataset?.lat&&input?.dataset?.lng&&valid(lat,lng)?{lat,lng}:null};
 const compact=(str,max=75)=>String(str||'').trim().slice(0,max);
-let root,map,tileLayer,tileFailures=0,inputTarget,previousFocus,heading,reference,coords,searchBox,results,warning;
+let root,map,tileLayer,glMap=null,mapMode=null,tileFailures=0,inputTarget,previousFocus,heading,reference,coords,searchBox,results,warning;
 let gpsGeneration=0,searchGeneration=0,reverseGeneration=0,searchController,reverseController,searchTimer,reverseTimer,moved=false,nearby='',isOpen=false;
 function overlay(){
  if(root)return;
@@ -38,11 +38,53 @@ function clearResults(){
 }
 function mapInit(){
  if(map)return map;
- if(!window.L){reference.textContent='No se pudo cargar el mapa. Podés escribir la dirección manualmente.';return null}
  const node=root.querySelector('#via-picker-map');
+ // Motor vectorial (OpenFreeMap) para evitar mosaicos raster aislados.
+ // Leaflet queda como alternativa si WebGL o la librería no están disponibles.
+ if(window.maplibregl&&typeof window.maplibregl.Map==='function'&&
+    (typeof window.maplibregl.supported!=='function'||window.maplibregl.supported())){
+  let gl=null;
+  try{
+   gl=new window.maplibregl.Map({
+    container:node,style:'https://tiles.openfreemap.org/styles/liberty',
+    center:[centerDefault.lng,centerDefault.lat],zoom:13,maxZoom:19,
+    attributionControl:false,dragRotate:false,touchPitch:false,
+    pitchWithRotate:false,renderWorldCopies:false,fadeDuration:0
+   });
+   gl.addControl(new window.maplibregl.NavigationControl({showCompass:false}),'top-right');
+   gl.addControl(new window.maplibregl.AttributionControl({compact:false}),'bottom-right');
+   mapMode='vector';glMap=gl;
+   map={
+    getCenter:()=>({lat:gl.getCenter().lat,lng:gl.getCenter().lng}),
+    getZoom:()=>gl.getZoom(),
+    setView:([lat,lng],zoom)=>{gl.jumpTo({center:[lng,lat],zoom,bearing:0,pitch:0});return map},
+    panTo:point=>gl.easeTo({center:[point.lng,point.lat],duration:250}),
+    invalidateSize:()=>gl.resize()
+   };
+   gl.on('dragstart',()=>{moved=true;++searchGeneration;searchController?.abort();clearResults()});
+   gl.on('click',evt=>{moved=true;map.panTo({lat:evt.lngLat.lat,lng:evt.lngLat.lng});clearResults()});
+   gl.on('moveend',onMove);
+   gl.on('error',()=>{
+    if(!isOpen)return;
+    tileFailures++;
+    if(tileFailures>=2)warning.hidden=false;
+   });
+   gl.on('load',()=>{if(isOpen){tileFailures=0;warning.hidden=true;requestAnimationFrame(()=>gl.resize())}});
+   if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(isOpen)requestAnimationFrame(()=>gl.resize())}).observe(node);
+   return map;
+  }catch(e){
+   try{gl?.remove()}catch{}
+   glMap=null;map=null;mapMode=null;
+   // El fallback no exige WebGL.
+  }
+ }
+ if(!window.L){
+  reference.textContent='No se pudo cargar el mapa. Podés escribir la dirección manualmente.';
+  return null;
+ }
+ mapMode='raster';
  map=L.map(node,{zoomControl:false,scrollWheelZoom:false,attributionControl:true,zoomSnap:0.5,zoomDelta:0.5,maxZoom:19,
   updateWhenIdle:true,preferCanvas:true}).setView([centerDefault.lat,centerDefault.lng],13);
- // Teselas OSM públicas solo para la fase QA, sin descarga masiva ni reintentos automáticos.
  tileLayer=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
   maxNativeZoom:19,maxZoom:19,keepBuffer:2,updateWhenIdle:true,
   attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -57,9 +99,16 @@ function mapInit(){
  return map;
 }
 function retryTiles(){
- if(!map||!tileLayer)return;
- warning.hidden=true;tileFailures=0;tileLayer.redraw();
- requestAnimationFrame(()=>map.invalidateSize({pan:false}));
+ if(!map)return;
+ warning.hidden=true;tileFailures=0;
+ if(mapMode==='vector'&&glMap){
+  // Reiniciar estilo vectorial solo a petición del usuario; conservar la chincheta.
+  glMap.setStyle('https://tiles.openfreemap.org/styles/liberty');
+  requestAnimationFrame(()=>glMap.resize());
+ }else if(tileLayer){
+  tileLayer.redraw();
+  requestAnimationFrame(()=>map.invalidateSize({pan:false}));
+ }
 }
 function onMove(){
  if(!map||!isOpen)return;
@@ -195,7 +244,7 @@ function confirm(){
  if(!map||!inputTarget)return;
  const position=map.getCenter();
  if(!valid(position.lat,position.lng)){reference.textContent='Elegí un punto dentro de Uruguay.';return}
- const label=nearby?'Punto seleccionado · '+nearby:'Punto seleccionado en el mapa';
+ const label=nearby||'Punto elegido en el mapa';
  const selection={label:compact(label,125),lat:position.lat,lng:position.lng,
    accuracy:'map',city:'',department:'',kind:'map'};
  const input=inputTarget;
