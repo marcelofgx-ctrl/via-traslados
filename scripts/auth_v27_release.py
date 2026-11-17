@@ -201,7 +201,15 @@ def verify_qa():
     for path in ("app.js","store.js","config.js","reference.js","address-autocomplete.js",
         "map-point-picker.js","geo-v2/core.mjs","sw.js","conductor.html","reserva.html",
         "mis-reservas.html","via-ux-v25.css"):
-        check_asset(QA_URL,path)
+        for attempt in range(14):
+            try:
+                check_asset(QA_URL,path)
+                break
+            except urllib.error.HTTPError as error:
+                if error.code!=404:raise
+                print("WAITING_QA_ASSET_EDGE",path,attempt+1)
+                time.sleep(3)
+        else:raise AssertionError("El archivo no está disponible en QA: "+path)
     q=urllib.parse.urlencode({"mode":"reverse","lat":-34.905000,"lng":-56.185000})
     geo,_=get(QA_URL+"/api/direcciones?"+q)
     assert isinstance(json.loads(geo).get("results"),list),"Reverse API inaccesible"
