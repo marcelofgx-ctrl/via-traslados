@@ -1,0 +1,65 @@
+name: Vía Traslados - descarga APK V34 QA en web (release protegido)
+on:
+  push:
+    branches: [via-descarga-apk-v34-web-20261117]
+    paths:
+      - scripts/apk_v34_qa_download_release.py
+      - .github/workflows/via-apk-v34-web-release.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-traslados-web-prod-review-v29-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - name: Descargar solamente rama de publicación del enlace
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recuperar APK REAL de la compilación V34 QA validada
+        uses: actions/download-artifact@v4
+        with:
+          name: via-v34-catalog-qa-apk
+          run-id: 43794980796
+          github-token: ${{ github.token }}
+          path: apk-file
+      - name: Verificar APK de V34 y ausencia de código de terceros
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f apk-file/app-debug.apk
+          echo "ecc0bb6f296efeaa048500cd67991702eabebee243dea50e94d438f096026d38  apk-file/app-debug.apk" | sha256sum -c -
+          unzip -t apk-file/app-debug.apk | tail -2
+          python3 -m py_compile scripts/apk_v34_qa_download_release.py
+      - name: Preparar exclusivamente los archivos ACTIVOS de web
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/apk_v34_qa_download_release.py prepare
+      - name: Compilar Worker descargado sin publicarlo
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v34-download-release/wrangler.qa.jsonc --dry-run
+      - name: Probar URL de descarga en Worker QA independiente
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config v34-download-release/wrangler.qa.jsonc
+          python3 scripts/apk_v34_qa_download_release.py verify-qa
+      - name: Publicar SOLO después de confirmar identidad de versión y rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/apk_v34_qa_download_release.py release
