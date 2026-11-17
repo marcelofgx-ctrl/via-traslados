@@ -20,7 +20,7 @@ jobs:
       - name: Descargar exactamente la rama de entrega
         uses: actions/checkout@v4
         with:
-          ref: 39db805c8ef809b605d682c90f74e49bf2a46a3c
+          ref: 7ee0cb722970cb019e77f4619ac79c21ac02a6d5
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
