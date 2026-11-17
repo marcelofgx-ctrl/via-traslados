@@ -2,6 +2,8 @@
 'use strict';
 const S=window.ViaStore, $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Solo cambia lo visible. Las direcciones y coordenadas originales permanecen en la reserva.
+const displayAddress=v=>String(v??'').replace(/^\s*(?:Cerca de|Punto en mapa cerca de)\s+/i,'');
 const labels={requested:'Nueva solicitud',quoted:'Cotización enviada',accepted:'Oferta aceptada',confirmed:'Reserva confirmada',en_route:'Conductor en camino',arrived:'Conductor llegó',in_progress:'Viaje en curso',completed:'Viaje finalizado',cancelled:'Cancelada'};
 function fmtDate(s){try{return new Date(s+'T12:00:00').toLocaleDateString('es-UY',{weekday:'short',day:'numeric',month:'short'})}catch{return s}}
 function errorPlace(id,msg){const el=$(id);if(!el)return;el.className='notice error';el.textContent=msg;el.classList.remove('hidden')}
@@ -360,8 +362,8 @@ function statusHTML(b){
   '<div class="via-trip-code"><span>RESERVA</span><strong>'+esc(b.id)+'</strong></div>'+
   metricBlock+
   '<div class="via-trip-journey">'+
-  '<div class="via-trip-stop via-trip-stop--from"><span class="via-trip-stop__dot" aria-hidden="true"></span><div><small>ORIGEN</small><strong>'+esc(b.origin)+'</strong></div></div>'+
-  '<div class="via-trip-stop via-trip-stop--to"><span class="via-trip-stop__dot" aria-hidden="true"></span><div><small>DESTINO</small><strong>'+esc(b.destination)+'</strong></div></div>'+
+  '<div class="via-trip-stop via-trip-stop--from"><span class="via-trip-stop__dot" aria-hidden="true"></span><div><small>ORIGEN</small><strong>'+esc(displayAddress(b.origin))+'</strong></div></div>'+
+  '<div class="via-trip-stop via-trip-stop--to"><span class="via-trip-stop__dot" aria-hidden="true"></span><div><small>DESTINO</small><strong>'+esc(displayAddress(b.destination))+'</strong></div></div>'+
   '</div>'+
   '<div class="via-trip-facts"><div><small>FECHA Y HORA</small><strong>'+esc(fmtDate(b.date))+' · '+esc(b.time)+'</strong></div>'+
   '<div><small>PERSONAS / VALIJAS</small><strong>'+esc(b.passengers)+' / '+esc(b.bags)+'</strong></div></div>'+
@@ -437,7 +439,7 @@ function cardHTML(b){
  const km=Number(b.route?.distanceKm);
  return '<article class="request-card" id="driver-booking-'+esc(b.id)+'" data-booking-id="'+esc(b.id)+'" data-status="'+esc(b.status)+'">'+
   '<div><div class="request-head"><span class="pill '+pill+'">'+esc(labels[b.status]||b.status)+'</span><span>· '+esc(fmtDate(b.date))+' '+esc(b.time)+'</span></div>'+
-  '<h3>'+esc(b.origin)+' → '+esc(b.destination)+'</h3>'+
+  '<h3>'+esc(displayAddress(b.origin))+' → '+esc(displayAddress(b.destination))+'</h3>'+
   '<p>Pasajero: <strong>'+esc(b.name)+'</strong> · '+esc(b.phone)+' · '+esc(b.passengers)+' persona(s) · '+esc(b.bags)+' valija(s)</p>'+
   (b.notes?'<p>Nota: '+esc(b.notes)+'</p>':'')+price+
   (Number.isFinite(km)&&km>0?'<p>'+esc(km.toLocaleString('es-UY',{maximumFractionDigits:1}))+' km estimados</p>':'')+
