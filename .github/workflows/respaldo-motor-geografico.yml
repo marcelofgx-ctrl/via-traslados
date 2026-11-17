@@ -1,0 +1,62 @@
+name: Respaldo maestro motor geografico (SIN DESPLIEGUES)
+on:
+  push:
+    branches: [backup-motor-geografico-20261117]
+    paths:
+      - scripts/build_motor_geo_master.py
+      - .github/workflows/respaldo-motor-geografico.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-backup-geo-20261117
+  cancel-in-progress: false
+jobs:
+  backup:
+    name: Exportar fuentes e integridad
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspeccionar commits sin tocar Cloudflare ni D1
+        run: |
+          set -euo pipefail
+          git cat-file -t 4ee78e500a773afb702e50092dcba15b52457492
+          git cat-file -t 010ae43959893d79b43b8b3df8242305c2a34e42
+          git cat-file -t 3b130be1c4e900914ebaef1461303ef312d544d1
+          git cat-file -t 6f00e1fc82724c4743f008703f3a36b0b59fc1b1
+          git cat-file -t f8ed58346e242007e370a978f747b0b7fea82292
+      - name: Crear ZIP real desde Git y comprobar que se abre
+        run: |
+          set -euo pipefail
+          python3 scripts/build_motor_geo_master.py
+          python3 - <<'PY'
+          import io,zipfile,json,hashlib
+          from pathlib import Path
+          p=Path('salida/ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS.zip')
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              m=json.loads(z.read('MANIFIESTO_FUENTES.json'))
+              assert len(m['files'])>=150
+              assert all(z.getinfo('FUENTES/'+f['snapshot']+'/'+f['path']) for f in m['files'])
+              bad=[f['path'] for f in m['files'] if hashlib.sha256(z.read('FUENTES/'+f['snapshot']+'/'+f['path'])).hexdigest()!=f['sha256']]
+              assert not bad, bad
+              assert 'pages/geo-v2/core.mjs' in [x['path'] for x in m['files'] if x['snapshot']=='01_V29_WEB']
+              assert 'backend/route-estimate.js' in [x['path'] for x in m['files'] if x['snapshot']=='04_BACKEND_MAIN']
+              assert 'pages/api/direcciones.mjs' in [x['path'] for x in m['files'] if x['snapshot']=='02_GEO_V2_QA']
+              print('BACKUP_VERIFIED',len(m['files']),'SIZE',p.stat().st_size,'SHA256',hashlib.sha256(p.read_bytes()).hexdigest())
+          PY
+      - name: Publicar ZIP como artifact descargable (90 dias)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS
+          path: salida/ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS.zip
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0
