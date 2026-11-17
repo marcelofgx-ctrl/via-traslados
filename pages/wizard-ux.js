@@ -5,7 +5,8 @@
  if(!form||!wizard)return;
  const entries=[];
  function displayAddress(address){
-   const text=String(address||'').replace(/\s+/g,' ').trim();
+   const text=String(address||'').replace(/\s+/g,' ').trim()
+     .replace(/^(?:Cerca de|Punto en mapa cerca de)\s+/i,'');
    const letters=text.replace(/[^\p{L}]/gu,'');
    if(letters.length<4||letters!==letters.toLocaleUpperCase('es-UY'))return text;
    return text.toLocaleLowerCase('es-UY').replace(/(^|[\s,])(\p{L})/gu,
@@ -26,7 +27,9 @@
      summary.classList.toggle('hidden',!available);
      if(available){
        value.textContent=displayAddress(content);
-       summary.setAttribute('aria-label',(id==='origin'?'Origen':'Destino')+': '+content+'. Tocar para editar');
+       const approx=/^(?:Cerca de|Punto en mapa cerca de)\s+/i.test(content);
+       parent.classList.toggle('has-approximate-door',approx);
+       summary.setAttribute('aria-label',(id==='origin'?'Origen':'Destino')+': '+displayAddress(content)+(approx?'. Número orientativo':'')+'. Tocar para editar');
      }
    };
    summary.addEventListener('click',()=>{
