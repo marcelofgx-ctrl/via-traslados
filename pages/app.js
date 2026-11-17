@@ -16,7 +16,7 @@ function initPassenger(){
  const hidden=(id,yes)=>$(id)?.classList.toggle('hidden',yes);
  const profile=()=>current()?.profile;
  const error=message=>{const node=$('form-result');node.textContent=message;node.className='notice error';node.scrollIntoView({block:'nearest',behavior:'smooth'})};
- const clearError=()=>hidden('form-result',true);
+ const clearError=()=>{const node=$('form-result');if(node){node.classList.add('hidden');node.textContent=''}};
  function onBusy(id,busy,label){
   const button=$(id);if(!button)return;
   if(!button.dataset.originalText)button.dataset.originalText=button.textContent;
@@ -141,7 +141,7 @@ function initPassenger(){
   sc.async=true;sc.onload=render;document.head.appendChild(sc);
  }
  function beginSignup(){
-  registered=false;
+  clearError();registered=false;
   hidden('phone-first',true);hidden('return-form',true);hidden('new-account',false);
   $('phone').value=selectedPhone;
   $('identity-heading').textContent='Te damos la bienvenida';
@@ -149,7 +149,7 @@ function initPassenger(){
   resetCaptcha();loadCaptcha();
  }
  function beginReturning(data){
-  registered=true;hasPin=!!data.hasPin;
+  clearError();registered=true;hasPin=!!data.hasPin;
   hidden('phone-first',true);hidden('new-account',true);hidden('return-form',false);
   // Primero ofrecé los tres métodos. El PIN requiere configuración previa; la huella, una passkey registrada.
   hidden('pin-login',true);hidden('return-otp',true);
@@ -191,8 +191,8 @@ function initPassenger(){
   await S.logout();selectedPhone='';grant='';$('account-phone').value='';
   remembered();loadCaptcha();
  });
- $('change-phone')?.addEventListener('click',()=>{grant='';hidden('return-form',true);hidden('phone-first',false);hidden('turnstile-box',false);loadCaptcha()});
- $('registration-change-phone')?.addEventListener('click',()=>{grant='';hidden('new-account',true);hidden('phone-first',false);resetCaptcha()});
+ $('change-phone')?.addEventListener('click',()=>{grant='';clearError();hidden('return-form',true);hidden('phone-first',false);hidden('turnstile-box',false);resetCaptcha();loadCaptcha()});
+ $('registration-change-phone')?.addEventListener('click',()=>{grant='';clearError();hidden('new-account',true);hidden('phone-first',false);hidden('turnstile-box',false);resetCaptcha();loadCaptcha()});
  $('phone-lookup').addEventListener('click',async()=>{
   const phone=$('account-phone').value.trim();
   const digits=phone.replace(/\D/g,'');
@@ -371,22 +371,45 @@ function statusHTML(b){
 
 async function initBooking(){const id=new URLSearchParams(location.search).get('id');if(!id){$('status-container').innerHTML='<p>Falta el código de reserva. Volvé a solicitar un viaje.</p>';return}async function render(){try{const b=await S.get(id);if(!b){$('status-container').innerHTML='<p>No se encontró la reserva en este dispositivo.</p>';return}const signature=JSON.stringify(b);if(signature===lastRender)return;lastRender=signature;document.querySelector('.status-card')?.setAttribute('data-current-status',Object.hasOwn(bookingPresentation,b.status)?b.status:'requested');$('status-container').innerHTML=statusHTML(b);$('refresh-status')?.addEventListener('click',async()=>{lastRender='';await render()});$('accept-btn')?.addEventListener('click',async()=>{if(!confirm('¿Querés aceptar esta propuesta?'))return;try{await S.accept(id);lastRender='';await render()}catch(err){alert(err.message)}});$('cancel-btn')?.addEventListener('click',async()=>{if(!confirm('¿Querés cancelar esta solicitud?'))return;try{await S.cancel(id);lastRender='';await render()}catch(err){alert(err.message)}})}catch(err){$('status-container').innerHTML='<p class="error-text">'+esc(err.message)+'</p>'}}await render();
  const passkeyBox=$('passkey-setup'),passkeyButton=$('enable-passkey'),passkeyStatus=$('passkey-status');
- const session=S.customer();
- if(passkeyBox&&session&&!S.isDemo()&&window.ViaPasskeys?.available()&&!(session.passkeys>0)){
-  passkeyBox.classList.remove('hidden');
-  passkeyButton?.addEventListener('click',async()=>{
-   passkeyButton.disabled=true;
-   passkeyStatus.textContent='Abriendo el acceso seguro del teléfono…';
-   try{
-    await window.ViaPasskeys.enable();
-    passkeyStatus.textContent='Listo. En próximos ingresos podrás usar tu huella o PIN.';
-    passkeyButton.classList.add('hidden');
-   }catch(e){
-    passkeyStatus.textContent=e.name==='NotAllowedError'?
-      'No se activó. Podés seguir reservando con tu correo, sin ningún problema.':
-      (e.message||'No se pudo activar la huella.');
-   }finally{passkeyButton.disabled=false}
-  });
+ // Al abrir el seguimiento, el número de passkeys en localStorage puede estar
+ // desactualizado. Consultar la API antes de ofrecer crear otra credencial.
+ // Si falla la consulta, NO pedir una nueva clave hasta verificar la sesión.
+ if(passkeyBox&&!S.isDemo()&&window.ViaPasskeys?.available()&&S.customer()){
+  let refreshed=false;
+  try{refreshed=Boolean(await S.resume())}catch{}
+  const session=refreshed?S.customer():null;
+  if(session&&Number(session.passkeys)>0){
+   passkeyBox.classList.remove('hidden');
+   const heading=passkeyBox.querySelector('h3'),note=passkeyBox.querySelector('p');
+   if(heading)heading.textContent='Tu acceso seguro ya está activo';
+   if(note)note.textContent='Tu cuenta ya tiene una clave de acceso. Para ingresar la próxima vez elegí Huella o PIN del teléfono.';
+   passkeyButton?.classList.add('hidden');
+  }else if(session&&Number(session.passkeys)===0){
+   passkeyBox.classList.remove('hidden');
+   passkeyButton?.addEventListener('click',async()=>{
+    passkeyButton.disabled=true;
+    passkeyStatus.textContent='Comprobando tu acceso seguro…';
+    try{
+     // Revalidar justo antes de invocar el registro WebAuthn.
+     if(!await S.resume())throw Error('Tu sesión venció. Volvé a ingresar con tu correo o PIN.');
+     if(Number(S.customer()?.passkeys)>0){
+      throw Object.assign(new Error('Tu cuenta ya tiene una clave de acceso. Usala al ingresar, sin crear otra.'),{name:'AlreadyRegisteredError'});
+     }
+     passkeyStatus.textContent='Abriendo el acceso seguro del teléfono…';
+     await window.ViaPasskeys.enable();
+     passkeyStatus.textContent='Listo. En próximos ingresos podés usar tu huella o PIN.';
+     passkeyButton.classList.add('hidden');
+    }catch(e){
+     const already=e.name==='AlreadyRegisteredError'||e.name==='InvalidStateError'||/ya (tiene|tenés)|already registered|already exists/i.test(e.message||'');
+     passkeyStatus.textContent=already?
+       'Ya existe una clave de acceso para Vía Traslados. No hace falta crear otra; elegí Huella o PIN al ingresar.':
+       e.name==='NotAllowedError'?
+       'No se activó. Podés seguir reservando con tu correo o PIN.':
+       (e.message||'No se pudo activar la huella.');
+     if(already)passkeyButton.classList.add('hidden');
+    }finally{passkeyButton.disabled=false}
+   });
+  }
  }
  window.addEventListener('storage',render);window.addEventListener('via-updated',render);setInterval(render,12000)}
 let filter='all',operatorKey='',driverFetchInProgress=false,driverRefreshPending=false;
