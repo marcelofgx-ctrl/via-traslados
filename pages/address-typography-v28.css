@@ -1,0 +1,87 @@
+/* Vía Traslados V28 — tipografía del origen y destino en móviles.
+   Ajuste exclusivo de presentación: no modifica input, GPS ni reservas. */
+body.premium-page:not(.in-booking) .reference-field .field-copy{
+  display:flex;
+  flex:1 1 0;
+  flex-direction:column;
+  justify-content:center;
+  align-self:stretch;
+  min-width:0;
+  max-width:100%;
+  overflow:hidden;
+  text-align:left;
+}
+body.premium-page:not(.in-booking) .reference-field .field-copy>strong{
+  flex:0 0 auto;
+  line-height:1.15;
+  margin-bottom:3px;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-preview{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  min-height:0;
+  padding:0;
+  margin:0;
+  gap:3px;
+  align-items:stretch;
+  justify-content:center;
+  box-sizing:border-box;
+  text-align:left;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-street{
+  display:-webkit-box;
+  width:100%;
+  max-width:100%;
+  overflow:hidden;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:3;
+  font-size:clamp(13px,3.75vw,16px);
+  line-height:1.22;
+  letter-spacing:-.012em;
+  font-weight:700;
+  word-break:normal;
+  overflow-wrap:break-word;
+  text-wrap:pretty;
+  color:#21483f;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-locality{
+  display:flex;
+  flex-flow:row nowrap;
+  align-items:baseline;
+  gap:6px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin:0;
+  font-size:clamp(10px,2.65vw,12px);
+  line-height:1.25;
+  font-weight:600;
+  color:#547c71;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:clip;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-place{
+  flex:1 1 auto;
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-accuracy{
+  display:block;
+  flex:0 0 auto;
+  white-space:nowrap;
+  font-size:10px;
+  letter-spacing:-.02em;
+  color:#66867b;
+}
+body.premium-page:not(.in-booking) .reference-field .via-selected-accuracy[hidden]{
+  display:none!important;
+}
+@media(max-width:350px){
+  body.premium-page:not(.in-booking) .reference-field .via-selected-accuracy{display:none}
+  body.premium-page:not(.in-booking) .reference-field .via-selected-street{font-size:13px}
+}
