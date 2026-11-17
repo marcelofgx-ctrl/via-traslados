@@ -1,14 +1,23 @@
 /* Vía Traslados QA: etiqueta de dirección en dos líneas; el input conserva el valor completo. */
 (()=>{'use strict';
+const titleCase=s=>s.toLocaleLowerCase('es-UY')
+ .replace(/(^|[\s/.-])(\p{L})/gu,(_,pre,ch)=>pre+ch.toLocaleUpperCase('es-UY'))
+ .replace(/\b(De|Del|La|Las|Los|Y|En)\b/gu,word=>word.toLocaleLowerCase('es-UY'));
 const pretty=value=>{
  const s=String(value||'').trim().replace(/\s+/g,' ');
  if(!s)return '';
+ const prefix=s.match(/^(Cerca de|Punto en mapa cerca de)\s+(.+)$/i);
+ if(prefix){
+  const letters=prefix[2].replace(/[^a-záéíóúñü]/gi,'');
+  if(letters&&letters===letters.toLocaleUpperCase('es-UY'))
+   return (prefix[1].toLocaleLowerCase('es-UY').replace(/^\p{L}/u,x=>x.toLocaleUpperCase('es-UY'))+
+    ' '+titleCase(prefix[2]));
+ }
  const letters=s.replace(/[^a-záéíóúñü]/gi,'');
- return letters&&letters===letters.toLocaleUpperCase('es-UY')
-  ?s.toLocaleLowerCase('es-UY').replace(/(^|[\s/.-])(\p{L})/gu,
-   (_,pre,ch)=>pre+ch.toLocaleUpperCase('es-UY'))
-  :s;
+ return letters&&letters===letters.toLocaleUpperCase('es-UY')?titleCase(s):s;
 };
+// Evita dejar el número de puerta colgando solo en otra línea.
+const withDoorTogether=s=>s.replace(/(\p{L})\s+(\d{1,6}[A-Za-z]?)$/u,'$1\u00a0$2');
 for(const id of ['home-origin','home-destination']){
  const input=document.getElementById(id);
  const host=input?.closest('.field-copy');
@@ -18,6 +27,9 @@ for(const id of ['home-origin','home-destination']){
  preview.setAttribute('tabindex','0');preview.hidden=true;
  const street=document.createElement('span');street.className='via-selected-street';
  const locality=document.createElement('small');locality.className='via-selected-locality';
+ const place=document.createElement('span');place.className='via-selected-place';
+ const hint=document.createElement('span');hint.className='via-selected-accuracy';hint.hidden=true;
+ locality.append(place,hint);
  preview.append(street,locality);host.appendChild(preview);
  const hide=()=>{
   preview.hidden=true;input.classList.remove('via-previewed-input');input.removeAttribute('tabindex');
@@ -38,19 +50,18 @@ for(const id of ['home-origin','home-destination']){
   const label=String(input.value||'').trim();
   if(!selected||!label){hide();return}
   const segments=label.split(',').map(x=>x.trim()).filter(Boolean);
-  street.textContent=pretty(segments[0]||label);
+  street.textContent=withDoorTogether(pretty(segments[0]||label));
   const cityInfo=segments.slice(1).map(pretty).join(' · ');
   const distance=Number(input.dataset.referenceDistance);
   const approximate=input.dataset.numberIsApproximate==='true';
-  const hint=approximate?'Número orientativo'+(distance>0?' · '+Math.round(distance)+' m':''):'';
-  locality.textContent=quality==='gps'
-    ?([cityInfo,hint||'ubicación GPS'].filter(Boolean).join(' · ')||
-      'Sin dirección postal confirmada · marcá el punto en el mapa')
-    :quality==='map'
-      ?([cityInfo,hint||'punto ajustado en el mapa'].filter(Boolean).join(' · '))
-      :cityInfo||'Dirección seleccionada';
-  input.title=label;
-  preview.setAttribute('aria-label','Dirección: '+label+'. Tocar para editar');
+  place.textContent=cityInfo||(quality==='map'?'Punto ajustado en el mapa':
+    quality==='gps'?'Referencia de ubicación GPS':'Dirección seleccionada');
+  hint.textContent=approximate?'n.º aprox.':'';
+  hint.hidden=!approximate;
+  const fullInfo=approximate?' Número de puerta orientativo'+
+    (distance>0?', a unos '+Math.round(distance)+' metros.':'.'):'';
+  input.title=label+fullInfo;
+  preview.setAttribute('aria-label','Dirección: '+label+'. '+place.textContent+'.'+fullInfo+' Tocar para editar');
   preview.hidden=false;input.classList.add('via-previewed-input');
   input.setAttribute('tabindex','-1');
  }
