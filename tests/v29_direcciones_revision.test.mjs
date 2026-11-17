@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=path=>readFileSync(new URL('../pages/'+path,import.meta.url),'utf8');
+test('Se omite «Cerca de» SOLO visualmente y se conservan valores y coordenadas',()=>{
+ const home=read('address-selected-preview.js');
+ const wizard=read('wizard-ux.js');
+ const app=read('app.js');
+ assert.match(home,/const dropNear=/);
+ assert.match(home,/street\.textContent=withDoorTogether\(pretty\(dropNear\(/);
+ assert.match(home,/hint\.textContent=approximate\?'n\.º aprox\.'/);
+ assert.match(wizard,/\.replace\(\/\^\(\?:Cerca de\|Punto en mapa cerca de\)/);
+ assert.match(wizard,/has-approximate-door/);
+ assert.match(app,/const displayAddress=v=>/);
+ assert.match(app,/esc\(displayAddress\(b\.origin\)\)/);
+ assert.match(app,/esc\(displayAddress\(b\.destination\)\)/);
+ assert.match(app,/originLocation=window\.ViaAddress\?\.get/);
+ assert.match(app,/destinationLocation=window\.ViaAddress\?\.get/);
+ assert.doesNotMatch(wizard,/input\.value\s*=\s*displayAddress/);
+ assert.doesNotMatch(home,/window\.ViaAddress\.set/);
+});
+test('Paso 1 compacto con botones y formularios accesibles',()=>{
+ const css=read('review-compact-v29.css');
+ const html=read('index.html');
+ assert.match(css,/wizard-step\[data-step="1"\]/);
+ assert.match(css,/min-height:44px!important/);
+ assert.match(css,/min-height:48px!important/);
+ assert.match(css,/position:relative!important/);
+ assert.doesNotMatch(css,/overflow-y:hidden/);
+ assert.match(html,/review-compact-v29\.css\?v=29/);
+ assert.match(html,/wizard-ux\.js\?v=29/);
+ assert.match(html,/address-selected-preview\.js\?v=29/);
+ assert.match(html,/app\.js\?v=29/);
+ assert.match(read('sw.js'),/passenger-driver-geov2-v29-review/);
+ assert.match(read('config.js'),/demo:\s*false/);
+});
