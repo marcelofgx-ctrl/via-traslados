@@ -17,6 +17,7 @@ const pretty=value=>{
  return letters&&letters===letters.toLocaleUpperCase('es-UY')?titleCase(s):s;
 };
 // Evita dejar el número de puerta colgando solo en otra línea.
+const dropNear=s=>String(s||'').replace(/^\s*(?:Cerca de|Punto en mapa cerca de)\s+/i,'');
 const withDoorTogether=s=>s.replace(/(\p{L})\s+(\d{1,6}[A-Za-z]?)$/u,'$1\u00a0$2');
 for(const id of ['home-origin','home-destination']){
  const input=document.getElementById(id);
@@ -50,7 +51,8 @@ for(const id of ['home-origin','home-destination']){
   const label=String(input.value||'').trim();
   if(!selected||!label){hide();return}
   const segments=label.split(',').map(x=>x.trim()).filter(Boolean);
-  street.textContent=withDoorTogether(pretty(segments[0]||label));
+  const readable=dropNear(label);
+  street.textContent=withDoorTogether(pretty(dropNear(segments[0]||label)));
   const cityInfo=segments.slice(1).map(pretty).join(' · ');
   const distance=Number(input.dataset.referenceDistance);
   const approximate=input.dataset.numberIsApproximate==='true';
@@ -60,8 +62,8 @@ for(const id of ['home-origin','home-destination']){
   hint.hidden=!approximate;
   const fullInfo=approximate?' Número de puerta orientativo'+
     (distance>0?', a unos '+Math.round(distance)+' metros.':'.'):'';
-  input.title=label+fullInfo;
-  preview.setAttribute('aria-label','Dirección: '+label+'. '+place.textContent+'.'+fullInfo+' Tocar para editar');
+  input.title=readable+fullInfo;
+  preview.setAttribute('aria-label','Dirección: '+readable+'. '+place.textContent+'.'+fullInfo+' Tocar para editar');
   preview.hidden=false;input.classList.add('via-previewed-input');
   input.setAttribute('tabindex','-1');
  }
