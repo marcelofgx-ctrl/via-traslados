@@ -1,0 +1,22 @@
+name: Via Traslados — verificar titularidad admin prod (solo lectura)
+on:
+  push:
+    branches: [via-audit-founder-phone-20261118]
+    paths: [".github/workflows/via-v35-founder-phone-audit-readonly.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Confirmar celular fundador y cantidad administradores — SELECT
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/v35_founder_phone_check_readonly.mjs
