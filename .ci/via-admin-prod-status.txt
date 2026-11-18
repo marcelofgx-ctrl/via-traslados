@@ -5,12 +5,12 @@ Verificación: success
 Dominio: viatraslados.com
 Estado público: {"enabled":true}
 
- ⛅️ wrangler 4.160.1
+ ⛅️ wrangler 4.164.0
 ────────────────────
 
 Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
-Total Upload: 939.14 KiB / gzip: 164.18 KiB
-Worker Startup Time: 3 ms
+Total Upload: 967.64 KiB / gzip: 171.69 KiB
+Worker Startup Time: 2 ms
 Your Worker has access to the following bindings:
 Binding                                                               Resource                  
 env.DB (via-traslados-db)                                             D1 Database               
@@ -18,7 +18,7 @@ env.PUBLIC_ORIGIN ("https://viatraslados.com")                        Environmen
 env.OPERATOR_ORIGIN ("https://viatraslados.com")                      Environment Variable      
 env.RESEND_FROM ("Vía Traslados <reservas@viatraslados....")          Environment Variable      
 
-Uploaded via-traslados-api (2.17 sec)
-Deployed via-traslados-api triggers (0.39 sec)
+Uploaded via-traslados-api (2.42 sec)
+Deployed via-traslados-api triggers (0.57 sec)
   https://via-traslados-api.marcelof-gx.workers.dev
-Current Version ID: d5a22f55-8cfe-4b79-9d7d-2737aee52fdd
+Current Version ID: 9f0db4cc-29b8-4d79-8ce8-8fb0588bd079
