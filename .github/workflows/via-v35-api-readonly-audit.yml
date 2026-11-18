@@ -1,0 +1,53 @@
+name: Vía Traslados V35 — auditoría de contrato API sin escritura
+on:
+  push:
+    branches: [via-integracion-apk-prod-v35-20261117]
+    paths: [".github/workflows/via-v35-api-readonly-audit.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Comprobar contrato real sin tokens ni datos personales
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request, urllib.error, json
+          PROD="https://via-traslados-api.marcelof-gx.workers.dev"
+          QA="https://via-traslados-api-qa.marcelof-gx.workers.dev"
+          def probe(url):
+              req=urllib.request.Request(url,headers={"Origin":"https://viatraslados.com","User-Agent":"ViaTraslados-V35-ReadonlyAudit"})
+              try:
+                  with urllib.request.urlopen(req,timeout=18) as r:
+                      return r.status,r.read(3000).decode("utf-8","replace")
+              except urllib.error.HTTPError as e:
+                  return e.code,e.read(1500).decode("utf-8","replace")
+          pstatus,pbody=probe(PROD+"/api/health")
+          qstatus,qbody=probe(QA+"/api/health")
+          authstatus,_=probe(PROD+"/api/operator/requests")
+          advanced,_=probe(PROD+"/api/operator/requests/VIA-READONLY-CHECK/price-guide")
+          status,_=probe(PROD+"/api/public/status")
+          print("PROD /api/health:",pstatus)
+          print("QA /api/health:",qstatus)
+          print("PROD /api/operator/requests (sin sesión):",authstatus)
+          print("PROD /api/operator/requests/:id/price-guide (sin sesión):",advanced)
+          print("PROD /api/public/status:",status)
+          if pstatus!=200 or json.loads(pbody).get("ok") is not True:
+              raise SystemExit("API productiva no responde salud OK")
+          if qstatus!=200 or json.loads(qbody).get("qa") is not True:
+              raise SystemExit("La API QA no afirma aislamiento")
+          if authstatus not in (401,403):
+              raise SystemExit("Endpoint de solicitudes no protege acceso")
+          if status!=200:
+              raise SystemExit("Estado público no accesible")
+          if advanced in (401,403):
+              print("CONTRATO DESPACHO AVANZADO: endpoint presente y protegido")
+          elif advanced==404:
+              print("CONTRATO DESPACHO AVANZADO: endpoint ausente en producción")
+          else:
+              raise SystemExit("Respuesta no esperada del contrato de precio-guía")
+          PY
