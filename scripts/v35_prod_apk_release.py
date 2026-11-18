@@ -161,7 +161,9 @@ def prepare():
             if e.code==404:continue
             raise
         if path.endswith(".html"):binary=sanitize_html(binary)
-        (ASSETS/path).write_bytes(binary)
+        extra_target=ASSETS/path
+        extra_target.parent.mkdir(parents=True,exist_ok=True)
+        extra_target.write_bytes(binary)
         inventory[path]=digest(binary)
     # Versiones y datos de cuenta permanecen byte a byte iguales a los publicados.
     (ASSETS/"index.html").write_bytes(link_html(homepage))
