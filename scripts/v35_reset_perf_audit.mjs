@@ -28,7 +28,7 @@ async function query(sql) {
  return {rows:res.body.result?.[0]?.results||[],ms:res.ms,dbms:res.body.result?.[0]?.meta?.duration??null};
 }
 const objects=(await query("SELECT type,name FROM sqlite_master WHERE type IN ('table','index','trigger') AND name NOT LIKE 'sqlite_%' ORDER BY type,name")).rows;
-const tables=objects.filter(x=>x.type==='table').map(x=>x.name);
+const tables=objects.filter(x=>x.type==='table'&&!x.name.startsWith('_')&&!x.name.startsWith('sqlite_')).map(x=>x.name); // Cloudflare internal tables cannot be read (SQLITE_AUTH)
 assert(tables.includes('bookings')&&tables.includes('staff_users')&&tables.includes('booking_commission_ledger'),
  'Production schema missing required tables');
 const counts={};
