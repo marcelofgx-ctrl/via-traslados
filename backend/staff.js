@@ -3,6 +3,8 @@
 // Nunca se devuelve un hash, sal ni token de otras personas.
 import {normalizeEmail} from './auth.js';
 import {normalizeStaffPhone as normalizeFounderPhone} from './staff-phone.js';
+import {ASSIGNABLE_STATUSES,assignmentError,occupiedInterval,scheduleConflicts} from './assignment-rules.js';
+import {pricingSettings,savePricingSettings} from './dispatch-ops.js';
 
 const TE=new TextEncoder();
 const HEX=a=>Array.from(new Uint8Array(a)).map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -38,7 +40,7 @@ async function throttle(env,scope,limit,seconds) {
  const row=await env.DB.prepare('INSERT INTO otp_rate_limits (rate_key,window_started,attempts) VALUES (?,unixepoch(),1) ON CONFLICT(rate_key) DO UPDATE SET window_started=CASE WHEN unixepoch()-window_started>=? THEN unixepoch() ELSE window_started END,attempts=CASE WHEN unixepoch()-window_started>=? THEN 1 ELSE attempts+1 END RETURNING attempts').bind(k,seconds,seconds).first();
  return Number(row?.attempts||0)<=limit;
 }
-const publicStaff=x=>({id:x.id,name:x.display_name,email:x.email,phone:x.phone||null,emailVerified:Boolean(x.email_verified_at),role:x.role,status:x.status,createdAt:x.created_at,updatedAt:x.updated_at});
+const publicStaff=x=>({id:x.id,name:x.display_name,email:x.email,phone:x.phone||null,emailVerified:Boolean(x.email_verified_at),role:x.role,status:x.status,createdAt:x.created_at,updatedAt:x.updated_at,vehicle:x.license_plate!==undefined?{plate:x.license_plate||null,make:x.make||null,model:x.model||null,passengerCapacity:x.passenger_capacity??null,luggageCapacity:x.luggage_capacity??null}:null});
 const ip=req=>(req.headers.get('CF-Connecting-IP')||'unknown').slice(0,72);
 
 export async function identity(req,env){
@@ -162,9 +164,118 @@ export async function staffRoutes(req,env,path,send,err){
   await audit(env,actor,'team-role',target.id,target.role+' -> '+p.role);
   return send({id:target.id,role:p.role,requiresNewLogin:true});
  }
+ // Configuración comercial confidencial: nunca se incorpora a /api/staff/me
+ // ni a los listados operativos que ven los conductores.
+ if(path==='/api/admin/commissions'&&req.method==='GET'){
+   if(!await founderAuthorized())return err('Solo administración puede consultar comisiones',403);
+   const result=await env.DB.prepare(
+     "SELECT l.booking_id,l.driver_id,u.display_name AS driver_name,"+
+     "l.fare_uyu,l.rate_bps,l.commission_cents,l.payment_status,l.payment_reference,"+
+     "l.completed_at,l.paid_at FROM booking_commission_ledger l "+
+     "JOIN staff_users u ON u.id=l.driver_id "+
+     "ORDER BY l.completed_at DESC LIMIT 250"
+   ).all();
+   return send({currency:'UYU',items:result.results.map(x=>({
+     bookingId:x.booking_id,driverId:x.driver_id,driverName:x.driver_name,
+     grossUyu:x.fare_uyu,rateBps:x.rate_bps,commissionUyu:x.commission_cents/100,
+     paymentStatus:x.payment_status,reference:x.payment_reference,
+     completedAt:x.completed_at,paidAt:x.paid_at
+   }))});
+ }
+ const settlement=path.match(/^\/api\/admin\/commissions\/([A-Z0-9-]+)$/);
+ if(settlement&&req.method==='PATCH'){
+   if(!await founderAuthorized())return err('Solo administración puede registrar liquidaciones',403);
+   let p;try{p=await bodyLimit(req)}catch{return err('Liquidación inválida',400)}
+   if(p.status!=='paid'||typeof p.reference!=='string'||
+      p.reference.trim().length<3||p.reference.trim().length>120)
+     return err('Indicá una referencia de pago verificable',400);
+   const updated=await env.DB.prepare(
+     "UPDATE booking_commission_ledger SET payment_status='paid',"+
+     "payment_reference=?,paid_at=unixepoch() "+
+     "WHERE booking_id=? AND payment_status='pending'"
+   ).bind(p.reference.trim(),settlement[1]).run();
+   if(updated.meta?.changes!==1)return err('La comisión no está pendiente o ya fue liquidada',409);
+   await audit(env,actor,'commission-paid',settlement[1],
+     'Pago marcado como verificado por administrador');
+   return send({bookingId:settlement[1],status:'paid'});
+ }
+ if(path==='/api/admin/pricing'&&req.method==='GET'){
+   if(!await founderAuthorized())return err('Solo el administrador fundador puede editar las tarifas',403);
+   return send({currency:'UYU',config:await pricingSettings(env),advisory:true});
+ }
+ if(path==='/api/admin/pricing'&&req.method==='PATCH'){
+   if(!await founderAuthorized())return err('Solo el administrador fundador puede editar las tarifas',403);
+   let p;try{p=await bodyLimit(req)}catch{return err('Datos incorrectos',400)}
+   const result=await savePricingSettings(env,p,actor);
+   if(result.error)return err(result.error,result.status);
+   await audit(env,actor,'pricing-settings','via-pricing','Modelo de tarifa orientativa actualizado');
+   return send(result);
+ }
+ if(path==='/api/admin/commercial-drivers'&&req.method==='GET'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede ver estas modalidades',403);
+  const data=await env.DB.prepare(
+    "SELECT u.id,u.display_name,u.status,p.mode,p.can_quote_all,p.can_release,p.commission_bps "+
+    "FROM staff_users u LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id "+
+    "WHERE u.role='driver' ORDER BY u.display_name COLLATE NOCASE"
+  ).all();
+  return send({drivers:data.results.map(x=>({
+    id:x.id,name:x.display_name,status:x.status,
+    mode:x.mode||'contractor',canQuoteAll:Boolean(x.can_quote_all),
+    canRelease:Boolean(x.can_release),commissionBps:x.commission_bps??2500
+  }))});
+ }
+ const commercial=path.match(/^\/api\/admin\/drivers\/([a-f0-9-]{36})\/commercial$/i);
+ if(commercial&&req.method==='PATCH'){
+  if(!await founderAuthorized())return err('Solo el administrador fundador puede modificar condiciones comerciales',403);
+  let p;try{p=await bodyLimit(req)}catch{return err('Condiciones inválidas',400)}
+  if(!['partner','contractor'].includes(p.mode)
+    ||typeof p.canQuoteAll!=='boolean'||typeof p.canRelease!=='boolean')
+    return err('Modo o permisos comerciales inválidos',400);
+  if(!Number.isInteger(p.commissionBps)||p.commissionBps<0||p.commissionBps>5000)
+    return err('Comisión fuera de rango',400);
+  if(p.mode==='partner'&&p.commissionBps!==0)
+    return err('Los socios no pagan comisión interna',400);
+  if(p.mode==='contractor'&&p.canRelease)
+    return err('Liberar solicitudes queda reservado a socios autorizados',400);
+  const target=await env.DB.prepare(
+    "SELECT id,status FROM staff_users WHERE id=? AND role='driver'"
+  ).bind(commercial[1]).first();
+  if(!target)return err('Conductor no encontrado',404);
+  await env.DB.prepare(
+    "INSERT INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps) "+
+    "VALUES(?,?,?,?,?) ON CONFLICT(staff_id) DO UPDATE SET mode=excluded.mode,"+
+    "can_quote_all=excluded.can_quote_all,can_release=excluded.can_release,"+
+    "commission_bps=excluded.commission_bps,updated_at=unixepoch()"
+  ).bind(target.id,p.mode,p.canQuoteAll?1:0,p.canRelease?1:0,p.commissionBps).run();
+  await audit(env,actor,'commercial-profile',target.id,
+    'Permisos comerciales modificados por administrador fundador');
+  return send({id:target.id,updated:true});
+ }
  if(path==='/api/admin/drivers'&&req.method==='GET'){
-   const users=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE u.role='driver' ORDER BY CASE u.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,u.created_at DESC LIMIT 250").all();
+   const users=await env.DB.prepare("SELECT u.id,u.email,u.display_name,u.role,u.status,u.created_at,u.updated_at,c.phone,c.email_verified_at,v.license_plate,v.make,v.model,v.passenger_capacity,v.luggage_capacity FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE u.role='driver' ORDER BY CASE u.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,u.created_at DESC LIMIT 250").all();
    return send({drivers:users.results.map(publicStaff)});
+ }
+ const vehiclePath=path.match(/^\/api\/admin\/drivers\/([a-f0-9-]{36})\/vehicle$/i);
+ if(vehiclePath&&req.method==='PATCH'){
+   let p;try{p=await bodyLimit(req)}catch{return err('Datos de vehículo inválidos',400)}
+   const staff=await env.DB.prepare("SELECT id FROM staff_users WHERE id=? AND role='driver'").bind(vehiclePath[1]).first();
+   if(!staff)return err('Conductor no encontrado',404);
+   if(typeof p.plate!=='string'||typeof p.make!=='string'||typeof p.model!=='string')
+     return err('Completá matrícula, marca y modelo con texto válido',400);
+   const plate=p.plate.trim().toUpperCase(),make=p.make.trim(),model=p.model.trim();
+   if(!/^[A-Z0-9 -]{0,12}$/.test(plate) || make.length>45||model.length>45 ||
+      /[\r\n]/.test(make+model))return err('Datos de vehículo fuera de formato',400);
+   const seats=p.passengerCapacity===null?null:p.passengerCapacity;
+   const bags=p.luggageCapacity===null?null:p.luggageCapacity;
+   if(seats!==null&&(!Number.isInteger(seats)||seats<1||seats>8))
+     return err('Capacidad de pasajeros inválida',400);
+   if(bags!==null&&(!Number.isInteger(bags)||bags<0||bags>10))
+     return err('Capacidad de equipaje inválida',400);
+   await env.DB.prepare("INSERT INTO driver_vehicle_profiles(staff_id,license_plate,make,model,passenger_capacity,luggage_capacity) VALUES (?,?,?,?,?,?) ON CONFLICT(staff_id) DO UPDATE SET license_plate=excluded.license_plate,make=excluded.make,model=excluded.model,passenger_capacity=excluded.passenger_capacity,luggage_capacity=excluded.luggage_capacity,updated_at=unixepoch()")
+     .bind(staff.id,plate,make,model,seats,bags).run();
+   await audit(env,actor,'driver-vehicle',staff.id,'Ficha del vehículo actualizada');
+   return send({driverId:staff.id,vehicle:{plate:plate||null,make:make||null,
+     model:model||null,passengerCapacity:seats,luggageCapacity:bags}});
  }
  const driver=path.match(/^\/api\/admin\/drivers\/([a-f0-9-]{36})$/i);
  if(driver&&req.method==='PATCH'){
@@ -198,23 +309,91 @@ export async function staffRoutes(req,env,path,send,err){
    await audit(env,actor,'public-web-switch','viatraslados.com',before+' -> '+p.publicEnabled);
    return send({publicEnabled:p.publicEnabled});
  }
+
+ // Estado de asignación sin GPS inventado: muestra únicamente conflictos de agenda.
+ const options=path.match(/^\/api\/admin\/requests\/([A-Z0-9-]+)\/assignment-options$/);
  const assign=path.match(/^\/api\/admin\/requests\/([A-Z0-9-]+)\/assign$/);
+ async function readAssignmentContext(id) {
+   const booking=await env.DB.prepare(
+     "SELECT b.id,b.status,b.trip_date,b.trip_time,b.passengers,b.bags,COALESCE(r.duration_s,0) AS duration_s FROM bookings b LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.id=?"
+   ).bind(id).first();
+   if(!booking)return null;
+   const current=await env.DB.prepare("SELECT a.driver_id,u.display_name AS driver_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=?").bind(id).first();
+   const slots=await env.DB.prepare(
+     "SELECT a.driver_id,b.id,b.trip_date,b.trip_time,b.status,COALESCE(r.duration_s,0) AS duration_s FROM driver_assignments a JOIN bookings b ON b.id=a.booking_id LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.status NOT IN ('cancelled','completed') AND b.id<>? AND b.trip_date BETWEEN date(?, '-1 day') AND date(?, '+1 day')"
+   ).bind(id,booking.trip_date,booking.trip_date).all();
+   return {booking,current,slots:slots.results};
+ }
+ if(options&&req.method==='GET'){
+   const context=await readAssignmentContext(options[1]);
+   if(!context)return err('Solicitud no encontrada',404);
+   const drivers=await env.DB.prepare(
+     "SELECT u.id,u.display_name,u.status,c.email_verified_at,c.phone,v.license_plate,v.make,v.model,v.passenger_capacity,v.luggage_capacity FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE u.role='driver' AND u.status='approved' ORDER BY u.display_name COLLATE NOCASE LIMIT 250"
+   ).all();
+   return send({
+     bookingId:context.booking.id,bookingStatus:context.booking.status,
+     assignable:ASSIGNABLE_STATUSES.includes(context.booking.status),
+     assignedDriverId:context.current?.driver_id||null,
+     assignedDriverName:context.current?.driver_name||null,
+     availabilitySource:'schedule-only',gpsAvailable:false,
+     drivers:drivers.results.map(user=>({
+       id:user.id,name:user.display_name,status:user.status,phone:user.phone||null,
+       emailVerified:Boolean(user.email_verified_at),
+       vehicle:{plate:user.license_plate||null,make:user.make||null,model:user.model||null,passengerCapacity:user.passenger_capacity??null,luggageCapacity:user.luggage_capacity??null},
+       capacityConflict:(user.passenger_capacity!==null&&user.passenger_capacity!==undefined&&user.passenger_capacity<Number(context.booking.passengers))||(user.luggage_capacity!==null&&user.luggage_capacity!==undefined&&user.luggage_capacity<Number(context.booking.bags)),
+       conflicts:scheduleConflicts(context.booking,context.slots,user.id)
+     }))
+   });
+ }
  if(assign&&req.method==='POST'){
-   let p;try{p=await bodyLimit(req)}catch{return err('Datos inválidos')}
-   const booking=await env.DB.prepare("SELECT id,status FROM bookings WHERE id=?").bind(assign[1]).first();
-   if(!booking)return err('Solicitud no encontrada',404);
-   if(!['requested','quoted'].includes(booking.status))return err('Solo se puede asignar antes de la aceptación',409);
+   let p;try{p=await bodyLimit(req)}catch{return err('Datos inválidos',400)}
+   const context=await readAssignmentContext(assign[1]);
+   if(!context)return err('Solicitud no encontrada',404);
+   const reason=assignmentError(context.booking,context.booking.status);
+   if(reason)return err(reason,409);
+   const previous=context.current?.driver_id||null;
+   if(Object.prototype.hasOwnProperty.call(p,'expectedDriverId') &&
+      p.expectedDriverId!==previous)return err('La asignación cambió. Actualizá la pantalla y volvé a intentar.',409);
    if(p.driverId===null){
-     await env.DB.prepare('DELETE FROM driver_assignments WHERE booking_id=?').bind(assign[1]).run();
-     await audit(env,actor,'unassign',assign[1]);
+     if(!previous)return send({bookingId:assign[1],driverId:null,unchanged:true});
+     const removal=await env.DB.prepare('DELETE FROM driver_assignments WHERE booking_id=? AND driver_id=?')
+       .bind(assign[1],previous).run();
+     if(removal.meta?.changes!==1)return err('Asignación modificada. Volvé a consultar.',409);
+     await audit(env,actor,'unassign',assign[1],previous);
      return send({bookingId:assign[1],driverId:null});
    }
-   if(typeof p.driverId!=='string')return err('Conductor inválido');
-   const user=await env.DB.prepare("SELECT id FROM staff_users WHERE id=? AND role='driver' AND status='approved'").bind(p.driverId).first();
-   if(!user)return err('Conductor no aprobado',409);
-   await env.DB.prepare('INSERT INTO driver_assignments(booking_id,driver_id,assigned_by) VALUES (?,?,?) ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,assigned_by=excluded.assigned_by,assigned_at=unixepoch()').bind(assign[1],user.id,actor.id).run();
-   await audit(env,actor,'assign',assign[1],user.id);
-   return send({bookingId:assign[1],driverId:user.id});
+   if(typeof p.driverId!=='string'||!(/^[a-f0-9-]{36}$/i.test(p.driverId)))return err('Conductor inválido',400);
+   const user=await env.DB.prepare(
+     "SELECT u.id,c.email_verified_at,v.passenger_capacity,v.luggage_capacity FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE u.id=? AND u.role='driver' AND u.status='approved'"
+   ).bind(p.driverId).first();
+   if(!user||!user.email_verified_at)return err('Conductor no aprobado o sin correo verificado',409);
+   if(user.passenger_capacity!==null&&user.passenger_capacity!==undefined&&user.passenger_capacity<context.booking.passengers ||
+      user.luggage_capacity!==null&&user.luggage_capacity!==undefined&&user.luggage_capacity<context.booking.bags)
+      return err('Capacidad del vehículo insuficiente para pasajeros o equipaje',409);
+   if(previous===user.id)return send({bookingId:assign[1],driverId:user.id,unchanged:true});
+   const conflicts=scheduleConflicts(context.booking,context.slots,user.id);
+   if(conflicts.length)return err('El conductor ya tiene un traslado que se cruza con este horario.',409);
+   const window=occupiedInterval(context.booking);
+   if(!window)return err('Horario de traslado inválido',409);
+   // Inserción atómica: evita pisar una asignación que otro administrador cambió
+   // y vuelve a validar agenda dentro de una única operación SQL sobre D1.
+   const sql="INSERT INTO driver_assignments(booking_id,driver_id,assigned_by) "+
+    "SELECT ?,?,? WHERE COALESCE((SELECT driver_id FROM driver_assignments WHERE booking_id=?),'')=? "+
+    "AND EXISTS(SELECT 1 FROM bookings WHERE id=? AND status IN ('requested','quoted','accepted','confirmed')) "+
+    "AND EXISTS(SELECT 1 FROM staff_users u JOIN staff_contacts c ON c.staff_id=u.id WHERE u.id=? AND u.role='driver' AND u.status='approved' AND c.email_verified_at IS NOT NULL) "+
+    "AND NOT EXISTS(SELECT 1 FROM driver_assignments a JOIN bookings b ON b.id=a.booking_id "+
+    "LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE a.driver_id=? AND a.booking_id<>? "+
+    "AND b.status NOT IN ('cancelled','completed') "+
+    "AND CAST(strftime('%s',b.trip_date||' '||b.trip_time) AS INTEGER) < ? "+
+    "AND CAST(strftime('%s',b.trip_date||' '||b.trip_time) AS INTEGER)+MAX(3600,COALESCE(r.duration_s,0))+1800 > ?) "+
+    "ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,assigned_by=excluded.assigned_by,assigned_at=unixepoch() "+
+    "WHERE driver_assignments.driver_id=?";
+   const changed=await env.DB.prepare(sql)
+     .bind(assign[1],user.id,actor.id,assign[1],previous||'',assign[1],user.id,user.id,assign[1],
+       window.end,window.start,previous||'').run();
+   if(changed.meta?.changes!==1)return err('La agenda o la asignación cambió. Revisá el conductor seleccionado.',409);
+   await audit(env,actor,'assign',assign[1],(previous||'sin asignar')+' -> '+user.id);
+   return send({bookingId:assign[1],driverId:user.id,assigned:true});
  }
  if(path==='/api/admin/audit'&&req.method==='GET'){
    // La bitácora contiene identificadores internos y eventos del fundador:
