@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
-const source=readFileSync('dist/via-store-v29-idempotencia-qa.js','utf8');
+// El artefacto se construye únicamente en la CI web QA; otros workflows npm test
+// no deben fallar porque no lo generan. La CI dedicada exige 4/4, sin skip.
+const generated='dist/via-store-v29-idempotencia-qa.js';
+const built=existsSync(generated);
+const source=built?readFileSync(generated,'utf8'):'';
+const qaTest=(name,fn)=>test(name,{skip:!built},fn);
 const k='via-booking-pending-idempotent-v1';
 class Storage {
   map=new Map();
@@ -37,7 +42,7 @@ const make=()=>{
     expiresAt:Math.floor(Date.now()/1000)+3600,profile:{email:trip.email,name:trip.name,phone:trip.phone}}));
   return {window,context,server,requests,localStorage,sessionStorage,trip};
 };
-test('store V29 QA marca la petición con clave aleatoria y conserva la clave si se pierde respuesta',async()=>{
+qaTest('store V29 QA marca la petición con clave aleatoria y conserva la clave si se pierde respuesta',async()=>{
  const x=make();x.context.dropOnce=true;
  await assert.rejects(()=>x.window.ViaStore.create(x.trip),/respuesta perdida/);
  assert.ok(x.sessionStorage.getItem(k),'Pendiente tras corte de red');
@@ -47,14 +52,14 @@ test('store V29 QA marca la petición con clave aleatoria y conserva la clave si
  assert.equal(x.server.size,1);
  assert.equal(x.sessionStorage.getItem(k),null,'Se limpia después de guardar referencia');
 });
-test('dos toques concurrentes no generan claves distintas para el mismo payload',async()=>{
+qaTest('dos toques concurrentes no generan claves distintas para el mismo payload',async()=>{
  const x=make();const [a,b]=await Promise.all([
    x.window.ViaStore.create(x.trip),x.window.ViaStore.create(x.trip)]);
  assert.equal(a.id,b.id);
  assert.equal(x.requests.length,1,'El doble toque debe salir una sola vez a la red');
  assert.equal(x.server.size,1);
 });
-test('un cambio de identidad no reutiliza la clave pendiente de otra persona',async()=>{
+qaTest('un cambio de identidad no reutiliza la clave pendiente de otra persona',async()=>{
  const x=make();x.context.dropOnce=true;
  await assert.rejects(()=>x.window.ViaStore.create(x.trip));
  const oldKey=JSON.parse(x.sessionStorage.getItem(k)).key;
@@ -66,7 +71,7 @@ test('un cambio de identidad no reutiliza la clave pendiente de otra persona',as
  assert.notEqual(x.requests.at(-1).key,oldKey);
 });
 
-test('respuesta tardía del pasajero A no se guarda al entrar B durante la operación',async()=>{
+qaTest('respuesta tardía del pasajero A no se guarda al entrar B durante la operación',async()=>{
  const x=make();x.context.holdNext=true;
  const sending=x.window.ViaStore.create(x.trip);
  for(let attempts=0;attempts<100&&!x.context.release;attempts++)
