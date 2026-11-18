@@ -1,0 +1,22 @@
+name: INCIDENTE OTP y ruta — navegador Android real simulado (sin envíos)
+on:
+  push:
+    branches: [incident-otp-distance-readonly-rollback-20261118]
+    paths: [".github/workflows/via-incident-browser-smoke.yml"]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Instalar navegador para verificar producción sin escribir datos
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verificar OTP y rutas desde web de producción con Chromium móvil
+        run: node tests/incident_mobile_browser_api_smoke.cjs
