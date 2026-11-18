@@ -1,0 +1,33 @@
+name: Vía Maestra — idempotencia reservas QA sin producción
+on:
+  push:
+    branches: [via-maestro-idempotencia-qa-20261118]
+    paths:
+      - "backend/**"
+      - "tests/booking-submission.test.mjs"
+      - "scripts/booking-submission-qa-sqlite.py"
+      - ".github/workflows/via-maestro-booking-idempotency-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Ensayo de migración aditiva en SQLite desconectado
+        run: python3 scripts/booking-submission-qa-sqlite.py
+      - name: Tests de creación, reintento y concurrencia con datos falsos
+        run: |
+          set -euo pipefail
+          npm test
+          npm run check
+          node --check backend/booking-submission.js
+      - name: Verificar que no hay credenciales ni conexión a producción en el workflow
+        run: |
+          set -euo pipefail
+          ! grep -q 'CLOUDFLARE_API_TOKEN\|CLOUDFLARE_ACCOUNT_ID' .github/workflows/via-maestro-booking-idempotency-qa.yml
+          echo 'QA_IDEMPOTENCY_NO_PRODUCTION_WRITES'
