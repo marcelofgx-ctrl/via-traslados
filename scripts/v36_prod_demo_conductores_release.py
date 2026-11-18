@@ -90,9 +90,30 @@ def smoke(url):
  for name in ["app.js","store.js","config.js","reserva.html","mis-reservas.html",
               "review-compact-v29.css","geo-v2/core.mjs","via-status-premium.css",*FILE_ASSETS]:
   raw,_=r.http_get(url+"/"+name)
-  if name.endswith(".html"):raw=r.sanitize_html(raw)
   expect=json.loads((r.OUT/"original-hashes.json").read_text()).get(name)
-  if expect is None or r.digest(raw)!=expect:raise AssertionError("Regresión asset original "+name)
+  if expect is None:raise AssertionError("Asset no inventariado "+name)
+  if name.endswith(".html"):
+   # El dominio oficial aplica HTMLRewriter/analytics y su HTML servido no es
+   # byte-identico al del Worker QA. Preservación verificada por referencias a
+   # TODOS los JS/CSS originales y controles de estructura, con hashes estrictos
+   # para los propios archivos JS/CSS/geográficos/APK.
+   original=(r.ASSETS/name).read_bytes()
+   if r.normalized_html(raw)!=r.normalized_html(original):
+    from html.parser import HTMLParser
+    class TagRefs(HTMLParser):
+     def __init__(self):super().__init__();self.refs=set()
+     def handle_starttag(self,tag,attrs):
+      d=dict(attrs)
+      if tag=="script" and d.get("src"):self.refs.add(d["src"])
+      if tag=="link" and d.get("href") and d.get("rel")=="stylesheet":self.refs.add(d["href"])
+    oldtags=TagRefs();oldtags.feed(original.decode("utf-8","replace"))
+    newtags=TagRefs();newtags.feed(raw.decode("utf-8","replace"))
+    if not oldtags.refs.issubset(newtags.refs):
+     raise AssertionError("Referencias JS/CSS de "+name+" cambiaron")
+    for marker in ([b"status-container",b"app.js"] if name=="reserva.html" else [b"<html",b"</html>"]):
+     if marker not in raw:raise AssertionError("HTML funcional truncado: "+name)
+    if len(raw)<len(original)//2:raise AssertionError("HTML original demasiado pequeño: "+name)
+  elif r.digest(raw)!=expect:raise AssertionError("Regresión asset original "+name)
  qs=urllib.parse.urlencode({"mode":"reverse","lat":-34.905,"lng":-56.185})
  geodata,_=r.http_get(url+"/api/direcciones?"+qs)
  if not isinstance(json.loads(geodata).get("results"),list):raise AssertionError("Servicio geográfico roto")
