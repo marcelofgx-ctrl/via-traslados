@@ -2,6 +2,7 @@
 // No añadir esta ruta al Worker productivo. Las cuentas QA son sintéticas y públicas.
 import worker from './worker.js';
 import {identity} from './staff.js';
+import {customerSession} from './customer-auth.js';
 import {onboarding} from './qa-driver-onboarding.js';
 
 const PERSONAS={
@@ -91,6 +92,25 @@ async function reset(req,env,actor){
 // MAESTRO-STAGE: ONLY ephemeral synthetic passenger path, on an independent Worker/D1.
 // This supplements QA V34 but NEVER belongs in the production Worker bundle.
 const STAGE_EMAIL='pasajero.v35@qa.invalid';
+const QA_PASSENGERS={
+ A:{email:'pasajero.a@qa.invalid',name:'Pasajero de prueba A',phone:'099000000'},
+ B:{email:'pasajero.b@qa.invalid',name:'Pasajero de prueba B',phone:'099000000'}
+};
+const allowedPassengerEmail=email=>email===STAGE_EMAIL||Object.values(QA_PASSENGERS).some(p=>p.email===email);
+async function qaPassengerLogin(req,env){
+ if(!(await limit(env,'passenger:'+req.headers.get('CF-Connecting-IP'),45,86400)))
+  return reply({error:'Límite QA alcanzado'},429);
+ let persona='';try{persona=String((await req.json()).persona||'')}catch{return reply({error:'Solicitud inválida'},400)}
+ const customer=QA_PASSENGERS[persona];
+ if(!customer)return reply({error:'Solo identidades sintéticas A y B'},400);
+ await env.DB.prepare('INSERT INTO customers(email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING')
+  .bind(customer.email,customer.name,customer.phone).run();
+ const raw=token(),expiresAt=Math.floor(Date.now()/1000)+7200;
+ await env.DB.prepare('INSERT INTO customer_sessions(token_hash,email,expires_at) VALUES(?,?,?)')
+  .bind(await sha(raw),customer.email,expiresAt).run();
+ return reply({sessionToken:raw,expiresAt,profile:customer,qa:true});
+}
+
 const STAGE_ADMIN='00000000-0000-4000-8000-000000000001';
 async function stagePassenger(request,env,path,method,ctx) {
  const actor=await identity(request,env);
@@ -104,14 +124,14 @@ async function stagePassenger(request,env,path,method,ctx) {
  if(path==='/api/requests'&&method==='POST'){
    let data={};
    try{data=await request.clone().json()}catch{return reply({error:'Solicitud de ensayo inválida'},400)}
-   if(data.email!==STAGE_EMAIL||String(data.phone||'')!=='099000000')
+   if(!allowedPassengerEmail(data.email)||String(data.phone||'')!=='099000000')
      return reply({error:'Solo datos sintéticos V35'},403);
    return worker.fetch(request,env,ctx);
  }
  const passenger=path.match(/^\/api\/requests\/(VIA-[A-Z0-9-]+)(?:\/(accept|cancel))?$/);
  if(passenger&&['GET','POST'].includes(method)){
    const row=await env.DB.prepare('SELECT email FROM bookings WHERE id=?').bind(passenger[1]).first();
-   if(row?.email!==STAGE_EMAIL)return reply({error:'Solicitud de ensayo no disponible'},404);
+   if(!allowedPassengerEmail(row?.email))return reply({error:'Solicitud de ensayo no disponible'},404);
    return worker.fetch(request,env,ctx);
  }
  if(path==='/api/v35/cleanup'&&method==='POST'){
@@ -130,7 +150,7 @@ async function stagePassenger(request,env,path,method,ctx) {
  if(staff&&['GET','PATCH','POST'].includes(method)){
    if(!actor)return reply({error:'Sesión QA requerida'},401);
    const row=await env.DB.prepare('SELECT email FROM bookings WHERE id=?').bind(staff[1]).first();
-   if(row?.email!==STAGE_EMAIL)return reply({error:'Solicitud de ensayo no disponible'},404);
+   if(!allowedPassengerEmail(row?.email))return reply({error:'Solicitud de ensayo no disponible'},404);
    return worker.fetch(request,env,ctx);
  }
  return null;
@@ -158,7 +178,14 @@ export default {async fetch(request,env,ctx){
  }
  const stage=await stagePassenger(request,env,path,method,ctx);
  if(stage)return stage;
+ if(path==='/api/qa/passenger-login'&&method==='POST')return qaPassengerLogin(request,env);
  if(path==='/api/qa/session'&&method==='POST')return session(request,env);
+ if(path.startsWith('/api/customer/')&&['GET','POST'].includes(method)){
+  const customer=await customerSession(request,env);
+  if(!customer||!allowedPassengerEmail(customer.email))
+   return reply({error:'Sesión pasajero QA requerida'},401);
+  return worker.fetch(request,env,ctx);
+ }
  // Las solicitudes y el acceso con contraseña NO se confunden con los perfiles
  // sintéticos públicos; el estado pendiente no genera sesión.
  if(path==='/api/qa/driver-applications'&&method==='POST'||
