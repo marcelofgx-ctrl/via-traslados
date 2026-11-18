@@ -78,6 +78,7 @@ def smoke(url):
   if marker not in home:raise AssertionError("Se perdió versión original V29")
  for name,needle in [("conductores.html",b"Solicitar registro"),("avance-v30.html",b"EJEMPLO VISUAL")]:
   raw,_=r.http_get(url+"/"+name)
+  raw=r.sanitize_html(raw)  # Cloudflare puede inyectar analytics en HTML únicamente en dominio final.
   if needle not in raw:raise AssertionError("Página no publicada: "+name)
   if r.digest(raw)!=r.digest((r.ASSETS/name).read_bytes()):
    raise AssertionError("Página no coincide con diseño aprobado en staging "+name)
