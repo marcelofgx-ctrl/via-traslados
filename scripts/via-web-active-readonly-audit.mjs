@@ -28,6 +28,11 @@ for(const path of urls){
    }
    // Se registra solo JS público: no se lee localStorage del usuario ni información privada.
    console.log('VIA_WEB_ACTIVE_JS_CONTEXT '+path+' '+JSON.stringify(occurrences));
+   if(path==='/store.js?v=19'){
+     const keys=['function logout','function customer','function access','function remember','function mine','function get(','function setCustomer'];
+     const excerpts=Object.fromEntries(keys.map(k=>{const at=content.indexOf(k);return [k,at<0?null:content.slice(at,at+720)]}));
+     console.log('VIA_WEB_PUBLIC_SESSION_FUNCTIONS '+JSON.stringify(excerpts));
+   }
  }
 }
 console.log('VIA_WEB_ACTIVE_ASSET_HASHES '+JSON.stringify(assets));
