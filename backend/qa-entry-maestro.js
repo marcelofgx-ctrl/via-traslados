@@ -95,8 +95,8 @@ async function reset(req,env,actor){
 // This supplements QA V34 but NEVER belongs in the production Worker bundle.
 const STAGE_EMAIL='pasajero.v35@qa.invalid';
 const QA_PASSENGERS={
- A:{email:'pasajero.a@qa.invalid',name:'Pasajero de prueba A',phone:'099000000'},
- B:{email:'pasajero.b@qa.invalid',name:'Pasajero de prueba B',phone:'099000000'}
+ A:{email:'pasajero.a@qa.invalid',name:'Ana de prueba',phone:'099000000'},
+ B:{email:'pasajero.b@qa.invalid',name:'Bruno de prueba',phone:'099000000'}
 };
 const allowedPassengerEmail=email=>email===STAGE_EMAIL||Object.values(QA_PASSENGERS).some(p=>p.email===email);
 async function qaPassengerLogin(req,env){
@@ -105,7 +105,7 @@ async function qaPassengerLogin(req,env){
  let persona='';try{persona=String((await req.json()).persona||'')}catch{return reply({error:'Solicitud inválida'},400)}
  const customer=QA_PASSENGERS[persona];
  if(!customer)return reply({error:'Solo identidades sintéticas A y B'},400);
- await env.DB.prepare('INSERT INTO customers(email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING')
+ await env.DB.prepare('INSERT INTO customers(email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,phone=excluded.phone')
   .bind(customer.email,customer.name,customer.phone).run();
  const raw=token(),expiresAt=Math.floor(Date.now()/1000)+7200;
  await env.DB.prepare('INSERT INTO customer_sessions(token_hash,email,expires_at) VALUES(?,?,?)')
