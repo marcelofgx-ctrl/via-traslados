@@ -79,6 +79,70 @@ replaceOne(/global\.ViaStore=\{isDemo,startVerification,verifyCode,create,get/,
  }
  global.ViaStore={isDemo,startVerification,verifyCode,create:guardedCreate,get`,
  'bloqueo de doble toque en la API pública');
+// Seguridad de sesión sobre fuente V19 exacta: no permitir que una consulta A
+// tardía restaure A ni pinte sus reservas al haber ingresado B.
+replaceOne(/async function resume\(\)\{[\s\S]*?\n\}/,
+ [
+ "async function resume(){",
+ " const c=customer();if(!c)return null;",
+ " if(isDemo())return c.profile;",
+ " const token=c.sessionToken;",
+ " try{",
+ "  const live=await request('/api/customer/me',{headers:{Authorization:'Bearer '+token}});",
+ "  if(customer()?.sessionToken!==token)return null;",
+ "  if(!live?.profile)return null;",
+ "  setCustomer({...c,profile:live.profile,passkeys:live.passkeys||0});",
+ "  return live.profile;",
+ " }catch(e){",
+ "  if((e.status===401||e.status===403)&&customer()?.sessionToken===token)",
+ "   localStorage.removeItem(ACCOUNT);",
+ "  return null;",
+ " }",
+ "}"
+ ].join('\n'),
+ 'resume: descartar sesión antigua');
+
+replaceOne(/async function mine\(\)\{[\s\S]*?\n\}/,
+ [
+ "async function mine(){",
+ " if(isDemo())return records();",
+ " const account=customer();",
+ " if(account){",
+ "  try{",
+ "   const rows=await request('/api/customer/bookings',{headers:{Authorization:'Bearer '+account.sessionToken}});",
+ "   return customer()?.sessionToken===account.sessionToken?rows:[];",
+ "  }catch(e){",
+ "   if(e.status===401&&customer()?.sessionToken===account.sessionToken)",
+ "    localStorage.removeItem(ACCOUNT);",
+ "   else if(e.status!==401)throw e;",
+ "   return [];",
+ "  }",
+ " }",
+ " const ids=Object.keys(access());",
+ " const list=await Promise.all(ids.map(async id=>{try{return await get(id)}catch{return null}}));",
+ " return customer()?[]:list.filter(Boolean);",
+ "}"
+ ].join('\n'),
+ 'mine: reservas aisladas por sesión');
+
+replaceOne(/async function logout\(\)\{[\s\S]*?\n\}/,
+ [
+ "async function logout(){",
+ " const c=customer(),token=c?.sessionToken;",
+ " // Limpiar primero la sesión local para poder usar otra identidad sin esperar red.",
+ " localStorage.removeItem(ACCOUNT);",
+ " if(!isDemo())localStorage.removeItem(ACCESS);",
+ " sessionStorage.removeItem(PENDING_SUBMISSION);",
+ " sessionStorage.removeItem('via-demo-phone-v1');",
+ " clearVerified();",
+ " global.dispatchEvent(new Event('via-customer-session'));",
+ " if(token&&!isDemo())try{",
+ "  await request('/api/customer/logout',{method:'POST',headers:{Authorization:'Bearer '+token},body:'{}'});",
+ " }catch{}",
+ "}"
+ ].join('\n'),
+ 'logout: limpiar inmediatamente sin esperar red');
+
 assert(js.includes("'Idempotency-Key':idemKey"),'Idempotency-Key sin conexión');
 assert(js.includes('sessionStorage.removeItem(PENDING_SUBMISSION)'),'Sin limpieza del contexto');
 await mkdir('dist',{recursive:true});
