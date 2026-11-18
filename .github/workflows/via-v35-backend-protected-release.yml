@@ -1,0 +1,149 @@
+name: Vía Traslados V35 — backend producción con respaldo y rollback
+on:
+  push:
+    branches: [via-integracion-despacho-backend-v35-20261117]
+    paths:
+      - ".github/workflows/via-v35-backend-protected-release.yml"
+      - ".ci/VIA_V35_RELEASE_GATE"
+      - "scripts/v35-capture-bookmark.mjs"
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-admin-prod-api-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: contains(github.event.head_commit.message, '[PROD_V35_DEPLOY]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Bloquear ejecución accidental, permisos y referencias ajenas
+        run: |
+          set -euo pipefail
+          test -f .ci/VIA_V35_RELEASE_GATE
+          grep -Fx 'PROD_V35_DEPLOY_APPROVED_AFTER_QA' .ci/VIA_V35_RELEASE_GATE
+          test ! -f backend/qa-entry.js
+          test ! -f backend/qa-entry-v35.js
+          test ! -f backend/qa-driver-onboarding.js
+          grep -q "from './dispatch-ops.js'" backend/worker.js
+          test -f backend/dispatch-ops.js
+          test -f backend/schema.sql
+          echo 'Solo Worker API Vía Traslados; no se modificará la web V29.'
+      - name: Exigir pruebas previas de QA y recuperación completadas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run in 44212252331 44212725208 44212302520 44210914460; do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.conclusion')
+            if [ "$result" != success ]; then echo "La prueba requerida $run no es exitosa"; exit 1; fi
+            echo "Prueba previa $run: success"
+          done
+      - name: Verificar código completo y pruebas antes de producción
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          python3 scripts/v29-dispatch-sql-test.py
+      - name: Identificar D1 vía consulta autorizada y no destructiva
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/cloudflare-d1.mjs
+      - name: Generar configuración exclusiva API, preservar secretos existentes
+        env:
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: |
+          set -euo pipefail
+          node scripts/create-wrangler.mjs
+          grep -Fx 'name = "via-traslados-api"' wrangler.toml
+          grep -Fx 'database_name = "via-traslados-db"' wrangler.toml
+          grep -Fx 'keep_vars = true' wrangler.toml
+          if grep -E 'via-traslados-web-prod|via-traslados-api-qa|via-traslados-qa-db' wrangler.toml; then exit 1; fi
+      - name: Compilar Worker productivo SIN publicar
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config wrangler.toml --dry-run
+      - name: Guardar estado de API previo y comprobar endpoint antiguo
+        run: |
+          set -euo pipefail
+          BASE=https://via-traslados-api.marcelof-gx.workers.dev
+          curl -fsSL --retry 3 "$BASE/api/health" -o /tmp/via-v35-old-health.json
+          node -e "let d=require('/tmp/via-v35-old-health.json');if(!d.ok||!d.otpAvailable)process.exit(1);"
+          before=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/operator/requests/VIA-READONLY-CHECK/price-guide")
+          test "$before" = 404
+          echo 'API anterior y fallback verificados.'
+      - name: Registrar versión actual del Worker para rollback
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deployments status --name via-traslados-api --json > /tmp/via-v35-prev-deployment.json
+          test -s /tmp/via-v35-prev-deployment.json
+          echo 'Versión previa del backend registrada de forma privada.'
+      - name: Confirmar backup D1 Time Travel antes de crear tablas
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/v35-capture-bookmark.mjs
+      - name: Retener punto de recuperación sólo como metadatos privados
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v35-d1-time-travel-bookmark
+          path: ${{ runner.temp }}/via-v35-bookmark.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Ejecutar únicamente migración aditiva D1 exclusiva
+        id: migration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-db --remote --config wrangler.toml --file backend/schema.sql
+          node scripts/v35-readonly-prod-schema.mjs
+      - name: Publicar ÚNICAMENTE Worker de backend via-traslados-api
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config wrangler.toml --keep-vars
+      - name: Comprobar contratos y seguridad productivos SIN crear reservas
+        id: verify
+        run: |
+          set -euo pipefail
+          BASE=https://via-traslados-api.marcelof-gx.workers.dev
+          ok=0
+          for attempt in $(seq 1 18); do
+            health=$(curl -sS --max-time 12 -o /tmp/via-v35-health.json -w '%{http_code}' "$BASE/api/health" || true)
+            guide=$(curl -sS --max-time 12 -o /tmp/via-v35-price.json -w '%{http_code}' "$BASE/api/operator/requests/VIA-READONLY-CHECK/price-guide" || true)
+            if [ "$health" = 200 ] && [ "$guide" = 401 ]; then ok=1; break; fi
+            sleep 3
+          done
+          test "$ok" -eq 1
+          node -e "let d=require('/tmp/via-v35-health.json');if(!d.ok||!d.otpAvailable)process.exit(1);"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/operator/requests")" = 401
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/admin/commercial-drivers")" = 403
+          curl -fsSL "$BASE/api/public/status" -o /tmp/via-v35-public-status.json
+          node -e "let d=require('/tmp/via-v35-public-status.json');if(typeof d.enabled!=='boolean')process.exit(1);"
+          echo 'V35_PROD_API_OK: API real, permisos, guía de precios, estado público y OTP activos.'
+      - name: Revertir únicamente Worker API si el despliegue se completó pero falló su verificación
+        if: failure() && steps.deploy.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4.160.1 rollback --name via-traslados-api --message "Rollback automático por verificación V35" || true
+          echo 'Se intentó revertir SOLO la versión Worker; las tablas aditivas se preservan.'

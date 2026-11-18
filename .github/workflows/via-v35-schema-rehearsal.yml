@@ -1,0 +1,46 @@
+name: Vía V35 — ensayar migración con esquema productivo sin datos
+on:
+  push:
+    branches: [via-integracion-despacho-backend-v35-20261117]
+    paths:
+      - "scripts/v35-rehearse-schema.py"
+      - ".github/workflows/via-v35-schema-rehearsal.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Identificar la D1 exclusiva y generar config SOLO para lectura
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: |
+          set -euo pipefail
+          node scripts/cloudflare-d1.mjs
+      - name: Generar configuración con UUID D1 verificado
+        env:
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: |
+          set -euo pipefail
+          node scripts/create-wrangler.mjs
+          grep -Fx 'database_name = "via-traslados-db"' wrangler.toml
+          grep -Fx 'name = "via-traslados-api"' wrangler.toml
+      - name: Exportar únicamente estructura D1, sin una sola fila de pasajeros
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 d1 export via-traslados-db --remote --config wrangler.toml --no-data --output=/tmp/via-v35-prod-schema-only.sql --skip-confirmation
+          test -s /tmp/via-v35-prod-schema-only.sql
+          python3 scripts/v35-rehearse-schema.py /tmp/via-v35-prod-schema-only.sql backend/schema.sql
+          rm -f /tmp/via-v35-prod-schema-only.sql

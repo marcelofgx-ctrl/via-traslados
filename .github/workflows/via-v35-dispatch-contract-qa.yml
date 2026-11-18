@@ -1,0 +1,42 @@
+name: Vía Traslados V35 — contrato de despacho (solo CI)
+on:
+  push:
+    branches: [via-integracion-despacho-backend-v35-20261117]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "scripts/v29-dispatch-sql-test.py"
+      - ".github/workflows/via-v35-dispatch-contract-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  code-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Validar fuente, estados, permisos, tarifas y autenticación
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/assignment-rules.js
+          node --check backend/dispatch-business.js
+          node --check backend/dispatch-ops.js
+      - name: Probar las migraciones y disparadores de reserva en SQLite aislado
+        run: |
+          set -euo pipefail
+          python3 scripts/v29-dispatch-sql-test.py
+      - name: Confirmar que no se despliegan QA, producción ni D1
+        run: |
+          set -euo pipefail
+          test -f backend/schema.sql
+          test -f backend/worker.js
+          test -f backend/staff.js
+          test -f backend/dispatch-ops.js
+          ! grep -R -q 'PREVIEW_LOCAL_NO_NETWORK' backend
+          echo "Contrato V35 verificado sin credenciales ni operaciones Cloudflare"
