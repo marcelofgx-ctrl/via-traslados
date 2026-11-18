@@ -2,7 +2,7 @@ name: Vía Traslados — publicación productiva incorporación conductores + de
 on:
   push:
     branches: [via-prod-demo-conductores-v35-20261118]
-    paths: [".github/workflows/via-v36-prod-demo-conductores.yml"]
+    paths: [".github/workflows/via-v36-prod-demo-conductores.yml", "scripts/v36_prod_demo_conductores_release.py"]
   workflow_dispatch:
 permissions:
   contents: read
