@@ -2,7 +2,7 @@ name: Vía Traslados — auditoría SOLO LECTURA de limpieza y latencia
 on:
   push:
     branches: [via-v35-reset-audit-perf-20261117]
-    paths: [".github/workflows/via-v35-reset-audit-readonly.yml"]
+    paths: [".github/workflows/via-v35-reset-audit-readonly.yml", "scripts/v35_reset_perf_audit.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
