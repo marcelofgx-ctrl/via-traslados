@@ -1,0 +1,32 @@
+name: Vía Traslados — auditoría SOLO LECTURA de limpieza y latencia
+on:
+  push:
+    branches: [via-v35-reset-audit-perf-20261117]
+    paths: [".github/workflows/via-v35-reset-audit-readonly.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v35-reset-audit-readonly
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Auditar D1 y latencias sin leer registros sensibles
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/v35_reset_perf_audit.mjs
+      - name: Guardar sólo conteos y bookmark de recuperación en artefacto privado
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-reset-readonly-audit-and-bookmark-private
+          path: /tmp/via-reset-audit/*
+          retention-days: 14
+          if-no-files-found: error
