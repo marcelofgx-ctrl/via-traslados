@@ -1,0 +1,83 @@
+name: Vía Traslados V35 — E2E pasajero y conductor aislado
+on:
+  push:
+    branches: [via-v35-circuito-real-qa-20261117]
+    paths:
+      - "backend/qa-entry-v35.js"
+      - "scripts/v35-provision.mjs"
+      - "scripts/v35-passenger-driver-e2e.mjs"
+      - ".github/workflows/via-v35-e2e-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v35-stage-qa
+  cancel-in-progress: false
+jobs:
+  staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Comprobar código sin secretos
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/qa-entry-v35.js
+          node --check scripts/v35-passenger-driver-e2e.mjs
+      - name: Verificar que las API originales siguen accesibles
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 'https://via-traslados-api.marcelof-gx.workers.dev/api/health' -o /tmp/via-prod-before.json
+          curl -fLsS --retry 3 'https://via-traslados-api-qa.marcelof-gx.workers.dev/api/health' -o /tmp/via-v34-before.json
+          node -e "const fs=require('fs');if(!JSON.parse(fs.readFileSync('/tmp/via-prod-before.json')).ok||!JSON.parse(fs.readFileSync('/tmp/via-v34-before.json')).qa)process.exit(1);"
+      - name: Provisionar solamente D1 y Worker V35 STAGING
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/v35-provision.mjs
+          grep -Fx 'name = "via-traslados-api-v35-qa"' wrangler.v35qa.toml
+          grep -Fx 'database_name = "via-traslados-v35-qa-db"' wrangler.v35qa.toml
+          grep -Fx 'main = "backend/qa-entry-v35.js"' wrangler.v35qa.toml
+          grep -Fx 'VIA_QA_MODE = "1"' wrangler.v35qa.toml
+          if grep -Fx 'database_name = "via-traslados-db"' wrangler.v35qa.toml; then exit 1; fi
+          if grep -Fx 'database_name = "via-traslados-qa-db"' wrangler.v35qa.toml; then exit 1; fi
+      - name: Crear únicamente tablas sintéticas en D1 V35
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-v35-qa-db --remote --config wrangler.v35qa.toml --file backend/schema.sql
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-v35-qa-db --remote --config wrangler.v35qa.toml --file backend/schema-qa-v33.sql
+          node scripts/qa-seed.mjs
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-v35-qa-db --remote --config wrangler.v35qa.toml --file qa-seed.sql
+      - name: Desplegar SOLO via-traslados-api-v35-qa y validar
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config wrangler.v35qa.toml
+          for attempt in $(seq 1 18); do
+            code=$(curl -sS -L --max-time 10 -o /tmp/via-v35-health.json -w '%{http_code}' 'https://via-traslados-api-v35-qa.marcelof-gx.workers.dev/api/health' || true)
+            if [ "$code" = "200" ] && node -e "let x=require('/tmp/via-v35-health.json');process.exit(x.ok&&x.qa&&x.production===false&&x.bookings>=5?0:1)"; then break; fi
+            sleep 3
+          done
+          node -e "let x=require('/tmp/via-v35-health.json');if(!x.ok||!x.qa||x.production!==false||x.bookings<5)process.exit(1);"
+      - name: Prueba real E2E con endpoints de pasajeros y conductores, limpieza al finalizar
+        run: node scripts/v35-passenger-driver-e2e.mjs
+      - name: Confirmar nuevamente web y QA V34 sin cambios
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 'https://via-traslados-api.marcelof-gx.workers.dev/api/health' -o /tmp/via-prod-after.json
+          curl -fLsS --retry 3 'https://via-traslados-api-qa.marcelof-gx.workers.dev/api/health' -o /tmp/via-v34-after.json
+          node -e "const fs=require('fs');if(!JSON.parse(fs.readFileSync('/tmp/via-prod-after.json')).ok||!JSON.parse(fs.readFileSync('/tmp/via-v34-after.json')).qa)process.exit(1);"
+          echo 'API producción y QA V34 activas; V35 ejecutada solo en entorno separado.'
