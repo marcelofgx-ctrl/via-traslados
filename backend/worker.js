@@ -6,6 +6,7 @@ import {customerSession,customerRoutes} from './customer-auth.js';
 import {customerPasskeyRoutes} from './customer-passkeys.js';
 import {allowedOriginsFor} from './origins.js';
 import {driverPolicy,visibilityFor,quoteBooking,releaseBooking,guideForBooking} from './dispatch-ops.js';
+import {submissionFromRequest,findExistingSubmission,storeBookingAtomic} from './booking-submission.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
 const OP_FIELDS=FIELDS+',customer_name,phone,email';
@@ -95,7 +96,7 @@ async function transition(env,id,from,to,actor,price){
 export default {async fetch(req,env,ctx){
  const url=new URL(req.url),origin=req.headers.get('Origin');
   const allowed=allowedOriginsFor(env,url.pathname);
- const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization','Vary':'Origin'};
+ const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization,Idempotency-Key','Vary':'Origin'};
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
  if(origin&&!allowed.includes(origin))return reply({error:'Origen no autorizado'},403,cors);
  const send=(data,status=200)=>reply(data,status,cors),err=(error,status=400)=>send({error},status);
@@ -118,14 +119,32 @@ export default {async fetch(req,env,ctx){
    const raw=await req.text();if(raw.length>6000)return err('Solicitud demasiado grande',413);
    const p=JSON.parse(raw);if(p?.website)return err('Solicitud rechazada');
    let booking;try{booking=validateBooking(p)}catch(e){return err(e.message)}
+   let submission;try{submission=await submissionFromRequest(req,booking)}
+   catch(e){return err(e.message,400)}
    const account=await customerSession(req,env);
-    if(account&&account.email!==booking.email)return err('El correo del pasajero no coincide con la cuenta verificada.',403);
-    if(!account&&!await consumeVerifiedSession(req,env,booking.email))
-      return err('Necesitás verificar tu correo antes de solicitar un traslado.',401);
-   await env.DB.prepare("INSERT INTO customers (email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,phone=excluded.phone,updated_at=datetime('now')").bind(booking.email,booking.name,booking.phone).run();
-   const id='VIA-'+crypto.randomUUID().slice(0,12).toUpperCase(),token=random(),tokenHash=await hash(token);
-   await env.DB.prepare('INSERT INTO bookings (id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,booking.name,booking.phone,booking.email,booking.origin,booking.destination,booking.date,booking.time,booking.passengers,booking.bags,booking.notes,tokenHash,'requested').run();
-   await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,null,'requested','passenger').run();
+   if(account&&account.email!==booking.email)
+     return err('El correo del pasajero no coincide con la cuenta verificada.',403);
+   // Una clave aleatoria previamente utilizada permite recuperar un 201 cuya
+   // respuesta se perdió. No se consume por segunda vez el OTP de una sola vez.
+   const previous=await findExistingSubmission(env,submission);
+   if(previous?.error)return err(previous.error,previous.status);
+   if(previous)return send(previous,201);
+   if(!account&&!await consumeVerifiedSession(req,env,booking.email))
+     return err('Necesitás verificar tu correo antes de solicitar un traslado.',401);
+   const id='VIA-'+crypto.randomUUID().slice(0,12).toUpperCase();
+   const token=submission?.token||random(),tokenHash=await hash(token);
+   try{
+     await storeBookingAtomic(env,booking,id,tokenHash,submission);
+   }catch(e){
+     // Un cliente concurrente pudo ganar la misma clave única. Consultar D1
+     // antes de decidir si el envío debe repetirse: nunca duplicar por timeout.
+     if(submission){
+       const replay=await findExistingSubmission(env,submission);
+       if(replay?.error)return err(replay.error,replay.status);
+       if(replay)return send(replay,201);
+     }
+     throw e;
+   }
    scheduleMissingRoutes(env,ctx,[{id,origin:booking.origin,destination:booking.destination,status:'requested'}],1);
    return send({id,access_token:token,status:'requested'},201)
   }
