@@ -1,0 +1,94 @@
+name: Vía Traslados — publicación productiva incorporación conductores + demo V30
+on:
+  push:
+    branches: [via-prod-demo-conductores-v35-20261118]
+    paths: [".github/workflows/via-v36-prod-demo-conductores.yml", "scripts/v36_prod_demo_conductores_release.py"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-traslados-web-prod-review-v29-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0,persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Recuperar SOLO APK V35 ya firmada para comparar hash, nunca regenerar firma
+        uses: actions/download-artifact@v4
+        with:
+          name: VIA_V35_PROD_APK_SIGNED
+          run-id: 44217589953
+          github-token: ${{ github.token }}
+          path: apk-file
+      - name: Bloquear desvíos y comprobar scripts/archivos
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/v36_prod_demo_conductores_release.py
+          python3 -m py_compile scripts/v35_prod_apk_release.py
+          test -s apk-file/via-traslados-conductor-v35.apk
+          grep -Fx '324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3' apk-file/apk-sha256.txt
+          echo '324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3  apk-file/via-traslados-conductor-v35.apk' | sha256sum -c -
+          test -s production-additions/conductores.html
+          test -s production-additions/avance-v30.html
+          grep -F 'EJEMPLO VISUAL' production-additions/avance-v30.html
+          grep -F 'Solicitar registro' production-additions/conductores.html
+          ! grep -E -i 'fetch\(|XMLHttpRequest|localStorage|api/staff/register-phone' production-additions/*.html
+          grep -F 'name = "via-traslados-api"' /dev/null || true
+          echo 'Solo Worker WEB, no API ni D1, nunca instalar APK diferente'
+      - name: Verificar API actual sin tocar pasajeros, con permisos intactos
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health -o /tmp/via-api-pre-demo.json
+          node -e "const d=require('/tmp/via-api-pre-demo.json');if(!d.ok||!d.otpAvailable)process.exit(1)"
+          AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' https://via-traslados-api.marcelof-gx.workers.dev/api/admin/drivers)"
+          if [ "$AUTH_STATUS" != 401 ] && [ "$AUTH_STATUS" != 403 ]; then echo "Acceso no autenticado incorrecto: $AUTH_STATUS"; exit 1; fi
+          echo 'API_REAL_Y_PERMISOS_SIGUEN_PROTEGIDOS'
+      - name: Preparar copia BYTE A BYTE de web actual con sólo dos páginas nuevas y footer
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v36_prod_demo_conductores_release.py prepare
+      - name: Guardar metadatos de rollback, activos históricos y manifest con hashes
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIA_WEB_V36_BEFORE_DEMO_BACKUP_PRIVATE
+          path: |
+            v36-demo-conductores-release/previous-version.txt
+            v36-demo-conductores-release/original-homepage.html
+            v36-demo-conductores-release/original-hashes.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Compilar Worker con assets de producción sin publicar
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v36-demo-conductores-release/wrangler.qa.jsonc --dry-run --keep-vars
+      - name: Publicar ANTES en Worker de staging aislado existente
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config v36-demo-conductores-release/wrangler.qa.jsonc --keep-vars
+          python3 scripts/v36_prod_demo_conductores_release.py verify-stage
+      - name: Publicar en via-traslados-web-prod con reversión automática
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v36_prod_demo_conductores_release.py release
+      - name: "Verificación externa: nuevas páginas y geocodificación V29 intactas"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://viatraslados.com/conductores.html -o /tmp/via-conductores-prod.html
+          curl -fsSL --retry 3 https://viatraslados.com/avance-v30.html -o /tmp/via-avances-prod.html
+          grep -F 'Solicitar registro' /tmp/via-conductores-prod.html
+          grep -F 'EJEMPLO VISUAL' /tmp/via-avances-prod.html
+          curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health -o /tmp/via-api-post-demo.json
+          node -e "const d=require('/tmp/via-api-post-demo.json');if(!d.ok||!d.otpAvailable)process.exit(1)"
+          echo 'VIA_ALVARO_DEMO_PROD_OK'
