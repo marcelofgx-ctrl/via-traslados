@@ -10,9 +10,11 @@ const PERSONAS={
  partner:{id:'00000000-0000-4000-8000-000000000002',role:'driver',name:'Conductor socio QA'},
  contractor:{id:'00000000-0000-4000-8000-000000000003',role:'driver',name:'Conductor contratado QA'}
 };
+const QA_WEB_ORIGIN='https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev';
 const reply=(payload,status=200)=>new Response(JSON.stringify(payload),{
  status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
-  'X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex, nofollow'}
+  'X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex, nofollow',
+  'Access-Control-Allow-Origin':QA_WEB_ORIGIN,'Vary':'Origin'}
 });
 const sha=async value=>Array.from(new Uint8Array(await crypto.subtle.digest(
  'SHA-256',new TextEncoder().encode(value)))).map(b=>b.toString(16).padStart(2,'0')).join('');
