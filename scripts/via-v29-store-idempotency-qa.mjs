@@ -63,7 +63,7 @@ replaceOne(/(?:async\s+)?function\s+logout\s*\([^)]*\)\s*\{/,
  m=>m+" sessionStorage.removeItem(PENDING_SUBMISSION);",
  'limpieza de envío pendiente al cerrar sesión');
 
-replaceOne(/global\\.ViaStore=\\{isDemo,startVerification,verifyCode,create,get,/,
+replaceOne(/global\.ViaStore=\{isDemo,startVerification,verifyCode,create,get/,
  `let activeCreate=null;
  function guardedCreate(payload){
    const serialized=JSON.stringify(payload);
