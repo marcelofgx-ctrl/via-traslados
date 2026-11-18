@@ -1,0 +1,43 @@
+<!doctype html><html lang="es-UY"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#092b27"><title>Vista de oferta V30 — Vía Traslados</title>
+<meta name="description" content="Vista conceptual de las mejoras de Vía Traslados. Ejemplo visual sin reservas reales.">
+<style>
+:root{--forest:#072a25;--teal:#078773;--sage:#c2ddcb;--cream:#faf2df;--gold:#d2ad72;font:15px system-ui,-apple-system,"Segoe UI",sans-serif;color:#f8fcf7;background:#092b27}*{box-sizing:border-box}
+html,body{min-height:100%;margin:0}body{background:radial-gradient(ellipse at 85% -9%,#227267 0%,#0a332b 37%,#071f1c 100%);overflow-x:hidden}
+a{color:inherit}button{font:inherit;cursor:pointer}button:focus-visible,a:focus-visible{outline:3px solid #ffdb8a;outline-offset:3px}
+.wrap{width:min(100%,700px);margin:auto;padding:0 16px calc(80px + env(safe-area-inset-bottom))}
+nav{display:flex;align-items:center;justify-content:space-between;padding:13px 0 11px;gap:8px}
+.logo{display:flex;align-items:center;gap:9px;font-size:22px;font-weight:790;letter-spacing:-.7px}.logo b{display:grid;place-items:center;width:39px;height:39px;background:linear-gradient(135deg,#0b9680,#034c44);border-radius:12px;color:white;font-size:24px}
+nav a{font-size:12px;color:#dcf5e8;text-decoration:none;border:1px solid #5b9c89;border-radius:999px;padding:8px 10px}
+.eyebrow{font-size:10px;letter-spacing:1.1px;font-weight:800;color:#c2dfce}.intro{padding:12px 0 12px;border-bottom:1px solid #517467;margin-bottom:13px;display:flex;align-items:center;gap:8px;justify-content:space-between}
+h1{font-size:clamp(23px,6vw,33px);line-height:1.1;letter-spacing:-.7px;margin:5px 0 7px}
+.small{color:#bfd7c9;font-size:12px;line-height:1.4}.pill{border-radius:999px;background:#d5efde;color:#155f4a;padding:7px 9px;font-size:10px;font-weight:800;white-space:nowrap}
+.price{border-radius:20px;color:#16342a;background:linear-gradient(130deg,#fff9ec 0%,#f8e8c8 60%,#cee3d6 100%);padding:18px 18px 16px;position:relative;overflow:hidden;box-shadow:0 14px 40px #0004}
+.price:after{content:"";position:absolute;width:150px;height:150px;border-radius:50%;background:#98c6b336;right:-38px;top:18px;pointer-events:none}
+.price .eyebrow{color:#346353}.price-row{display:flex;justify-content:space-between;align-items:end;gap:4px}
+.amount{font-weight:850;font-size:clamp(41px,10vw,58px);line-height:1.15;letter-spacing:-1.8px;margin:8px 0;color:#003c31}
+.amount small{font-size:13px;letter-spacing:0;font-weight:750;color:#386351}
+.price-sub{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #9ebca9;padding-top:10px;font-size:12px;font-weight:620;color:#3d5e4d}
+.main{display:grid;gap:12px;margin-top:12px}.trip{background:linear-gradient(125deg,#0b4b3e,#113b31 70%);border:1px solid #568b75;border-radius:18px;padding:14px;box-shadow:inset 0 1px #ffffff18}
+.metrics{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:13px}.metric{padding:5px 9px;border:1px solid #598b77;border-radius:999px;background:#2661495b;font-size:12px;font-weight:680}
+.point{display:flex;gap:11px;align-items:start}.letter{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;font-weight:850;flex:none;background:#10ac91;color:white}.letter.b{background:#f4e7c9;color:#214237}
+.point label{display:block;font-size:10px;color:#a3d0ba;font-weight:820;letter-spacing:.5px}.point strong{font-size:13px;line-height:1.3;display:block}.join{height:12px;border-left:2px dashed #78b79f;margin:2px 0 2px 13px}.trip-foot{border-top:1px solid #5f917a;margin-top:11px;padding-top:11px;display:flex;justify-content:space-between;gap:6px;align-items:center;color:#c8ddd0;font-size:11px}.trip-foot a{color:#b7f6d7;text-underline-offset:3px}
+.driver{border:1px solid #6b8a77;border-radius:15px;background:#122f29;padding:11px 12px;display:flex;align-items:center;gap:10px}.avatar{width:35px;height:35px;flex:none;background:#2b8066;border-radius:11px;display:grid;place-items:center;font-weight:850}.driver-main{flex:1;min-width:0}.driver-main strong{display:block;font-size:13px}.driver-main small{color:#accabc;font-size:11px}.vehicle{font-size:10px;color:#c5d9ce;text-align:right}
+.note{font-size:12px;color:#bccebf;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:2px}.note a{font-weight:740;color:#c5f5de;white-space:nowrap}
+footer{position:fixed;bottom:0;left:0;right:0;background:#082922ec;border-top:1px solid #517f68;padding:9px max(16px,calc((100vw - 666px)/2)) calc(9px + env(safe-area-inset-bottom));display:flex;gap:9px;z-index:2}
+footer a,footer button{min-height:47px;border-radius:11px;text-decoration:none;font-weight:780;display:flex;align-items:center;justify-content:center}
+.back{flex:1;border:1px solid #abc7b8;color:#edfff4;background:transparent}.cta{flex:2.1;background:#008b75;border:1px solid #68c6aa;color:white}
+.mock{font-size:10px;color:#264b3e;padding:3px 8px;border-radius:6px;background:#fff7e6;border:1px solid #c4b191;font-weight:760;display:inline-block}
+@media(max-height:710px){nav{padding-top:8px;padding-bottom:6px}.intro{padding:6px 0 8px;margin-bottom:9px}h1{font-size:23px}.price{padding:12px 15px}.amount{font-size:39px;margin:4px 0}.main{gap:8px;margin-top:8px}.trip{padding:10px}.metrics{margin-bottom:8px}.driver{padding:8px}}
+</style></head><body>
+<div class="wrap"><nav><div class="logo"><b>V</b>vía traslados</div><a href="/">← Producción</a></nav>
+<div class="intro"><div><div class="eyebrow">EVOLUCIÓN DE LA EXPERIENCIA · V30</div><h1>Tenés una oferta</h1><div class="small">Servicio privado programado · Diseño en desarrollo</div></div><span class="pill">Por aceptar</span></div>
+<section class="price" aria-label="Propuesta económica de ejemplo"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="eyebrow">TU OFERTA DE TRASLADO</div><span class="mock">EJEMPLO VISUAL</span></div><div class="price-row"><div class="amount">$ 850 <small>UYU</small></div><div aria-hidden="true" style="font-size:34px;color:#2d7660">↗</div></div><div class="price-sub"><span>◉ Servicio privado</span><span>1 pasajero · 1 valija</span></div></section>
+<main class="main">
+<section class="trip" aria-label="Trayecto de ejemplo"><div class="metrics"><span class="metric">⌁ 2,9 km</span><span class="metric">◷ 6 min</span><span class="metric">◷ Horario programado</span></div><div class="point"><span class="letter">A</span><div><label>ORIGEN</label><strong>Zona de Shangrilá, Canelones</strong></div></div><div class="join"></div><div class="point"><span class="letter b">B</span><div><label>DESTINO</label><strong>Aeropuerto Internacional de Carrasco, Canelones</strong></div></div>
+<div class="trip-foot"><span>Resumen compacto del recorrido</span><a href="/" title="La ruta real se consulta en la web de reservas">Ver web real ↗</a></div></section>
+<div class="driver"><span class="avatar">CE</span><div class="driver-main"><strong>Conductor de ejemplo</strong><small>Proponente del traslado</small></div><span class="vehicle">Vehículo<br>por verificar</span></div>
+<div class="note"><span>Solo muestra la evolución visual.</span><a href="/conductores.html">Sumar conductor ↗</a></div>
+</main></div>
+<footer><a class="back" href="/">Volver</a><button class="cta" type="button" onclick="document.getElementById('notice').hidden=false">Aceptar oferta →</button></footer>
+<div id="notice" hidden style="position:fixed;inset:0;background:#0009;z-index:4;display:grid;place-items:center;padding:22px"><div style="max-width:380px;background:#f8f3e6;color:#194638;border-radius:18px;padding:24px;box-shadow:0 20px 45px #0008"><h2 style="margin:0 0 10px">Vista de demostración</h2><p style="line-height:1.5">Este diseño está en evolución y utiliza datos ficticios. Para aceptar una cotización verdadera, usá tu reserva en la web principal.</p><button style="background:#077e6c;color:white;border:0;border-radius:11px;padding:12px 15px;width:100%" onclick="document.getElementById('notice').hidden=true">Entendido</button></div></div>
+</body></html>
