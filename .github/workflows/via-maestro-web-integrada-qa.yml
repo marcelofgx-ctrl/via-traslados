@@ -93,6 +93,12 @@ jobs:
             sleep 4
           done
           test "$ok" -eq 1
+      - name: Verificar descarga APK de MAESTRO QA byte por byte desde URL pública
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 'https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev/descargas/via-traslados-conductor-maestro-qa-v36.apk' -o /tmp/via-maestro-qa-downloaded.apk
+          cmp /tmp/via-maestro-qa-downloaded.apk qa-apk-file/via-traslados-conductor-maestro-qa-v36.apk
+          echo 'MAESTRO_APK_QA_PUBLIC_DOWNLOAD_VERIFIED'
       - name: Probar que producción y QA anterior no fueron modificadas
         run: |
           set -euo pipefail
