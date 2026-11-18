@@ -56,6 +56,9 @@ public final class MainActivity extends Activity {
     private static final int ORANGE = Color.rgb(211, 110, 43);
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
+    // Toda respuesta de red pertenece a la generación de identidad que la inició.
+    // Volatile permite descartar tareas antiguas incluso antes de enviarlas.
+    private volatile long sessionGeneration = 0;
     private LinearLayout root;
     private static final int QA_IMAGE_CAMERA=9303;
     private static final int QA_IMAGE_GALLERY=9304;
@@ -144,6 +147,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        sessionGeneration++;
         operatorKey = null;
         staffToken = null;
         staffRefreshToken = null;
@@ -228,6 +232,7 @@ public final class MainActivity extends Activity {
                 }
                 try{
                     JSONObject json=new JSONObject(result),user=json.getJSONObject("user");
+                    replaceAuthenticatedIdentity();
                     staffToken=json.getString("token");
                     staffRole="driver";
                     staffName=user.optString("name","Conductor QA");
@@ -473,6 +478,8 @@ public final class MainActivity extends Activity {
 
     private void startQaSession(String persona){
         if(!BuildConfig.VIA_ONLINE_QA)return;
+        sessionGeneration++;
+        clearPrivateSessionUi();
         staffToken=null;
         staffRefreshToken=null;
         operatorKey=null;
@@ -508,6 +515,7 @@ public final class MainActivity extends Activity {
             try{
                 JSONObject response=new JSONObject(result);
                 JSONObject user=response.getJSONObject("user");
+                replaceAuthenticatedIdentity();
                 staffToken=response.getString("token");
                 staffRole=user.getString("role");
                 staffName=user.getString("name");
@@ -872,6 +880,7 @@ public final class MainActivity extends Activity {
                 try {
                     JSONObject parsed = new JSONObject(response);
                     JSONObject user = parsed.getJSONObject("user");
+                    replaceAuthenticatedIdentity();
                     operatorKey = null;
                     staffToken = parsed.getString("token");
                     staffRefreshToken = parsed.getString("refreshToken");
@@ -919,6 +928,7 @@ public final class MainActivity extends Activity {
                     message("Ingresá la clave maestra.");
                     return;
                 }
+                replaceAuthenticatedIdentity();
                 operatorKey = entered;
                 staffToken = null;
                 staffRefreshToken = null;
@@ -931,7 +941,41 @@ public final class MainActivity extends Activity {
             }).show();
     }
 
+    private void clearPrivateSessionUi() {
+        bookings = new JSONArray();
+        lastPayload = "";
+        loading = false;
+        approvedDrivers = new JSONArray();
+        managedDrivers = new JSONArray();
+        managedAdmins = new JSONArray();
+        adminLoaded = false;
+        canManageRoles = false;
+        routeResults.clear();
+        routeStarted.clear();
+        routeFailures.clear();
+        routeLabels.clear();
+        routeSpinners.clear();
+        routeCredits.clear();
+        routeCards.clear();
+        routeCardBookings.clear();
+        routeProviderMissing = false;
+        routeLastFailureAt = 0;
+        qaPendingCount = 0;
+        if (acceptanceDialog != null) {
+            acceptanceDialog.dismiss();
+            acceptanceDialog = null;
+        }
+        acceptanceDialogId = "";
+    }
+
+    private void replaceAuthenticatedIdentity() {
+        sessionGeneration++;
+        clearPrivateSessionUi();
+    }
+
     private void loginScreen() {
+        sessionGeneration++;
+        clearPrivateSessionUi();
         authFlow = false;
         root.removeAllViews();
         operatorKey = null;
@@ -940,15 +984,6 @@ public final class MainActivity extends Activity {
         staffRole = "driver";
         staffName = "";
         staffUserId = "";
-        routeResults.clear();
-        routeStarted.clear();
-        routeFailures.clear();
-        routeCards.clear();
-        routeCardBookings.clear();
-        routeProviderMissing=false;
-        routeLastFailureAt=0;
-        canManageRoles = false;
-        managedAdmins = new JSONArray();
         root.setBackgroundColor(LIGHT);
 
         ScrollView scroll = new ScrollView(this);
@@ -1086,9 +1121,14 @@ public final class MainActivity extends Activity {
 
     private interface Done { void call(int status, String body, String error); }
     private void api(String method, String path, JSONObject payload, Done done) {
+        final long requestGeneration = sessionGeneration;
+        final String requestToken = staffToken;
+        final String requestOperatorKey = operatorKey;
+        // El cierre de sesión debe salir aun si el contexto UI ya cambió.
+        final boolean isLogout = "/api/staff/logout-device".equals(path);
         if (BuildConfig.VIA_PREVIEW) {
             handler.post(() -> {
-                if (isFinishing()) return;
+                if (isFinishing() || requestGeneration != sessionGeneration) return;
                 ViaPreviewData.Reply reply = ViaPreviewData.request(method,path,payload);
                 String error = "";
                 if (reply.status >= 400) {
@@ -1099,9 +1139,11 @@ public final class MainActivity extends Activity {
             });
             return;
         }
-        final String key = operatorKey;
-        final String token = staffToken;
+        final String key = requestOperatorKey;
+        final String token = requestToken;
         executor.execute(() -> {
+            // No ejecutar una mutación todavía encolada de una identidad antigua.
+            if (!isLogout && requestGeneration != sessionGeneration) return;
             int status = 0;
             String result = "";
             String error = "";
@@ -1140,7 +1182,12 @@ public final class MainActivity extends Activity {
             final int code = status;
             final String body = result;
             final String err = error;
-            handler.post(() -> { if (!isFinishing()) done.call(code, body, err); });
+            handler.post(() -> {
+                if (isFinishing() || requestGeneration != sessionGeneration) return;
+                if (!java.util.Objects.equals(requestToken, staffToken) ||
+                    !java.util.Objects.equals(requestOperatorKey, operatorKey)) return;
+                done.call(code, body, err);
+            });
         });
     }
 
@@ -2495,9 +2542,21 @@ public final class MainActivity extends Activity {
                                 fetchBookings(true);
                             }else{
                                 submit.setEnabled(true);
-                                message(error.isEmpty()?
-                                    "No se pudo cotizar. Puede haber sido tomado por otro conductor.":
-                                    error);
+                                if(status==409 && error!=null &&
+                                    error.toLowerCase(java.util.Locale.ROOT).contains("otro viaje")){
+                                    new AlertDialog.Builder(this)
+                                        .setTitle("Conflicto de agenda")
+                                        .setMessage("Ya tenés otro traslado asignado en ese horario. Elegí otro conductor o revisá la programación.")
+                                        .setNegativeButton("Volver",null)
+                                        .setPositiveButton("Actualizar",(d,w)->{
+                                            panel.dismiss();
+                                            fetchBookings(true);
+                                        }).show();
+                                }else{
+                                    message(error.isEmpty()?
+                                        "No se pudo cotizar. Puede haber sido tomado por otro conductor.":
+                                        error);
+                                }
                                 fetchBookings(false);
                             }
                         });
@@ -2577,10 +2636,15 @@ public final class MainActivity extends Activity {
                         try{
                             JSONObject response=new JSONObject(result);
                             JSONObject user=response.getJSONObject("user");
+                            replaceAuthenticatedIdentity();
                             staffToken=response.getString("token");
                             staffRefreshToken=response.getString("refreshToken");
                             operatorKey=null;
                             staffRole=user.getString("role");
+                            staffUserId=user.optString("id","");
+                            JSONObject capabilities=user.optJSONObject("capabilities");
+                            canManageRoles="admin".equals(staffRole)&&capabilities!=null&&
+                                capabilities.optBoolean("manageTeam",false);
                             staffName=user.optString("name","");
                             tab="solicitudes";
                             adminLoaded=false;
@@ -2614,7 +2678,9 @@ public final class MainActivity extends Activity {
     }
 
     private void biometricLogin(){
+        final long requestedGeneration=sessionGeneration;
         BiometricVault.unlock(this,(refresh,error)->{
+            if(requestedGeneration!=sessionGeneration)return;
             if(refresh==null){if(error!=null)message(error);return;}
             JSONObject payload=new JSONObject();
             try{payload.put("refreshToken",refresh);}catch(Exception ignored){}
@@ -2624,6 +2690,7 @@ public final class MainActivity extends Activity {
                     try{
                         JSONObject data=new JSONObject(body);
                         JSONObject user=data.getJSONObject("user");
+                        replaceAuthenticatedIdentity();
                         staffToken=data.getString("token");
                         staffRefreshToken=refresh;
                         operatorKey=null;
