@@ -46,7 +46,8 @@ jobs:
           set -euo pipefail
           curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health -o /tmp/via-api-pre-demo.json
           node -e "const d=require('/tmp/via-api-pre-demo.json');if(!d.ok||!d.otpAvailable)process.exit(1)"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' https://via-traslados-api.marcelof-gx.workers.dev/api/admin/drivers)" = 401
+          AUTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' https://via-traslados-api.marcelof-gx.workers.dev/api/admin/drivers)"
+          if [ "$AUTH_STATUS" != 401 ] && [ "$AUTH_STATUS" != 403 ]; then echo "Acceso no autenticado incorrecto: $AUTH_STATUS"; exit 1; fi
           echo 'API_REAL_Y_PERMISOS_SIGUEN_PROTEGIDOS'
       - name: Preparar copia BYTE A BYTE de web actual con sólo dos páginas nuevas y footer
         env:
