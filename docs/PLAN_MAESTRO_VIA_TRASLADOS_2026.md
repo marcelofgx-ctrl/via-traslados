@@ -33,10 +33,12 @@ No inventar notificaciones, ubicaciones GPS en vivo, fotos de vehículos, verifi
 9. Toda modificación a producción requiere respaldo, verificación funcional, rollback documentado y autorización expresa del usuario.
 10. No afirmar que QA o producción pasaron las pruebas antes de disponer de resultados verificables.
 
-## 3. Web pasajero — primera entrega: Ofertas premium compactas (V30 Web)
+## 3. Web pasajero — primera entrega: mejorar SOLO «Oferta recibida» (V30 Web)
+
+**Decisión validada el 18/11:** la vista V29 de reserva **confirmada** se conserva: ya es clara, premium y funcional. V30 no reemplaza el seguimiento general, no altera la confirmación verde ni las pantallas `accepted` / `confirmed`. El nuevo diseño compacto se aplica exclusivamente al estado `quoted` de la vista de pasajeros. Otras mejoras de densidad se discutirán aparte.
 
 ### Objetivo
-Que el pasajero entienda en **una sola pantalla principal** el recorrido, la fecha y hora, el importe, quién lo trasladará (si está registrado), y cómo aceptar la oferta. Inspiración estructural: tarjetas compactas y controles inferiores de referencia aportada por el usuario. **Diseño original** de Vía Traslados, sin copiar identidad de terceros.
+Que el pasajero, **cuando exista una oferta recibida (`quoted`)**, entienda en una sola pantalla principal el recorrido, la fecha/hora, el importe, quién propone el traslado (si esa información fue autorizada) y cómo aceptar esa oferta. La página confirmada (`confirmed`) no debe cambiar. Inspiración estructural: tarjetas compactas y controles inferiores de referencia aportada por el usuario. **Diseño original** de Vía Traslados, sin copiar identidad de terceros.
 
 ### Jerarquía de pantalla (móvil)
 1. Encabezado compacto: `Oferta recibida`, fecha/hora y referencia de reserva abreviada.
@@ -54,6 +56,8 @@ Que el pasajero entienda en **una sola pantalla principal** el recorrido, la fec
 - Contraste legible, controles con accesibilidad, botones bloqueados mientras se procesa una operación; no bloquear navegación al volver de un diálogo.
 - Al aceptar: loading inmediato, envío del endpoint real existente, bloqueo de repetición, confirmación **solo** tras respuesta de servidor. Respuesta 409/401/red debe dar estado comprensible y opción de reintento.
 - Se debe conservar la selección de direcciones exactas, el kilometraje, el tiempo, la verificación de cuenta y acceso por PIN/passkey.
+
+**Guarda de alcance:** probar igualdad visual y funcional de la pantalla confirmada antes/después de V30; los cambios de estilo deben quedar bajo un selector `data-booking-status="quoted"` o equivalente. Ningún cambio global de `status-card` o confirmación.
 
 ### Criterios de aceptación
 - Ver un trayecto completo y un importe sin desplazamiento en 360×740, excepto si contenidos excepcionalmente largos o accesibilidad requieren scroll.
