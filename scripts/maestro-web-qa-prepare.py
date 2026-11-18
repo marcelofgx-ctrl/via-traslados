@@ -244,11 +244,11 @@ def prepare():
             raise AssertionError("Falta artefacto seguro de Mis reservas: "+str(candidate))
     (ASSETS/"app.js").write_bytes(mine_app.read_bytes())
     mine_page=mine_html.read_text(encoding="utf-8")
-    if mine_page.count("</head>")!=1 or mine_page.count("<h2>Crear cuenta nueva</h2>")!=1:
+    if mine_page.count("</head>")!=1 or mine_page.count("<h2>Crear tu cuenta</h2>")!=1:
         raise AssertionError("El formulario nuevo no coincide con el diseño QA esperado")
     mine_page=mine_page.replace("</head>",'<script>window.VIA_QA_SYNTHETIC_OTP=true;</script></head>',1)
-    mine_page=mine_page.replace("<h2>Crear cuenta nueva</h2>",
-     '<h2>Crear cuenta nueva</h2><p id="mine-qa-signup-instructions">Solo en QA: usá un nombre y celular ficticios, un correo terminado en @qa.invalid y el código de prueba 123456. No se envían correos.</p>',1)
+    mine_page=mine_page.replace("<h2>Crear tu cuenta</h2>",
+     '<h2>Crear tu cuenta</h2><p id="mine-qa-signup-instructions">Solo en QA: usá un nombre y celular ficticios, un correo terminado en @qa.invalid y el código de prueba 123456. No se envían correos.</p>',1)
     (ASSETS/"mis-reservas.html").write_text(mine_page,encoding="utf-8")
     (ASSETS/"mine-identity-qa.css").write_bytes(mine_css.read_bytes())
     (ASSETS/"config.js").write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:"+json.dumps(QA_API)+",turnstileSiteKey:''});\n",encoding="utf-8")
