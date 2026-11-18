@@ -2,7 +2,7 @@ name: INCIDENTE producción OTP y distancia — diagnóstico sin envíos
 on:
   push:
     branches: [incident-otp-distance-readonly-rollback-20261118]
-    paths: [".github/workflows/via-incident-otp-distance-readonly.yml"]
+    paths: [".github/workflows/via-incident-otp-distance-readonly.yml", "scripts/incident-otp-distance-diagnose.mjs"]
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
