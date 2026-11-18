@@ -21,6 +21,10 @@ const make=()=>{
       assert.match(key,/^[a-f0-9]{64}$/);
       requests.push({key,body:init.body});
       if(!server.has(key))server.set(key,{id:'VIA-TEST-'+server.size,access_token:'a'.repeat(64),status:'requested'});
+      if(context.holdNext){
+        context.holdNext=false;
+        await new Promise(resolve=>{context.release=resolve});
+      }
       if(context.dropOnce){context.dropOnce=false;throw Error('respuesta perdida');}
       return new Response(JSON.stringify(server.get(key)),{status:201,headers:{'Content-Type':'application/json'}});
     },dropOnce:false};
@@ -60,4 +64,19 @@ test('un cambio de identidad no reutiliza la clave pendiente de otra persona',as
  const b=await x.window.ViaStore.create(tripB);
  assert.match(b.id,/VIA-TEST-/);
  assert.notEqual(x.requests.at(-1).key,oldKey);
+});
+
+test('respuesta tardía del pasajero A no se guarda al entrar B durante la operación',async()=>{
+ const x=make();x.context.holdNext=true;
+ const sending=x.window.ViaStore.create(x.trip);
+ for(let attempts=0;attempts<100&&!x.context.release;attempts++)
+   await new Promise(resolve=>setTimeout(resolve,1));
+ assert.equal(typeof x.context.release,'function','La petición debe quedar retenida');
+ x.localStorage.setItem('via-customer-session-v1',JSON.stringify({sessionToken:'c'.repeat(64),
+   expiresAt:Math.floor(Date.now()/1000)+3600,profile:{email:'b@example.com',name:'B',phone:x.trip.phone}}));
+ x.context.release();
+ await assert.rejects(()=>sending,/identidad cambió/);
+ assert.equal(x.server.size,1,'El servidor pudo crear la reserva de A');
+ assert.equal(x.localStorage.getItem('via-traslados-solo-demo-access-v3'),null,
+   'La referencia de A no debe guardarse para B');
 });
