@@ -13,7 +13,7 @@ class Storage {
 }
 const make=()=>{
   const localStorage=new Storage(),sessionStorage=new Storage(),server=new Map(),requests=[];
-  const window={ViaConfig:{apiUrl:'https://api.example',demo:false},dispatchEvent(){}};
+  const window={VIA_CONFIG:{apiUrl:'https://api.example',demo:false},dispatchEvent(){}};
   const context={window,localStorage,sessionStorage,crypto:webcrypto,TextEncoder,Uint8Array,
     Date,Event:class{},console,Response,fetch:async(url,init)=>{
       assert.equal(url,'https://api.example/api/requests');
