@@ -15,7 +15,7 @@ La vista `app.js?v=29` además esperaba a `S.logout()` (con petición remota) an
 - JS `initMine.draw()`: se queda vacío al no haber sesión, limpia nombre/lista y las respuestas de reserva se comprueban con la identidad/época actual antes de mostrarse.
 - Evento de logout: limpiar celular y OTP de la pantalla, mostrar opciones y mensaje inmediatamente, sin esperar a que finalice la revocación remota.
 - `scripts/via-v29-store-idempotency-qa.mjs`: `resume` y `mine` descartan respuestas iniciadas con otra sesión, y `logout` elimina almacenamiento local antes de revocar token servidor.
-- Opciones visibles y compactas sin sesión: **«Ya tengo cuenta»** y **«Soy nuevo · Registrarme»**. La primera enfoca el celular; la segunda lleva al flujo actualmente existente de primera solicitud en `index.html`. **No es todavía alta independiente sin realizar una solicitud**.
+- Opciones visibles y compactas sin sesión: **«Ya tengo cuenta»** y **«Soy nuevo · Registrarme»**. La primera permite ingresar con celular existente; la segunda abre en la misma pantalla un **registro independiente**, con nombre, celular, email y OTP verificado, sin exigir solicitud de traslado. Aprovecha en producción el backend existente `POST /api/auth/start`, `POST /api/auth/verify` y `POST /api/customer/session` (no alterado).
 - Todos los cambios se generan solo en el Worker QA `via-traslados-maestro-web-qa`; los demás recursos de producción y la V35 no cambian.
 
 ## Evidencia automática
@@ -30,4 +30,11 @@ La vista `app.js?v=29` además esperaba a `S.logout()` (con petición remota) an
 
 Para producción, crear **parche mínimo sin el resto de las novedades QA** (especialmente NO trasladar `Idempotency-Key`/backend sin su migración). Partir de bytes y versión activos, conservar **todos** los assets, el Worker geográfico y la APK firmada V35, probar el paquete en Worker staging, registrar versión previa, habilitar rollback, comprobar SHA, sesiones reales y OTP en una cuenta autorizada antes del despliegue.
 
-Para alta nueva autónoma (sin reserva), hace falta una pantalla y verificación de correo/celular independiente; el backend `/api/customer/session` ya ofrece la creación con correo verificado, pero no se agrega por este parche visual.
+El alta nueva autónoma ya está preparada en QA mediante el backend existente. La prueba utiliza OTP **sintético** restringido a cuentas `@qa.invalid` con código `123456`; no se envía correo real. Falta confirmar entrega OTP real, Turnstile y credenciales del proveedor en una prueba controlada antes de publicarla en producción.
+
+## Registro autónomo de QA — evidencia posterior
+- La pantalla ahora tiene inscripción nueva sin viaje: nombre, celular, correo, solicitud de OTP y confirmación en `Mis reservas`.
+- La API MAESTRO QA habilita exclusivamente correos falsos `@qa.invalid` y código de ensayo `123456`, protegiendo de envíos reales y verificando el contrato de sesión de la app. Esta excepción **no se incorpora al Worker productivo**.
+- Ensayo HTTP real de backend y privacidad A/B: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44421672785
+- Ensayo Chromium móvil 320/360/390/412 + **creación autónoma de nueva cuenta con OTP QA sin reserva** + cambio A/B + respuesta antigua descartada: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44421783650
+- Publicación únicamente web QA y auditoría de producción intacta: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44421730011
