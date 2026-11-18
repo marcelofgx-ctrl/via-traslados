@@ -39,7 +39,19 @@ if(process.env.VIA_PROBE_REAL_ROUTE==='1'){
  tests.push(await probe('route-actual-montevideo-airport',api+'/api/public/route-preview',{method:'POST',headers,
  body:JSON.stringify({origin:'Montevideo Shopping, Montevideo, Uruguay',
  destination:'Aeropuerto Internacional de Carrasco, Canelones, Uruguay'})}));
+ tests.push(await probe('route-shangrila-airport',api+'/api/public/route-preview',{method:'POST',headers,
+ body:JSON.stringify({origin:'Roque Sáenz Peña 1711, Shangrilá, Canelones',
+ destination:'Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones'})}));
 }
+// Inspeccionar fuente JS activa sin ejecutar ni editar el frontend.
+const jsResponse=await fetch(origin+'/app.js?v=29',{signal:AbortSignal.timeout(22000)});
+const jsBody=await jsResponse.text();
+const needles=['route-preview','distanceKm','durationMinutes','auth/start','Turnstile','captcha'];
+console.log('INCIDENT_WEB_JS'+JSON.stringify({
+ status:jsResponse.status,bytes:jsBody.length,
+ features:Object.fromEntries(needles.map(k=>[k,jsBody.includes(k)])),
+ reference:jsBody.slice(0,70)
+}));
 const account=process.env.CLOUDFLARE_ACCOUNT_ID||'';
 const token=process.env.CLOUDFLARE_API_TOKEN||'';
 if(account&&token){
