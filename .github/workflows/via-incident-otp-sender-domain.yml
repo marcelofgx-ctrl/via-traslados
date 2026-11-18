@@ -1,0 +1,28 @@
+name: INCIDENTE OTP — tipo de remitente configurado (sin secretos)
+on:
+  push:
+    branches: [incident-otp-distance-readonly-rollback-20261118]
+    paths: [".github/workflows/via-incident-otp-sender-domain.yml"]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Comprobar si el remitente es sandbox Resend o dominio propio
+        env:
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: |
+          node - <<'NODE'
+          const from=process.env.VIA_RESEND_FROM||'';
+          const m=from.match(/<[^<>@ ]+@([^<>@ ]+)>/);
+          const domain=(m?.[1]||'').toLowerCase();
+          console.log('OTP_SENDER_CONFIGURATION',JSON.stringify({
+            configured:Boolean(from),
+            customDomain:domain.length>0&&domain!=='resend.dev',
+            resendSandbox:domain==='resend.dev',
+            domain:domain||'missing'
+          }));
+          if(!from)process.exitCode=1;
+          NODE
