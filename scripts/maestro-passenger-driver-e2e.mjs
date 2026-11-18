@@ -11,7 +11,10 @@ async function call(path,{method='GET',token,bookingToken,verificationToken,idem
   ...(idemKey?{'Idempotency-Key':idemKey}:{}),
   ...(data?{'Content-Type':'application/json'}:{})
  },body:data?JSON.stringify(data):undefined,signal:AbortSignal.timeout(20000)});
- let payload;try{payload=await r.json()}catch{throw Error(method+' '+path+' no devuelve JSON')}
+ let payload;try{payload=await r.json()}catch{
+   console.error('QA_NONJSON_RESPONSE',JSON.stringify({method,path,code:r.status,type:r.headers.get('content-type')}));
+   throw Error(method+' '+path+' no devuelve JSON [HTTP '+r.status+']');
+ }
  assert.equal(r.status,expect,method+' '+path+' [HTTP '+r.status+']: '+JSON.stringify(payload).slice(0,250));
  return payload;
 }
@@ -82,6 +85,7 @@ try {
  assert.equal(accepted.status,'accepted');
  await call('/api/requests/'+id+'/accept',{method:'POST',bookingToken:guest,expect:409});
  for (const status of ['confirmed','en_route','arrived','in_progress','completed']) {
+  console.log('QA_STATE_ATTEMPT',status);
   const updated=await call('/api/operator/requests/'+id,{
    token:contractor,method:'PATCH',data:{status}});
   assert.equal(updated.status,status);
