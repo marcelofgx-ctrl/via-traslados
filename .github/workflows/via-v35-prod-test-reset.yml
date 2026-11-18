@@ -99,7 +99,7 @@ jobs:
           test "$(grep -Ec '^DELETE FROM |^INSERT INTO ' scripts/v35_prod_transactional_reset.sql)" -eq 17
           npx --yes wrangler@4.160.1 d1 execute via-traslados-db --remote --config wrangler.toml --file scripts/v35_prod_transactional_reset.sql
           echo 'PROD_D1_RESET_EXECUTED'
-      - name: Auditoría POST-reset: tablas vacías, admin intacto, geo preservado
+      - name: "Auditoría POST-reset: tablas vacías, admin intacto, geo preservado"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
