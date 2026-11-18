@@ -2,7 +2,7 @@ name: Vía Traslados — inventario V30 de web ACTIVA sin escrituras
 on:
   push:
     branches: [via-v30-offer-source-audit-20261118]
-    paths: [".github/workflows/via-v30-offer-active-source-audit.yml"]
+    paths: [".github/workflows/via-v30-offer-active-source-audit.yml", "scripts/v30_audit_live_offer_assets.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
