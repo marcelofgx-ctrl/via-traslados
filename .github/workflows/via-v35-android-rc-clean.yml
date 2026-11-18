@@ -52,7 +52,7 @@ jobs:
           gradle -p android-driver :app:assembleDebug -PviaProduction=true --no-daemon
           APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.production'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.productionrc'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='35'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
           unzip -t "$APK" | tail -2
