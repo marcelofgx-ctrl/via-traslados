@@ -47,7 +47,7 @@ test('dos toques concurrentes no generan claves distintas para el mismo payload'
  const x=make();const [a,b]=await Promise.all([
    x.window.ViaStore.create(x.trip),x.window.ViaStore.create(x.trip)]);
  assert.equal(a.id,b.id);
- assert.equal(x.requests[0].key,x.requests[1].key);
+ assert.equal(x.requests.length,1,'El doble toque debe salir una sola vez a la red');
  assert.equal(x.server.size,1);
 });
 test('un cambio de identidad no reutiliza la clave pendiente de otra persona',async()=>{
