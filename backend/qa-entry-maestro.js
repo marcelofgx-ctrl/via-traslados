@@ -119,7 +119,7 @@ async function syntheticRegistration(req,env,path){
   return reply({error:'Demasiados intentos de prueba'},429);
  let data={};try{data=await req.json()}catch{return reply({error:'Solicitud inválida'},400)}
  const email=String(data.email||'').trim().toLowerCase();
- if(!/^[a-z0-9._+-]{1,40}@qa\\.invalid$/.test(email))
+ if(!/^[a-z0-9._+-]{1,40}@qa\.invalid$/.test(email))
   return reply({error:'En QA usá un correo ficticio que termine en @qa.invalid'},403);
  if(path==='/api/auth/start')
   return reply({email,maskedEmail:'***@qa.invalid',qa:true,testCode:'123456'});
