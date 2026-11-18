@@ -26,6 +26,11 @@ jobs:
         with: {distribution: temurin, java-version: "17"}
       - uses: gradle/actions/setup-gradle@v4
         with: {gradle-version: "8.9"}
+      - name: BLOQUEO PERMANENTE — V35 YA FIRMADA; conservar firma existente
+        run: |
+          echo 'La APK V35 ya está publicada. Esta firma inicial no debe regenerarse.'
+          echo 'Descargá el respaldo privado original y reutilizalo para V36+.'
+          exit 1
       - name: No regenerar por accidente la clave de una versión productiva ya publicada
         env:
           GH_TOKEN: ${{ github.token }}
