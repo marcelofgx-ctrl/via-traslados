@@ -2,7 +2,7 @@ name: Incidente reservas Vía — auditoría D1 solo lectura
 on:
   push:
     branches: [incident-reservas-operador-audit-20261118]
-    paths: [".github/workflows/via-incident-reservas-readonly.yml"]
+    paths: [".github/workflows/via-incident-reservas-readonly.yml", "scripts/incident-reservas-operador-readonly.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
