@@ -97,7 +97,7 @@ const handlerNew=[
  "   if(generation!==signupGeneration||!signupMode)return;",
  "   signupEmail=(result.email||email).toLowerCase();",
  "   $('mine-signup-verify').classList.remove('hidden');",
- "   signupMessage('Revisá el correo y escribí el código de seis cifras.');",
+ "   signupMessage(window.VIA_QA_SYNTHETIC_OTP?'QA: no se envía correo. Usá el código de prueba 123456.':'Revisá el correo y escribí el código de seis cifras.');",
  "  }catch(e){if(generation===signupGeneration)signupMessage(e.message||'No se pudo enviar el código.');}",
  "  finally{button.disabled=false}",
  " });",
