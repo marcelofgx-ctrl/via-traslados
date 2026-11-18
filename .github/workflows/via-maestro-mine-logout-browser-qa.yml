@@ -1,0 +1,25 @@
+name: Vía Maestra — Mis reservas, cerrar sesión y cambiar usuario (QA móvil)
+on:
+  push:
+    branches: [via-maestro-integracion-real-qa-20261118]
+    paths:
+      - "scripts/maestro-mine-logout-browser-qa.mjs"
+      - ".github/workflows/via-maestro-mine-logout-browser-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Instalar Chromium existente y Playwright sin cambiar dependencias del repo
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          command -v google-chrome
+      - name: Probar web QA real 320/360/390/412 y respuesta tardía A después de logout
+        run: node scripts/maestro-mine-logout-browser-qa.mjs
