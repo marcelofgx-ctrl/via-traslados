@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 const host='https://viatraslados.com';
-const urls=['/','/app.js?v=29','/config.js','/sw.js','/reserva.html','/geo-v2/core.mjs?v=3'];
+const urls=['/','/store.js?v=19','/wizard-ux.js?v=29','/app.js?v=29','/config.js','/sw.js','/reserva.html','/geo-v2/core.mjs?v=3'];
 const sha=s=>createHash('sha256').update(s).digest('hex');
 const assets={};
 for(const path of urls){
@@ -15,8 +15,8 @@ for(const path of urls){
    const paths=[...content.matchAll(/<script[^>]+src=["']([^"']+)/gi)].map(x=>x[1]);
    console.log('VIA_WEB_ACTIVE_SCRIPT_PATHS '+JSON.stringify(paths));
  }
- if(path==='/app.js?v=29'){
-   const terms=['/api/requests','/requests','X-Verification-Token','ViaStore','fetch(','localStorage','sessionStorage','sendBooking','submitBooking','createBooking'];
+ if(['/app.js?v=29','/store.js?v=19','/wizard-ux.js?v=29'].includes(path)){
+   const terms=['/api/requests','/requests','X-Verification-Token','ViaStore','fetch(','localStorage','sessionStorage','sendBooking','submitBooking','createBooking','submit','POST','booking'];
    const occurrences={};
    for(const term of terms){
      let at=content.indexOf(term); const matches=[];
@@ -27,7 +27,7 @@ for(const path of urls){
      occurrences[term]=matches;
    }
    // Se registra solo JS público: no se lee localStorage del usuario ni información privada.
-   console.log('VIA_WEB_ACTIVE_JS_CONTEXT '+JSON.stringify(occurrences));
+   console.log('VIA_WEB_ACTIVE_JS_CONTEXT '+path+' '+JSON.stringify(occurrences));
  }
 }
 console.log('VIA_WEB_ACTIVE_ASSET_HASHES '+JSON.stringify(assets));
