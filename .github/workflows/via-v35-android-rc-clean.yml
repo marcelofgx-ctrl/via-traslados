@@ -1,7 +1,7 @@
 name: Vía Traslados V35 — APK productiva candidata (sin publicar)
 on:
   push:
-    branches: [via-v35-android-produccion-20261117]
+    branches: [main, via-v35-android-produccion-20261117]
     paths:
       - "android-driver/**"
       - ".github/workflows/via-v35-android-rc-clean.yml"
