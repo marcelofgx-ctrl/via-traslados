@@ -5,6 +5,7 @@ on:
     paths:
       - "backend/qa-entry-v35.js"
       - "scripts/v35-provision.mjs"
+      - "scripts/v35-worker-bootstrap.mjs"
       - "scripts/v35-passenger-driver-e2e.mjs"
       - ".github/workflows/via-v35-e2e-qa.yml"
   workflow_dispatch:
@@ -58,6 +59,11 @@ jobs:
           npx --yes wrangler@4.160.1 d1 execute via-traslados-v35-qa-db --remote --config wrangler.v35qa.toml --file backend/schema-qa-v33.sql
           node scripts/qa-seed.mjs
           npx --yes wrangler@4.160.1 d1 execute via-traslados-v35-qa-db --remote --config wrangler.v35qa.toml --file qa-seed.sql
+      - name: Registrar Worker V35 QA aislado si todavía no existe
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/v35-worker-bootstrap.mjs
       - name: Desplegar SOLO via-traslados-api-v35-qa y validar
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
