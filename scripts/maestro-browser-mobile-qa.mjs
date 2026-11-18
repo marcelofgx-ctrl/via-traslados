@@ -7,15 +7,26 @@ try{
  for(const width of [320,360,390,412]){
   const context=await browser.newContext({viewport:{width,height:780},isMobile:true,hasTouch:true,deviceScaleFactor:2});
   const page=await context.newPage();
-  const errors=[];
+  const errors=[],network=[];
   page.on('pageerror',err=>errors.push(String(err.message).slice(0,140)));
+  page.on('response',resp=>{if(resp.url().includes('via-traslados-maestro-api-qa'))network.push({path:new URL(resp.url()).pathname,status:resp.status()});});
+  page.on('requestfailed',req=>{if(req.url().includes('via-traslados-maestro-api-qa'))network.push({path:new URL(req.url()).pathname,failed:req.failure()?.errorText});});
   const response=await page.goto(URL,{waitUntil:'domcontentloaded',timeout:30000});
   assert.equal(response?.status(),200,'home QA '+width);
   const panel=page.locator('#via-maestro-qa-access');
   await panel.waitFor({state:'visible',timeout:20000});
   assert.match(await panel.innerText(),/ENTORNO DE PRUEBAS/);
   await page.locator('button[data-via-qa="A"]').click();
-  await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid',null,{timeout:20000});
+  try{
+    await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid',null,{timeout:8000});
+  }catch(err){
+    const state=await page.evaluate(()=>({store:!!window.ViaStore,config:window.VIA_CONFIG?.apiUrl,
+      customer:window.ViaStore?.customer()?.profile?.email||null,
+      qaStatus:document.querySelector('#via-qa-active')?.textContent,
+      selected:document.querySelector('button[data-via-qa="A"]')?.disabled}));
+    console.error('MAESTRO_BROWSER_DIAG',JSON.stringify({width,state,network,errors}));
+    throw err;
+  }
   await page.locator('button[data-via-qa="B"]').click();
   await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.b@qa.invalid',null,{timeout:20000});
   const metrics=await page.evaluate(()=>({
