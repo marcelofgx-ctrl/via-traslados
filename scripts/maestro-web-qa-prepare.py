@@ -234,6 +234,17 @@ def prepare():
         inventory[QA_APK]=digest(dest.read_bytes())
     (ASSETS/"index.html").write_bytes(qa_home(homepage,has_apk))
     (ASSETS/"store.js").write_bytes(patched.read_bytes())
+    # Únicamente la vista Mis reservas cambia; se resuelve el CSS !important
+    # y la identidad antigua sin reescribir el motor de direcciones ni las rutas.
+    mine_app=Path("dist/via-mine-app-qa.js")
+    mine_html=Path("dist/via-mine-html-qa.html")
+    mine_css=Path("dist/via-mine-css-qa.css")
+    for candidate in (mine_app,mine_html,mine_css):
+        if not candidate.is_file() or candidate.stat().st_size<200:
+            raise AssertionError("Falta artefacto seguro de Mis reservas: "+str(candidate))
+    (ASSETS/"app.js").write_bytes(mine_app.read_bytes())
+    (ASSETS/"mis-reservas.html").write_bytes(mine_html.read_bytes())
+    (ASSETS/"mine-identity-qa.css").write_bytes(mine_css.read_bytes())
     (ASSETS/"config.js").write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:"+json.dumps(QA_API)+",turnstileSiteKey:''});\n",encoding="utf-8")
     (ASSETS/"qa-access.js").write_text(qa_access_script(),encoding="utf-8")
     (OUT/"worker.mjs").write_text(worker,encoding="utf-8")
@@ -243,13 +254,13 @@ def prepare():
     (OUT/"manifest.json").write_text(json.dumps({
      "productionWebVersionReadOnly":live_version,"productionOrigin":LIVE,"webQa":QA_URL,
      "original":inventory,
-     "modified":{"store.js":digest(patched.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes())}
+     "modified":{"store.js":digest(patched.read_bytes()),"app.js":digest(mine_app.read_bytes()),"mis-reservas.html":digest(mine_html.read_bytes()),"mine-identity-qa.css":digest(mine_css.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes())}
     },indent=2))
     print("MAESTRO_QA_WEB_READY",len(inventory),"ORIGINAL_ASSETS",len(worker),"WORKER_BYTES",
           "LIVE_VERSION",live_version,"APK_INCLUDED",has_apk,flush=True)
 
 def verify():
-    for path in ("","store.js","config.js","app.js","geo-v2/core.mjs","qa-access.js","reserva.html"):
+    for path in ("","store.js","config.js","app.js","mis-reservas.html","mine-identity-qa.css","geo-v2/core.mjs","qa-access.js","reserva.html"):
         url=QA_URL+"/"+path
         binary,h=http_get(url)
         if path=="store.js":
