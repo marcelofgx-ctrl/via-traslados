@@ -6,6 +6,7 @@ on:
       - "scripts/maestro-web-qa-prepare.py"
       - "scripts/maestro-web-worker-bootstrap.mjs"
       - "scripts/via-v29-store-idempotency-qa.mjs"
+      - "scripts/maestro-mine-logout-qa-patch.mjs"
       - "tests/via-store-idempotency-qa.test.mjs"
       - ".github/workflows/via-maestro-web-integrada-qa.yml"
   workflow_dispatch:
@@ -46,6 +47,10 @@ jobs:
           node scripts/via-v29-store-idempotency-qa.mjs
           node --check dist/via-store-v29-idempotencia-qa.js
           node --test tests/via-store-idempotency-qa.test.mjs
+          node scripts/maestro-mine-logout-qa-patch.mjs
+          node --check dist/via-mine-app-qa.js
+          grep -F 'mine-identity-choice' dist/via-mine-html-qa.html >/dev/null
+          grep -F 'display:none !important' dist/via-mine-css-qa.css >/dev/null
       - name: Recuperar SOLO APK V36 QA previamente compilada y verificar hash
         uses: actions/download-artifact@v4
         with:
