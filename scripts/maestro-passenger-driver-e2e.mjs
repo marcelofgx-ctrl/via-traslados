@@ -3,11 +3,12 @@
 import assert from 'node:assert/strict';
 const BASE='https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev';
 const EMAIL='pasajero.v35@qa.invalid';
-async function call(path,{method='GET',token,bookingToken,verificationToken,data,expect=200}={}){
+async function call(path,{method='GET',token,bookingToken,verificationToken,idemKey,data,expect=200}={}){
  const r=await fetch(BASE+path,{method,headers:{
   ...(token?{Authorization:'Bearer '+token}:{}),
   ...(bookingToken?{'X-Booking-Token':bookingToken}:{}),
   ...(verificationToken?{'X-Verification-Token':verificationToken}:{}),
+  ...(idemKey?{'Idempotency-Key':idemKey}:{}),
   ...(data?{'Content-Type':'application/json'}:{})
  },body:data?JSON.stringify(data):undefined,signal:AbortSignal.timeout(20000)});
  let payload;try{payload=await r.json()}catch{throw Error(method+' '+path+' no devuelve JSON')}
@@ -28,12 +29,25 @@ try {
  const verified=await call('/api/v35/verified-session',{method:'POST',token:admin});
  assert.equal(verified.email,EMAIL);
  const date=new Date(Date.now()+25*86400000).toISOString().slice(0,10);
- const newBooking=await call('/api/requests',{method:'POST',expect:201,
-  verificationToken:verified.verificationToken,
-  data:{name:'Pasajero Sintético MAESTRO',phone:'099000000',email:EMAIL,
+ const key='abcde0123456789f'.repeat(4);
+ const payload={name:'Pasajero Sintético MAESTRO',phone:'099000000',email:EMAIL,
    origin:'Aeropuerto de Carrasco, Canelones',destination:'Punta Carretas, Montevideo',
-   date,time:'10:00',passengers:2,bags:1,notes:'Ensayo integrado MAESTRO; datos ficticios'}});
+   date,time:'10:00',passengers:2,bags:1,notes:'Ensayo QA aislado; datos ficticios'};
+ const newBooking=await call('/api/requests',{method:'POST',expect:201,idemKey:key,
+  verificationToken:verified.verificationToken,
+  data:payload});
  id=newBooking.id;guest=newBooking.access_token;
+ // Reintento con la misma clave tras consumirse el OTP: misma reserva/credencial.
+ const replay=await call('/api/requests',{method:'POST',expect:201,
+  verificationToken:verified.verificationToken,idemKey:key,data:payload});
+ assert.equal(replay.id,id,'Reintento duplicó reserva');
+ assert.equal(replay.access_token,guest,'Se perdió la credencial al repetir solicitud');
+ assert.equal(replay.replayed,true);
+ const changed=await call('/api/requests',{method:'POST',expect:409,
+  verificationToken:verified.verificationToken,idemKey:key,data:{...payload,time:'11:00'}});
+ assert.match(changed.error,/clave de envío/i);
+ const adminAfterReplay=await call('/api/operator/requests',{token:admin});
+ assert.equal(adminAfterReplay.filter(b=>b.id===id).length,1,'D1 duplicó la reserva al reintentar');
  assert(/^VIA-[A-Z0-9-]+$/.test(id)&&guest&&newBooking.status==='requested');
  await call('/api/requests/'+id,{expect:404});
  const own=await call('/api/requests/'+id,{bookingToken:guest});
