@@ -102,6 +102,9 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(LIGHT);
         setContentView(root);
+        // La variante productiva nunca puede iniciar una sesión QA pública.
+        if(BuildConfig.VIA_PRODUCTION && (BuildConfig.VIA_ONLINE_QA || BuildConfig.VIA_PREVIEW))
+            throw new IllegalStateException("Compilación productiva con indicadores QA");
         if(BuildConfig.VIA_ONBOARD_QA){
             qaWelcome();
         }else if(BuildConfig.VIA_ONLINE_QA){
@@ -1057,7 +1060,9 @@ public final class MainActivity extends Activity {
         page.addView(extras);
         spacer(page, 14);
 
-        TextView foot = text("ACCESO SEGURO  ·  VÍA TRASLADOS", 10, MUTED, true);
+        TextView foot = text(BuildConfig.VIA_PRODUCTION
+            ? "V35 · PRODUCCIÓN · DATOS REALES" : "ACCESO SEGURO  ·  VÍA TRASLADOS",
+            10, MUTED, true);
         foot.setGravity(Gravity.CENTER);
         foot.setLetterSpacing(0.10f);
         page.addView(foot);
@@ -1393,6 +1398,13 @@ public final class MainActivity extends Activity {
             qa.setBackgroundColor(SOFT);
             qa.setPadding(dp(7),dp(8),dp(7),dp(8));
             root.addView(qa,new LinearLayout.LayoutParams(-1,-2));
+        }else if(BuildConfig.VIA_PRODUCTION){
+            // Banner independiente del APK de demostración; evita confusiones en Samsung.
+            TextView prod=text("V35 · PRODUCCIÓN · API REAL",10,TEAL_DARK,true);
+            prod.setGravity(Gravity.CENTER);
+            prod.setPadding(dp(7),dp(8),dp(7),dp(8));
+            prod.setBackgroundColor(SOFT);
+            root.addView(prod,new LinearLayout.LayoutParams(-1,-2));
         }else if (BuildConfig.VIA_PREVIEW) {
             TextView demo=text(BuildConfig.VIA_OPERATION_PREVIEW ?
                 "V31 · FICHA OPERATIVA PREMIUM · DEMO AISLADA" :
