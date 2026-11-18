@@ -1,0 +1,19 @@
+name: Vía Traslados — benchmark ruta pública sin nuevas reservas
+on:
+  push:
+    branches: [via-v35-reset-audit-perf-20261117]
+    paths: [".github/workflows/via-v35-route-preview-perf-readonly.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview_benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Medir 2 consultas públicas con destinos conocidos, sin crear reservas
+        run: node scripts/v35_public_route_perf_probe.mjs
