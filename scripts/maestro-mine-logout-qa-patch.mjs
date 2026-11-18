@@ -138,17 +138,25 @@ app=once(app,
  'aviso OTP solo QA');
 
 const choice=[
- '<nav id="mine-identity-choice" class="via-mine-identity-choice hidden" aria-label="Elegir cómo ingresar">',
- '<button id="mine-existing" type="button" class="via-mine-choice via-mine-choice--existing" aria-controls="mine-login-card">Ya tengo cuenta</button>',
- '<button id="mine-new" type="button" aria-controls="mine-signup-card" class="via-mine-choice via-mine-choice--new">Soy nuevo · Registrarme</button>',
- '</nav>',
- '<section id="mine-login-card" class="mine-login-card"'
+ "<div id=\"mine-entry-hero\" class=\"via-mine-entry-hero\">",
+ "<span class=\"via-mine-entry-hero__eyebrow\">ACCESO PERSONAL</span>",
+ "<h2>Tus viajes, en un solo lugar.</h2>",
+ "<p>Ingresá o creá tu cuenta para gestionar tus traslados.</p>",
+ "</div>",
+ "<nav id=\"mine-identity-choice\" class=\"via-mine-identity-choice hidden\" aria-label=\"Elegí cómo continuar\">",
+ "<button id=\"mine-existing\" type=\"button\" class=\"via-mine-choice\" aria-pressed=\"false\" aria-controls=\"mine-login-card\"><span class=\"via-mine-choice__eyebrow\">YA VIAJASTE</span><strong>Ya tengo cuenta</strong><span class=\"via-mine-choice__hint\">Ingresar <span aria-hidden=\"true\">↗</span></span></button>",
+ "<button id=\"mine-new\" type=\"button\" class=\"via-mine-choice\" aria-pressed=\"false\" aria-controls=\"mine-signup-card\"><span class=\"via-mine-choice__eyebrow\">PRIMERA VEZ</span><strong>Soy nuevo</strong><span class=\"via-mine-choice__hint\">Crear cuenta <span aria-hidden=\"true\">↗</span></span></button>",
+ "</nav>",
+ "<section id=\"mine-login-card\" class=\"mine-login-card hidden\""
 ].join('\n');
 html=once(html,'<section id="mine-login-card" class="mine-login-card"',choice,'opciones A/B');
+html=once(html,'<h2>Ingresá a tu cuenta</h2><p>Escribí tu celular. Si ya viajaste con nosotros, entrá con tu huella o con el código enviado a tu correo.</p>',
+ '<h2>Bienvenido de nuevo</h2><p>Ingresá con tu celular para continuar.</p>','acceso compacto');
+html=once(html,'<p class="mine-login-hint">¿Primera vez? <a href="./index.html">Solicitá tu primer traslado</a>. Te identificamos después de verificar tu correo.</p>','','quitar duplicado primera vez');
 const signupSection=[
  '<section id="mine-signup-card" class="mine-login-card hidden" aria-label="Crear cuenta nueva">',
- '<h2>Crear cuenta nueva</h2>',
- '<p>Registrate una sola vez. Después vas a poder iniciar sesión con tu celular y el código del correo, sin pedir un viaje ahora.</p>',
+ '<h2>Crear tu cuenta</h2>',
+ '<p>Completá tus datos y verificá tu correo. No necesitás reservar un viaje.</p>',
  '<label class="control"><span class="field-label">NOMBRE Y APELLIDO</span><input id="mine-signup-name" type="text" autocomplete="name" maxlength="100" placeholder="Nombre y apellido"></label>',
  '<label class="control"><span class="field-label">CELULAR</span><input id="mine-signup-phone" type="tel" autocomplete="tel" inputmode="tel" maxlength="30" placeholder="099 123 456"></label>',
  '<label class="control"><span class="field-label">CORREO ELECTRÓNICO</span><input id="mine-signup-email" type="email" autocomplete="email" maxlength="160" placeholder="tu-correo@ejemplo.com"></label>',
