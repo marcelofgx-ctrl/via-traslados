@@ -23,7 +23,10 @@ try{
   await mine(page);
   await page.waitForFunction(()=>document.getElementById('mine-identity-choice')&&!document.getElementById('mine-identity-choice').classList.contains('hidden'),null,{timeout:12000});
   ok(!(await page.locator('#mine-welcome').isVisible()),'Tarjeta del usuario anterior visible sin sesión '+width);
-  ok(await page.locator('#mine-login-card').isVisible(),'No hay acceso de cuenta existente '+width);
+  ok(await page.locator('#mine-entry-hero').isVisible(),'No aparece bienvenida inicial '+width);
+  ok(!(await page.locator('#mine-login-card').isVisible()),'No debe verse login hasta elegir Ingresar '+width);
+  ok(!(await page.locator('#mine-signup-card').isVisible()),'No debe verse registro hasta elegir Soy nuevo '+width);
+  ok(!(await page.locator('#mine-list').isVisible()),'Listado de reservas visible sin sesión '+width);
   ok(await page.locator('#mine-existing').isVisible(),'Falta acceso usuario existente '+width);
   ok(await page.locator('#mine-new').isVisible(),'Falta registro usuario nuevo '+width);
   await choose(page,'A');
@@ -39,7 +42,8 @@ try{
   await page.locator('#mine-logout').click();
   await page.waitForFunction(()=>!window.ViaStore.customer()&&document.getElementById('mine-welcome').classList.contains('hidden'),null,{timeout:15000});
   ok(!(await page.locator('#mine-welcome').isVisible()),'No se ocultó nombre A al salir '+width);
-  ok(await page.locator('#mine-login-card').isVisible(),'No se habilitó ingreso existente '+width);
+  ok(!(await page.locator('#mine-login-card').isVisible()),'Tras salir no debe abrirse un formulario automáticamente '+width);
+  ok(await page.locator('#mine-entry-hero').isVisible(),'Tras salir no reaparece la bienvenida '+width);
   ok(await page.locator('#mine-new').isVisible(),'No se habilitó inscripción nueva '+width);
   assert.equal(await page.locator('#mine-login-phone').inputValue(),'','El teléfono anterior permanece cargado');
   assert.equal((await page.locator('#mine-greeting').textContent()).trim(),'','Persistió nombre anterior');
@@ -51,8 +55,12 @@ try{
   assert.equal((await page.evaluate(()=>window.ViaStore.customer().profile.email)),'pasajero.b@qa.invalid');
   await page.waitForFunction(()=>document.getElementById('mine-greeting')?.textContent==='Hola, Bruno',null,{timeout:12000});
   ok(!(await page.locator('#mine-login-card').isVisible()),'B con login expuesto '+width);
+  ok(!(await page.locator('#mine-entry-hero').isVisible()),'Bienvenida sin sesión aparece durante B '+width);
   await page.locator('#mine-logout').click();
   await page.waitForFunction(()=>window.ViaStore.customer()===null,null,{timeout:14000});
+  await page.locator('#mine-existing').click();
+  ok(await page.locator('#mine-login-card').isVisible(),'Ingresar no muestra su formulario '+width);
+  ok(!(await page.locator('#mine-signup-card').isVisible()),'Registrar visible con login '+width);
   await page.locator('#mine-new').click();
   ok(await page.locator('#mine-signup-card').isVisible(),'No aparece registro independiente '+width);
   ok(!(await page.locator('#mine-login-card').isVisible()),'Login visible durante registro nuevo '+width);
