@@ -82,7 +82,7 @@ def smoke(url):
   if needle not in raw:raise AssertionError("Página no publicada: "+name)
   # Cloudflare inyecta contenido en HTML de dominio personalizado, por lo que
   # su SHA puede diferir sin alterar la página. Validar contenido y enlaces públicos.
-  required=(b"<html",b"</html>",b"vía traslados",b"/conductores.html",b"/avance-v30.html") if name=="avance-v30.html" else (b"<html",b"</html>",b"vía traslados",b"Solicitud",b"/descargas/via-traslados-conductor-v35.apk",b"/avance-v30.html")
+  required=(b"<html",b"</html>",b"vía traslados",b"/conductores.html",b"/avance-v30.html") if name=="avance-v30.html" else (b"<html",b"</html>",b"vía traslados",b"Solicitar registro",b"/descargas/via-traslados-conductor-v35.apk",b"/avance-v30.html")
   for marker in required:
    if marker.lower() not in raw.lower():
     raise AssertionError("Contenido requerido ausente en "+name+": "+repr(marker))
