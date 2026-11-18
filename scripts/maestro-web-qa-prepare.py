@@ -158,7 +158,7 @@ function start(){
     finally{for(const b of el.querySelectorAll('button'))b.disabled=false}
   }));
   const apk=el.querySelector('#via-qa-apk-link');
-  if(window.VIA_QA_APK_READY===true)apk.innerHTML='<a style="color:#006b60" href="/descargas/via-traslados-conductor-maestro-qa-v36.apk" download>Descargar APK conductores · MAESTRO QA V36</a>';
+  if(window.VIA_QA_APK_READY===true)apk.innerHTML='<a id="via-qa-debug-download" style="color:#006b60" href="/descargas/via-traslados-conductor-maestro-qa-v36.apk" download>Descargar APK conductores · MAESTRO QA V36</a>';
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();"""
@@ -167,7 +167,7 @@ def qa_home(data,apk_ready):
     html=sanitize_html(data).decode("utf-8")
     if html.count("</body>")!=1:raise AssertionError("HTML de producción cambió")
     qa_css=('<style id="via-maestro-qa-only">'
-      'a[href*="/descargas/"][href$=".apk"]{display:none!important}'
+      'a[href*="/descargas/"][href$=".apk"]:not(#via-qa-debug-download){display:none!important}'
       'body{padding-bottom:145px!important}'
       '</style>'
       '<meta name="robots" content="noindex,nofollow">')
