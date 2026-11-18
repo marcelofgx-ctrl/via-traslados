@@ -1,0 +1,22 @@
+name: INCIDENTE producción OTP y distancia — diagnóstico sin envíos
+on:
+  push:
+    branches: [incident-otp-distance-readonly-rollback-20261118]
+    paths: [".github/workflows/via-incident-otp-distance-readonly.yml"]
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  diagnosis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Inspeccionar API y frontend activos, CORS, OTP sin envío, ruta real de prueba
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIA_PROBE_REAL_ROUTE: "1"
+        run: node scripts/incident-otp-distance-diagnose.mjs
