@@ -1,0 +1,20 @@
+name: Vía Maestra — inventario fuente web V29 realmente servida
+on:
+  push:
+    branches: [via-maestro-web-idempotencia-audit-20261118]
+    paths:
+      - "scripts/via-web-active-readonly-audit.mjs"
+      - ".github/workflows/via-web-active-readonly-audit.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-assets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Leer únicamente HTML/JS/CSS públicos y obtener hashes
+        run: node scripts/via-web-active-readonly-audit.mjs
