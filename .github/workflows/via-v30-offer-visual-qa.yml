@@ -2,7 +2,7 @@ name: Vía Traslados — vista de oferta V30 (solo QA visual)
 on:
   push:
     branches: [via-v30-oferta-visual-preview-qa-20261118]
-    paths: [".github/workflows/via-v30-offer-visual-qa.yml"]
+    paths: [".github/workflows/via-v30-offer-visual-qa.yml", "tests/v30_offer_visual_browser.cjs"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -53,6 +53,20 @@ jobs:
           grep -F 'Aceptar oferta' /tmp/v30-visual.html
           grep -F 'Esta demostración usa datos ficticios' /tmp/v30-visual.html
           echo 'V30_VISUAL_QA_LIVE_OK_URL='$BASE
+      - name: Instalar Playwright y Chromium para QA móvil
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verificar cuatro vistas móviles y capturar pantallas
+        run: node tests/v30_offer_visual_browser.cjs
+      - name: Guardar capturas visuales de la maqueta, sin datos reales
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v30-visual-qa-mobile-screenshots
+          path: v30-visual-shots/*.png
+          retention-days: 30
+          if-no-files-found: error
       - name: Comprobar que producción y API reales siguen vivos, sin leer reservas
         run: |
           set -euo pipefail
