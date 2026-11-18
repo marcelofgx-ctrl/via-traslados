@@ -40,8 +40,9 @@ for(const file of selected){
 const app=assets.find(x=>x.path==='/app.js')?.body||'';
 assert(app.includes('quoted')&&app.includes('confirmed'),'Unexpected app.js statuses');
 const excerpt=(word,length=250)=>{const i=app.indexOf(word);return i<0?'not found':app.slice(Math.max(0,i-95),i+length).replace(/\s+/g,' ')};
-const matchAttr=booking.body.includes('review-compact-v29.css')&&booking.body.includes('app.js?v=29');
-assert(matchAttr,'Production booking version changed: investigate rather than proceeding');
+const matchAttr=booking.body.includes('status-container')&&scripts.some(x=>x.includes('app.js'));
+assert(matchAttr,'No se reconoce la vista de reserva ACTIVA: detener');
+// La portada puede ser V29 y la vista de reserva usar otros querystrings; registrar lo ACTIVO en lugar de adivinar.
 const report={
  checkedAt:new Date().toISOString(),
  origin:root,
