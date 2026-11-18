@@ -77,7 +77,7 @@ replaceOne(/global\.ViaStore=\{isDemo,startVerification,verifyCode,create,get/,
    activeCreate={serialized,promise};
    return promise;
  }
- global.ViaStore={isDemo,startVerification,verifyCode,create:guardedCreate,get,`,
+ global.ViaStore={isDemo,startVerification,verifyCode,create:guardedCreate,get`,
  'bloqueo de doble toque en la API pública');
 assert(js.includes("'Idempotency-Key':idemKey"),'Idempotency-Key sin conexión');
 assert(js.includes('sessionStorage.removeItem(PENDING_SUBMISSION)'),'Sin limpieza del contexto');
