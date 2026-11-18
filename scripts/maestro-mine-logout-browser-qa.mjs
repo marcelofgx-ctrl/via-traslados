@@ -32,7 +32,9 @@ try{
   ok(await page.locator('#mine-welcome').isVisible(),'Bienvenida A no visible '+width);
   ok(!(await page.locator('#mine-login-card').isVisible()),'Formulario de login duplicado con cuenta A '+width);
   ok(!(await page.locator('#mine-identity-choice').isVisible()),'Opciones duplicadas con A '+width);
-  await page.locator('#mine-login-phone').fill('099123456');
+  // El formulario debe estar oculto durante la sesión A: simular un valor
+  // conservado por el navegador sin forzar que el campo oculto sea visible.
+  await page.locator('#mine-login-phone').evaluate(node=>{node.value='099123456'});
   await page.locator('#mine-logout').click();
   await page.waitForFunction(()=>!window.ViaStore.customer()&&document.getElementById('mine-welcome').classList.contains('hidden'),null,{timeout:15000});
   ok(!(await page.locator('#mine-welcome').isVisible()),'No se ocultó nombre A al salir '+width);
