@@ -1,0 +1,71 @@
+name: Respaldo maestro motor geografico (SOLO lectura)
+on:
+  push:
+    branches:
+      - respaldo-motor-geografico-20261117
+    paths:
+      - .github/workflows/backup-geo-master.yml
+      - scripts/build_geo_master_backup.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-verified-backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout sin secrets ni credenciales persistentes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Configurar Node 22 para chequeos de sintaxis
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generar archivo de objetos Git exactos y verificar ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/build_geo_master_backup.py
+          python3 scripts/build_geo_master_backup.py
+          python3 -m zipfile -t ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS.zip
+          mkdir -p /tmp/respaldo-motor
+          unzip -q ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS.zip -d /tmp/respaldo-motor
+          python3 /tmp/respaldo-motor/herramientas/verificar_respaldo.py /tmp/respaldo-motor
+          python3 /tmp/respaldo-motor/pruebas_adicionales/verificar_contratos.py /tmp/respaldo-motor
+          node --check /tmp/respaldo-motor/codigo/01_V29_FRONTEND_PUBLICADO/pages/map-point-picker.js
+          node --check /tmp/respaldo-motor/codigo/01_V29_FRONTEND_PUBLICADO/pages/address-autocomplete.js
+          node --check /tmp/respaldo-motor/codigo/02_MAIN_BACKEND_RUTAS/backend/route-estimate.js
+          sha256sum ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS.zip
+      - name: Pruebas automatizadas originales (sin red ni produccion)
+        shell: bash
+        run: |
+          set +e
+          for target in \
+            "01_V29_FRONTEND_PUBLICADO tests/v29_direcciones_revision.test.mjs" \
+            "01_V29_FRONTEND_PUBLICADO tests/shangrila-address.test.mjs" \
+            "03_GEO_V2_QA_ORIGINAL tests/geo-v2-core.test.mjs" \
+            "03_GEO_V2_QA_ORIGINAL tests/geo-v2-map-stability.test.mjs" \
+            "03_GEO_V2_QA_ORIGINAL tests/gps-reverse-qa.test.mjs" \
+            "03_GEO_V2_QA_ORIGINAL tests/map-point-picker.test.mjs" \
+            "02_MAIN_BACKEND_RUTAS tests/route-estimate.test.mjs"; do
+            folder="$(printf '%s' "$target" | cut -d' ' -f1)"
+            file="$(printf '%s' "$target" | cut -d' ' -f2)"
+            printf '\n== %s :: %s ==\n' "$folder" "$file" | tee -a RESULTADOS_TESTS_ORIGINALES.txt
+            (cd "/tmp/respaldo-motor/codigo/$folder" && node --test "$file") >> RESULTADOS_TESTS_ORIGINALES.txt 2>&1
+            printf 'EXIT_CODE=%s\n' "$?" | tee -a RESULTADOS_TESTS_ORIGINALES.txt
+          done
+          echo "Nota: pruebas con navegadores reales, D1, IDE y Geoapify NO fueron ejecutadas en este respaldo offline." >> RESULTADOS_TESTS_ORIGINALES.txt
+      - name: Publicar copia descargable temporal en artefacto de GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS
+          path: |
+            ZIP_MAESTRO_MOTOR_GEOGRAFICO_VIA_TRASLADOS.zip
+            RESULTADO_VERIFICACION.txt
+            RESULTADOS_TESTS_ORIGINALES.txt
+          if-no-files-found: error
+          retention-days: 90
