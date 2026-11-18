@@ -166,7 +166,7 @@ async function stagePassenger(request,env,path,method,ctx) {
  if(path==='/api/requests'&&method==='POST'){
    let data={};
    try{data=await request.clone().json()}catch{return reply({error:'Solicitud de ensayo inválida'},400)}
-   if(!allowedPassengerEmail(data.email)||String(data.phone||'')!=='099000000')
+   if(!allowedPassengerEmail(data.email)||!/^[0-9]{8,12}$/.test(String(data.phone||'').replace(/\s/g,'')))
      return reply({error:'Solo datos sintéticos V35'},403);
    return worker.fetch(request,env,ctx);
  }
