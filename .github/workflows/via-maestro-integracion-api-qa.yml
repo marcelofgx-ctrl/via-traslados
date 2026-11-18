@@ -7,6 +7,7 @@ on:
       - "scripts/maestro-qa-provision.mjs"
       - "scripts/maestro-qa-worker-bootstrap.mjs"
       - "scripts/maestro-passenger-driver-e2e.mjs"
+      - "scripts/maestro-qa-passenger-ab-e2e.mjs"
       - ".github/workflows/via-maestro-integracion-api-qa.yml"
   workflow_dispatch:
 permissions:
@@ -84,6 +85,8 @@ jobs:
           test "$ok" -eq 1
       - name: E2E con HTTP REAL en QA — pasajeros, idempotencia, roles, tarifas, 25% y limpieza sintética
         run: node scripts/maestro-passenger-driver-e2e.mjs
+      - name: E2E con dos cuentas de pasajero A/B y bloqueo de accesos ajenos
+        run: node scripts/maestro-qa-passenger-ab-e2e.mjs
       - name: Verificación de que producción y V34 QA siguen funcionando
         if: always()
         run: |
