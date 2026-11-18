@@ -19,15 +19,17 @@ jobs:
           import urllib.request, urllib.error, json
           PROD="https://via-traslados-api.marcelof-gx.workers.dev"
           QA="https://via-traslados-api-qa.marcelof-gx.workers.dev"
-          def probe(url):
-              req=urllib.request.Request(url,headers={"Origin":"https://viatraslados.com","User-Agent":"ViaTraslados-V35-ReadonlyAudit"})
+          def probe(url,from_public_web=True):
+              headers={"User-Agent":"ViaTraslados-V35-ReadonlyAudit"}
+              if from_public_web: headers["Origin"]="https://viatraslados.com"
+              req=urllib.request.Request(url,headers=headers)
               try:
                   with urllib.request.urlopen(req,timeout=18) as r:
                       return r.status,r.read(3000).decode("utf-8","replace")
               except urllib.error.HTTPError as e:
                   return e.code,e.read(1500).decode("utf-8","replace")
           pstatus,pbody=probe(PROD+"/api/health")
-          qstatus,qbody=probe(QA+"/api/health")
+          qstatus,qbody=probe(QA+"/api/health",False)
           authstatus,_=probe(PROD+"/api/operator/requests")
           advanced,_=probe(PROD+"/api/operator/requests/VIA-READONLY-CHECK/price-guide")
           status,_=probe(PROD+"/api/public/status")
