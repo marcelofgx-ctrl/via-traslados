@@ -98,7 +98,7 @@ const QA_PASSENGERS={
  A:{email:'pasajero.a@qa.invalid',name:'Ana de prueba',phone:'099000000'},
  B:{email:'pasajero.b@qa.invalid',name:'Bruno de prueba',phone:'099000000'}
 };
-const allowedPassengerEmail=email=>email===STAGE_EMAIL||Object.values(QA_PASSENGERS).some(p=>p.email===email);
+const allowedPassengerEmail=email=>typeof email==='string'&&(email===STAGE_EMAIL||/^[a-z0-9._+-]{1,40}@qa\.invalid$/.test(email));
 async function qaPassengerLogin(req,env){
  if(!(await limit(env,'passenger:'+req.headers.get('CF-Connecting-IP'),45,86400)))
   return reply({error:'Límite QA alcanzado'},429);
@@ -111,6 +111,24 @@ async function qaPassengerLogin(req,env){
  await env.DB.prepare('INSERT INTO customer_sessions(token_hash,email,expires_at) VALUES(?,?,?)')
   .bind(await sha(raw),customer.email,expiresAt).run();
  return reply({sessionToken:raw,expiresAt,profile:customer,qa:true});
+}
+
+// OTP totalmente sintético, limitado a emails .invalid y al Worker QA.
+async function syntheticRegistration(req,env,path){
+ if(!(await limit(env,'qa-register:'+req.headers.get('CF-Connecting-IP'),24,3600)))
+  return reply({error:'Demasiados intentos de prueba'},429);
+ let data={};try{data=await req.json()}catch{return reply({error:'Solicitud inválida'},400)}
+ const email=String(data.email||'').trim().toLowerCase();
+ if(!/^[a-z0-9._+-]{1,40}@qa\\.invalid$/.test(email))
+  return reply({error:'En QA usá un correo ficticio que termine en @qa.invalid'},403);
+ if(path==='/api/auth/start')
+  return reply({email,maskedEmail:'***@qa.invalid',qa:true,testCode:'123456'});
+ if(String(data.code||'').trim()!=='123456')
+  return reply({error:'Código de prueba incorrecto'},400);
+ const raw=token();
+ await env.DB.prepare('INSERT INTO email_verified_sessions(token_hash,email,expires_at) VALUES(?,?,unixepoch()+600)')
+  .bind(await sha(raw),email).run();
+ return reply({email,verificationToken:raw,qa:true});
 }
 
 const STAGE_ADMIN='00000000-0000-4000-8000-000000000001';
@@ -181,6 +199,14 @@ export default {async fetch(request,env,ctx){
  }
  const stage=await stagePassenger(request,env,path,method,ctx);
  if(stage)return stage;
+ if((path==='/api/auth/start'||path==='/api/auth/verify')&&method==='POST')
+  return syntheticRegistration(request,env,path);
+ if(path==='/api/customer/session'&&method==='POST'){
+  let data={};try{data=await request.clone().json()}catch{return reply({error:'Solicitud de alta inválida'},400)}
+  if(!allowedPassengerEmail(String(data.email||'').trim().toLowerCase()))
+   return reply({error:'Solo usuarios de prueba @qa.invalid'},403);
+  return worker.fetch(request,env,ctx);
+ }
  if(path==='/api/qa/passenger-login'&&method==='POST')return qaPassengerLogin(request,env);
  if(path==='/api/qa/session'&&method==='POST')return session(request,env);
  if(path.startsWith('/api/customer/')&&['GET','POST'].includes(method)){
