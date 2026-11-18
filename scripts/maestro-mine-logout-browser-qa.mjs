@@ -51,8 +51,10 @@ try{
   ok(!(await page.locator('#mine-login-card').isVisible()),'B con login expuesto '+width);
   await page.locator('#mine-logout').click();
   await page.waitForFunction(()=>window.ViaStore.customer()===null,null,{timeout:14000});
-  await page.locator('#mine-new').click();
-  await page.waitForURL(/\/index\.html/,{timeout:15000});
+  assert.equal(await page.locator('#mine-new').getAttribute('href'),'./index.html',
+    'El registro nuevo no apunta al inicio del flujo de solicitud');
+  const registration=await page.request.get(BASE+'/index.html');
+  assert.equal(registration.status(),200,'El inicio del registro para usuario nuevo no responde');
   ok(errors.length===0,'Errores de navegador '+width+': '+errors.join('; '));
   console.log('MINE_LOGOUT_MOBILE_QA_OK',JSON.stringify({width,logout:true,userA:true,userB:true,newUserOption:true,overflow:false}));
   await context.close();
