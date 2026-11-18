@@ -45,13 +45,16 @@ replaceOne(/async function create\s*\(payload\)\s*\{/,
  'crear reserva');
 
 replaceOne(/const headers\s*=\s*same\s*\?\s*customerHeader\(\)\s*:\s*\{\s*'X-Verification-Token'\s*:\s*auth\.token\s*\}\s*;\s*const res\s*=\s*await request\(\s*'\/api\/requests'\s*,\s*\{\s*method\s*:\s*'POST'\s*,\s*headers\s*,\s*body\s*:\s*JSON\.stringify\(payload\)\s*\}\s*\)\s*;/,
- `const idemKey=await stableSubmissionKey(payload);
+ `const sessionAtSend=customer()?.sessionToken||null;
+ const idemKey=await stableSubmissionKey(payload);
  const headers={...(same?customerHeader():{'X-Verification-Token':auth.token}),'Idempotency-Key':idemKey};
  const res=await request('/api/requests',{method:'POST',headers,body:JSON.stringify(payload)});`,
  'cuerpo del envío real');
 
 replaceOne(/remember\(res\.id,res\.access_token\)\s*;\s*clearVerified\(\)\s*;\s*return res\s*;/,
- `remember(res.id,res.access_token);
+ `if((customer()?.sessionToken||null)!==sessionAtSend)
+   throw Error('La identidad cambió durante el envío. Ingresá con la cuenta original para recuperar la reserva.');
+ remember(res.id,res.access_token);
  sessionStorage.removeItem(PENDING_SUBMISSION);
  clearVerified();return res;`,
  'confirmar referencia antes de borrar la clave');
@@ -60,6 +63,22 @@ replaceOne(/(?:async\s+)?function\s+logout\s*\([^)]*\)\s*\{/,
  m=>m+" sessionStorage.removeItem(PENDING_SUBMISSION);",
  'limpieza de envío pendiente al cerrar sesión');
 
+replaceOne(/global\\.ViaStore=\\{isDemo,startVerification,verifyCode,create,get,/,
+ `let activeCreate=null;
+ function guardedCreate(payload){
+   const serialized=JSON.stringify(payload);
+   if(activeCreate){
+     if(activeCreate.serialized!==serialized)
+       return Promise.reject(new Error('Ya se está enviando una solicitud. Esperá su resultado antes de cambiar los datos.'));
+     return activeCreate.promise;
+   }
+   let promise;
+   promise=create(payload).finally(()=>{if(activeCreate?.promise===promise)activeCreate=null;});
+   activeCreate={serialized,promise};
+   return promise;
+ }
+ global.ViaStore={isDemo,startVerification,verifyCode,create:guardedCreate,get,`,
+ 'bloqueo de doble toque en la API pública');
 assert(js.includes("'Idempotency-Key':idemKey"),'Idempotency-Key sin conexión');
 assert(js.includes('sessionStorage.removeItem(PENDING_SUBMISSION)'),'Sin limpieza del contexto');
 await mkdir('dist',{recursive:true});
