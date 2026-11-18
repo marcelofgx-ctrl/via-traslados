@@ -81,7 +81,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: python3 scripts/v36_prod_demo_conductores_release.py release
-      - name: Verificación externa: nuevas páginas y geocodificación V29 intactas
+      - name: "Verificación externa: nuevas páginas y geocodificación V29 intactas"
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 https://viatraslados.com/conductores.html -o /tmp/via-conductores-prod.html
