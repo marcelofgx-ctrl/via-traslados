@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: via-maestro-web-qa-only
   cancel-in-progress: false
@@ -45,6 +46,19 @@ jobs:
           node scripts/via-v29-store-idempotency-qa.mjs
           node --check dist/via-store-v29-idempotencia-qa.js
           node --test tests/via-store-idempotency-qa.test.mjs
+      - name: Recuperar SOLO APK V36 QA previamente compilada y verificar hash
+        uses: actions/download-artifact@v4
+        with:
+          name: via-maestro-apk-v36-qa-privada
+          run-id: 44393242088
+          github-token: ${{ github.token }}
+          path: qa-apk-file
+      - name: Validar integridad de APK V36 QA sin firmar ni reproducir V35
+        run: |
+          set -euo pipefail
+          test -s qa-apk-file/via-traslados-conductor-maestro-qa-v36.apk
+          (cd qa-apk-file && sha256sum -c SHA256SUMS-MAESTRO.txt)
+          unzip -t qa-apk-file/via-traslados-conductor-maestro-qa-v36.apk | tail -2
       - name: Copiar exclusivamente assets públicos actuales y Worker geográfico protegido a QA
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
