@@ -11,6 +11,10 @@ for(const path of urls){
  const content=await res.text();
  assert(content.length>50,path+' cuerpo vacío');
  assets[path]={bytes:Buffer.byteLength(content),sha256:sha(content),type:res.headers.get('content-type')};
+ if(path==='/'){
+   const paths=[...content.matchAll(/<script[^>]+src=["']([^"']+)/gi)].map(x=>x[1]);
+   console.log('VIA_WEB_ACTIVE_SCRIPT_PATHS '+JSON.stringify(paths));
+ }
  if(path==='/app.js?v=29'){
    const terms=['/api/requests','/requests','X-Verification-Token','ViaStore','fetch(','localStorage','sessionStorage','sendBooking','submitBooking','createBooking'];
    const occurrences={};
