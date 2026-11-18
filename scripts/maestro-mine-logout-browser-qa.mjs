@@ -30,6 +30,7 @@ try{
   await mine(page);
   await page.waitForFunction(()=>!document.getElementById('mine-welcome').classList.contains('hidden'),null,{timeout:15000});
   ok(await page.locator('#mine-welcome').isVisible(),'Bienvenida A no visible '+width);
+  await page.waitForFunction(()=>document.getElementById('mine-greeting')?.textContent==='Hola, Ana',null,{timeout:12000});
   ok(!(await page.locator('#mine-login-card').isVisible()),'Formulario de login duplicado con cuenta A '+width);
   ok(!(await page.locator('#mine-identity-choice').isVisible()),'Opciones duplicadas con A '+width);
   // El formulario debe estar oculto durante la sesión A: simular un valor
@@ -48,6 +49,7 @@ try{
   await mine(page);
   await page.waitForFunction(()=>window.ViaStore.customer()?.profile?.email==='pasajero.b@qa.invalid',null,{timeout:12000});
   assert.equal((await page.evaluate(()=>window.ViaStore.customer().profile.email)),'pasajero.b@qa.invalid');
+  await page.waitForFunction(()=>document.getElementById('mine-greeting')?.textContent==='Hola, Bruno',null,{timeout:12000});
   ok(!(await page.locator('#mine-login-card').isVisible()),'B con login expuesto '+width);
   await page.locator('#mine-logout').click();
   await page.waitForFunction(()=>window.ViaStore.customer()===null,null,{timeout:14000});
