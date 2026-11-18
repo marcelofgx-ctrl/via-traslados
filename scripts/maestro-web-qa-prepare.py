@@ -243,7 +243,13 @@ def prepare():
         if not candidate.is_file() or candidate.stat().st_size<200:
             raise AssertionError("Falta artefacto seguro de Mis reservas: "+str(candidate))
     (ASSETS/"app.js").write_bytes(mine_app.read_bytes())
-    (ASSETS/"mis-reservas.html").write_bytes(mine_html.read_bytes())
+    mine_page=mine_html.read_text(encoding="utf-8")
+    if mine_page.count("</head>")!=1 or mine_page.count("<h2>Crear cuenta nueva</h2>")!=1:
+        raise AssertionError("El formulario nuevo no coincide con el diseño QA esperado")
+    mine_page=mine_page.replace("</head>",'<script>window.VIA_QA_SYNTHETIC_OTP=true;</script></head>',1)
+    mine_page=mine_page.replace("<h2>Crear cuenta nueva</h2>",
+     '<h2>Crear cuenta nueva</h2><p id="mine-qa-signup-instructions">Solo en QA: usá un nombre y celular ficticios, un correo terminado en @qa.invalid y el código de prueba 123456. No se envían correos.</p>',1)
+    (ASSETS/"mis-reservas.html").write_text(mine_page,encoding="utf-8")
     (ASSETS/"mine-identity-qa.css").write_bytes(mine_css.read_bytes())
     (ASSETS/"config.js").write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:"+json.dumps(QA_API)+",turnstileSiteKey:''});\n",encoding="utf-8")
     (ASSETS/"qa-access.js").write_text(qa_access_script(),encoding="utf-8")
@@ -254,7 +260,7 @@ def prepare():
     (OUT/"manifest.json").write_text(json.dumps({
      "productionWebVersionReadOnly":live_version,"productionOrigin":LIVE,"webQa":QA_URL,
      "original":inventory,
-     "modified":{"store.js":digest(patched.read_bytes()),"app.js":digest(mine_app.read_bytes()),"mis-reservas.html":digest(mine_html.read_bytes()),"mine-identity-qa.css":digest(mine_css.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes())}
+     "modified":{"store.js":digest(patched.read_bytes()),"app.js":digest(mine_app.read_bytes()),"mis-reservas.html":digest((ASSETS/"mis-reservas.html").read_bytes()),"mine-identity-qa.css":digest(mine_css.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes())}
     },indent=2))
     print("MAESTRO_QA_WEB_READY",len(inventory),"ORIGINAL_ASSETS",len(worker),"WORKER_BYTES",
           "LIVE_VERSION",live_version,"APK_INCLUDED",has_apk,flush=True)
