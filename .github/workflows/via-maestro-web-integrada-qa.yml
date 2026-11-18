@@ -30,7 +30,7 @@ jobs:
           python3 -m py_compile scripts/maestro-web-qa-prepare.py
           node --check scripts/maestro-web-worker-bootstrap.mjs
           node --check scripts/via-v29-store-idempotency-qa.mjs
-          ! grep -qE "wrangler.*deploy.*via-traslados-web-prod|wrangler.*deploy.*via-traslados-api" .github/workflows/via-maestro-web-integrada-qa.yml
+          test "$(grep -Ec '^[[:space:]]*npx .*wrangler.*deploy --config wrangler.toml' .github/workflows/via-maestro-web-integrada-qa.yml || true)" -eq 0
       - name: Comprobar API MAESTRO aislada y versión original de producción
         run: |
           set -euo pipefail
