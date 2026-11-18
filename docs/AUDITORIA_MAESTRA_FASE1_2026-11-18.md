@@ -6,12 +6,16 @@ Se revisaron GitHub privado, código de `main`, PR #31, #32, #39, #45, #46 y #47
 
 Entornos conocidos: web `via-traslados-web-prod`, API `via-traslados-api`, D1 `via-traslados-db`, APK de producción `uy.viatraslados.conductor.production` V35 firmada. **No equiparar automáticamente fuente de main con bytes en el Worker.**
 
-## P0 — Diferencia no explicada en la cantidad de reservas
+## P0 — Diferencia de reservas EXPLICADA por reset del 18/11 (diagnóstico cerrado)
 
-- Auditoría D1 2026-11-18 00:54 UTC: **24 reservas**, 22 tablas, `via-traslados-db`: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44211641193
-- Auditoría D1 2026-11-18 18:46 UTC: **7 reservas**, desglose 4 `confirmed`, 2 `requested`, 1 `cancelled`: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44373243709
-- La segunda consulta usa `SELECT status,COUNT(*) FROM bookings GROUP BY status`, sin filtro temporal. **No se puede atribuir la diferencia de 17 registros a una eliminación sin verificar UUID de base, migraciones/restauraciones y linaje temporal.**
-- **Bloqueo recomendado:** no aplicar ninguna migración o restauración, no ejecutar limpieza ni crear pruebas destructivas hasta reconstruir la cronología. Capturar identificador de D1, marcadores Time Travel y conteos de eventos/rutas en una investigación estrictamente read-only. Una restauración a ciegas puede borrar reservas válidas posteriores.
+- Primer conteo solo lectura: **24 reservas** el 18/11 a las 00:54 UTC (run 44211641193).
+- Segundo conteo intermedio: **25 reservas** el 18/11 a las 02:03 UTC; respaldo SQL real exportado a las 02:04 UTC y ensayado con `PRAGMA integrity_check=ok`. Run https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44220512329
+- GitHub Actions ejecutó un **reinicio transaccional productivo** a las 02:08 UTC (23:08 del 17/11 en Uruguay), run https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44220990983. Log: `PROD_D1_RESET_EXECUTED`, `VIA_RESET_CONFIRMED: transacciones=0 pasajeros=0 passkeys=0 codigos=0; administrador=1`.
+- Auditoría posterior a las 18:46 UTC: **7 reservas**, todas creadas el 18/11 después del reinicio; run https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44373243709
+- Auditoría forense 19:21 UTC: D1 existente desde 06/11, 7 reservas, 20 eventos, 5 rutas, 4 cotizaciones, 4 asignaciones, bookmarks Time Travel anteriores y posteriores. Run https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44379538618
+- Respaldo **privado con datos personales y tokens**, artefacto `VIA_TRASLADOS_D1_PROD_FULL_BACKUP_BEFORE_RESET_PRIVATE`, ID 14390502186, retenido hasta **2027-02-16** en el run 44220512329. NUNCA publicarlo, adjuntarlo aquí ni subirlo a ramas. Guardar copia offline cifrada si se requiere preservación a largo plazo.
+
+**Conclusión:** la diferencia no se debe a resultados de consultas incompatibles: existe un reset remoto verificado que dejó cero reservas. Las 7 actuales son posteriores. El reset fue ejecutado por un workflow registrado; el hecho de que se ejecutara no prueba por sí solo quién lo autorizó ni si todas las reservas anteriores eran pruebas. **No restaurar D1 automáticamente**; una recuperación selectiva debe diseñarse fuera de producción para conservar las 7 posteriores.
 
 ## P1 — Envíos sin idempotencia
 
@@ -55,7 +59,7 @@ Entornos conocidos: web `via-traslados-web-prod`, API `via-traslados-api`, D1 `v
 
 | Tema | Evidencia disponible | Pendiente |
 |---|---|---|
-| Integridad D1 | Dos conteos read-only 24 y 7 | Investigación P0 de diferencia; congelar escrituras de mantenimiento |
+| Integridad D1 | Reset productivo 02:08 UTC identificado, backup íntegro de 25 reservas y 7 nuevas posteriores | Preservar respaldo; no restaurar ni mezclar datos sin análisis selectivo |
 | Reservas nuevas | Endpoint y test existentes | Idempotencia y transacción de evento con D1 QA |
 | A→B pasajero | Filtro por email y test unitario | Navegador real, promesas antiguas, service worker y almacenamiento |
 | A→B conductor | Posible carrera confirmada en código | Parche de generación de sesión y test Android QA |
@@ -73,8 +77,8 @@ Entornos conocidos: web `via-traslados-web-prod`, API `via-traslados-api`, D1 `v
 5. Publicar sólo con evidencia y comparación post-publicación de reservas y servicios.
 
 ## Formato de entrega / estados
-- **Problemas:** P0 integridad, P1 idempotencia, P1 callback Android, P1 eventos de estado.
-- **Causa raíz:** confirmada en lectura de código para ausencia de idempotencia y falta de generación de sesión; origen del conteo 24→7 **no confirmado**.
+- **Problemas:** P0 diagnóstico de integridad cerrado (reset identificado, recuperación no solicitada), P1 idempotencia, P1 callback Android, P1 eventos de estado.
+- **Causa raíz:** confirmada en lectura de código para ausencia de idempotencia y falta de generación de sesión; origen del conteo 24→7 **confirmado por reset transaccional**.
 - **Archivos:** listados arriba; no se editó ninguno.
 - **Cambio realizado:** exclusivamente este informe, en rama aislada.
 - **Riesgos y protecciones:** no se modificó lógica ni D1; PR sin merge automático.
