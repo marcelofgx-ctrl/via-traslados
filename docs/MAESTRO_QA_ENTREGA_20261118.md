@@ -15,6 +15,8 @@
 - APK Android V36 QA compilada y verificada con versión, paquete y firma debug, Android V34 y variante V35 RC también compilan: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44393242088
 - Web QA: copia byte a byte de 37+ assets públicos V29/V19, Worker geográfico activo recuperado en forma read-only, `store.js` parcheado únicamente en staging con idempotencia y bloqueo de doble clic, `config.js` apuntando a QA, barra de pasajeros A/B y APK QA; smoke de motor y archivos. Verificación en https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44394255447
 - APK pública QA descargada y cotejada byte a byte con artefacto firmado debug de CI; producción y V34 siguen respondendo: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44394669334
+- QA real en Chromium móvil: **320, 360, 390 y 412 px**, cada ancho con login sintético A, cambio a B, logout, sin scroll horizontal ni errores JS. Run reejecutada correctamente: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44394923313
+- Corrección de CORS en respuestas de sesión sintética A/B, verificada en API E2E después del cambio: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44395078135
 
 ## Para pruebas manuales en Samsung
 1. Abrir web QA; seleccionar **Pasajero A** en panel inferior; probar una solicitud con datos ficticios. No utilizar matrícula, teléfono o correo reales.
@@ -34,3 +36,6 @@
 - Rama: `via-maestro-integracion-real-qa-20261118` basada en candidato #51, incorpora guardia Android de #50 y parche de navegador de #52.
 - QA Workers y D1 tienen nombres exclusivos; desactivar su publicación no requiere restaurar ninguna base.
 - Para rollback de producción no hace falta intervenir: **no hubo publicación productiva**.
+
+## Estado de la entrega (cierre de QA automática)
+**QA automatizada integrada: aprobada.** La API + D1, las reservas A/B, el navegador Chromium en cuatro anchos, el Worker geográfico y la descarga QA binaria superaron sus pruebas. **Pendientes de cierre:** ensayo APK en Samsung real; recuperación OTP/PIN/passkey con personas controladas, distancias con proveedor Geoapify QA; pruebas desconectado/caché PWA en dispositivo y estrategia de rollout para producción. Por eso este paquete sigue **NO APTO PARA PUBLICACIÓN PRODUCTIVA**.
