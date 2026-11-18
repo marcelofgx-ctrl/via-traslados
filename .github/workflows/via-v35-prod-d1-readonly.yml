@@ -1,0 +1,23 @@
+name: Vía V35 — auditoría esquema D1 producción sin modificaciones
+on:
+  push:
+    branches: [via-integracion-despacho-backend-v35-20261117]
+    paths:
+      - "scripts/v35-readonly-prod-schema.mjs"
+      - ".github/workflows/via-v35-prod-d1-readonly.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Verificar tablas reales sólo con metadatos y contadores
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/v35-readonly-prod-schema.mjs
