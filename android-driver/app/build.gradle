@@ -1,3 +1,4 @@
+plugins { id 'com.android.application' }
 // V35: variante productiva instalable en paralelo a las APK de QA.
 // No activar perfiles QA en una compilación que opera con reservas reales.
 def viaProduction = project.hasProperty('viaProduction')
@@ -8,7 +9,6 @@ if (viaProduction && qaVariants.any { project.hasProperty(it) }) {
     throw new GradleException('VIA_PRODUCTION no puede combinarse con modos QA o DEMO')
 }
 
-plugins { id 'com.android.application' }
 
 android {
     namespace 'uy.viatraslados.conductor'
