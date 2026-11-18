@@ -2,7 +2,7 @@ name: Vía Traslados — comprobar nueva reserva y usuarios (solo lectura)
 on:
   push:
     branches: [via-audit-reserva-usuarios-readonly-20261118]
-    paths: [".github/workflows/via-audit-booking-users-readonly.yml"]
+    paths: [".github/workflows/via-audit-booking-users-readonly.yml", "scripts/v35_verify_new_booking_users_readonly.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
