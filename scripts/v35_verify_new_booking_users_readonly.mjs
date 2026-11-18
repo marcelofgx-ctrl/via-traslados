@@ -61,11 +61,20 @@ const userRows=(await select(`SELECT
  (SELECT COUNT(*) FROM bookings b WHERE NOT EXISTS(SELECT 1 FROM customers c WHERE c.email=b.email)) AS bookingsWithoutCustomer,
  (SELECT COUNT(*) FROM bookings b WHERE NOT EXISTS(SELECT 1 FROM booking_events e WHERE e.booking_id=b.id AND e.new_status='requested')) AS bookingsMissingCreationEvent,
  (SELECT COUNT(*) FROM booking_events e WHERE NOT EXISTS(SELECT 1 FROM bookings b WHERE b.id=e.booking_id)) AS orphanEvents`))[0];
+const assignment=await select(`SELECT b.id,b.status,u.role AS assignedRole,u.status AS assignedStatus,
+ CASE WHEN s.email_verified_at IS NOT NULL THEN 1 ELSE 0 END AS assignedEmailVerified,
+ CASE WHEN a.driver_id=q.driver_id THEN 1 ELSE 0 END AS quoteDriverMatchesAssignment
+ FROM bookings b LEFT JOIN driver_assignments a ON a.booking_id=b.id
+ LEFT JOIN staff_users u ON u.id=a.driver_id
+ LEFT JOIN staff_contacts s ON s.staff_id=u.id
+ LEFT JOIN booking_quotes q ON q.booking_id=b.id
+ ORDER BY b.created_at DESC LIMIT 5`);
+const eventTimeline=await select('SELECT new_status,COUNT(*) AS n FROM booking_events GROUP BY new_status ORDER BY new_status');
 const status=await select('SELECT status,COUNT(*) AS n FROM bookings GROUP BY status ORDER BY status');
 const web=(await fetch('https://viatraslados.com/api/public/status',{signal:AbortSignal.timeout(12000)}).then(async r=>({status:r.status,contentType:r.headers.get('content-type')})).catch(()=>({status:0})));
 const health=(await fetch('https://via-traslados-api.marcelof-gx.workers.dev/api/health',{signal:AbortSignal.timeout(12000)}).then(async r=>({status:r.status,data:r.status===200?await r.json():null})).catch(()=>({status:0})));
 const result={database:'via-traslados-db',qaIsolated:true,checkedAt:new Date().toISOString(),counts,
- userConsistency:userRows,bookingStatuses:status,bookings:bookings.map(x=>({...x,id:'…'+x.id.slice(-6)})),
+ userConsistency:userRows,bookingStatuses:status,assignment:assignment.map(x=>({...x,id:'…'+x.id.slice(-6)})),eventTimeline,bookings:bookings.map(x=>({...x,id:'…'+x.id.slice(-6)})),
  publicStatusResponse:web.status,apiHealth:health.status===200&&health.data?.ok===true?'OK':'ERROR',
  apiOtpReady:health.data?.otpAvailable===true};
 console.log('VIA_BOOKING_USER_READONLY_AUDIT '+JSON.stringify(result));
