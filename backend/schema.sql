@@ -77,6 +77,141 @@ CREATE TABLE IF NOT EXISTS driver_assignments (
  assigned_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS driver_assignments_driver ON driver_assignments(driver_id);
+-- Ficha operativa opcional por conductor: nunca simula capacidad ni matrícula.
+CREATE TABLE IF NOT EXISTS driver_vehicle_profiles (
+ staff_id TEXT PRIMARY KEY REFERENCES staff_users(id) ON DELETE CASCADE,
+ license_plate TEXT NOT NULL DEFAULT '',
+ make TEXT NOT NULL DEFAULT '',
+ model TEXT NOT NULL DEFAULT '',
+ passenger_capacity INTEGER CHECK(passenger_capacity BETWEEN 1 AND 8),
+ luggage_capacity INTEGER CHECK(luggage_capacity BETWEEN 0 AND 10),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+-- V29: contratos comerciales invisibles en las respuestas operativas normales.
+-- Solo el administrador fundador puede cambiar la modalidad y los porcentajes.
+CREATE TABLE IF NOT EXISTS driver_commercial_profiles (
+ staff_id TEXT PRIMARY KEY REFERENCES staff_users(id) ON DELETE CASCADE,
+ mode TEXT NOT NULL DEFAULT 'contractor' CHECK(mode IN ('partner','contractor')),
+ can_quote_all INTEGER NOT NULL DEFAULT 0 CHECK(can_quote_all IN (0,1)),
+ can_release INTEGER NOT NULL DEFAULT 0 CHECK(can_release IN (0,1)),
+ commission_bps INTEGER NOT NULL DEFAULT 2500 CHECK(commission_bps BETWEEN 0 AND 5000),
+ updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS booking_dispatch_releases (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ released_by TEXT NOT NULL,
+ released_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS booking_quotes (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ driver_id TEXT NOT NULL REFERENCES staff_users(id),
+ price_uyu INTEGER NOT NULL CHECK(price_uyu BETWEEN 1 AND 10000000),
+ commission_bps INTEGER NOT NULL CHECK(commission_bps BETWEEN 0 AND 5000),
+ created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS booking_quotes_by_driver ON booking_quotes(driver_id,created_at);
+
+-- Un solo INSERT de cotización ejecuta reglas, asignación y cambio de estado.
+-- Un RAISE aborta toda la transacción de SQLite/D1 (no hay doble asignación).
+CREATE TRIGGER IF NOT EXISTS via_quote_guard BEFORE INSERT ON booking_quotes
+BEGIN
+ SELECT RAISE(ABORT,'VIA_QUOTE_STATUS')
+   WHERE NOT EXISTS(SELECT 1 FROM bookings WHERE id=NEW.booking_id AND status='requested');
+ SELECT RAISE(ABORT,'VIA_QUOTE_AUTH')
+   WHERE NOT EXISTS(
+     SELECT 1 FROM staff_users u
+     JOIN staff_contacts c ON c.staff_id=u.id
+     LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id
+     WHERE u.id=NEW.driver_id AND u.status='approved' AND u.role IN ('admin','driver')
+       AND c.email_verified_at IS NOT NULL
+       AND (u.role='admin' OR p.can_quote_all=1 OR
+           EXISTS(SELECT 1 FROM booking_dispatch_releases r WHERE r.booking_id=NEW.booking_id)
+           OR EXISTS(SELECT 1 FROM driver_assignments a
+             WHERE a.booking_id=NEW.booking_id AND a.driver_id=NEW.driver_id))
+   );
+ SELECT RAISE(ABORT,'VIA_QUOTE_ASSIGNED_OTHER')
+   WHERE EXISTS(SELECT 1 FROM driver_assignments
+     WHERE booking_id=NEW.booking_id AND driver_id<>NEW.driver_id);
+ SELECT RAISE(ABORT,'VIA_QUOTE_CAPACITY')
+   WHERE EXISTS(
+     SELECT 1 FROM driver_vehicle_profiles v JOIN bookings b ON b.id=NEW.booking_id
+     WHERE v.staff_id=NEW.driver_id AND
+     ((v.passenger_capacity IS NOT NULL AND v.passenger_capacity<b.passengers)
+       OR (v.luggage_capacity IS NOT NULL AND v.luggage_capacity<b.bags))
+   );
+ SELECT RAISE(ABORT,'VIA_QUOTE_OVERLAP')
+   WHERE EXISTS(
+     SELECT 1 FROM bookings target
+     JOIN driver_assignments a ON a.driver_id=NEW.driver_id
+     JOIN bookings other ON other.id=a.booking_id
+     LEFT JOIN booking_routes tr ON tr.booking_id=target.id
+     LEFT JOIN booking_routes othr ON othr.booking_id=other.id
+     WHERE target.id=NEW.booking_id AND other.id<>target.id
+       AND other.status NOT IN ('cancelled','completed')
+       AND CAST(strftime('%s',other.trip_date||' '||other.trip_time) AS INTEGER) <
+         CAST(strftime('%s',target.trip_date||' '||target.trip_time) AS INTEGER)+
+         MAX(3600,COALESCE(tr.duration_s,0))+1800
+       AND CAST(strftime('%s',other.trip_date||' '||other.trip_time) AS INTEGER)+
+         MAX(3600,COALESCE(othr.duration_s,0))+1800 >
+         CAST(strftime('%s',target.trip_date||' '||target.trip_time) AS INTEGER)
+   );
+END;
+CREATE TRIGGER IF NOT EXISTS via_quote_commit AFTER INSERT ON booking_quotes
+BEGIN
+ INSERT INTO driver_assignments(booking_id,driver_id,assigned_by)
+ VALUES(NEW.booking_id,NEW.driver_id,NEW.driver_id)
+ ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,
+     assigned_by=excluded.assigned_by,assigned_at=unixepoch()
+ WHERE driver_assignments.driver_id=excluded.driver_id;
+ UPDATE bookings SET status='quoted',price_uyu=NEW.price_uyu,updated_at=datetime('now')
+ WHERE id=NEW.booking_id AND status='requested';
+ INSERT INTO booking_events(booking_id,old_status,new_status,actor)
+ VALUES(NEW.booking_id,'requested','quoted','operator');
+END;
+
+-- Cuenta por cobrar interna: se devenga SOLO cuando el traslado se completa.
+-- No procesa tarjetas, débito bancario ni factura automáticamente.
+CREATE TABLE IF NOT EXISTS booking_commission_ledger (
+ booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+ driver_id TEXT NOT NULL REFERENCES staff_users(id),
+ fare_uyu INTEGER NOT NULL CHECK(fare_uyu>0),
+ rate_bps INTEGER NOT NULL CHECK(rate_bps BETWEEN 0 AND 5000),
+ commission_cents INTEGER NOT NULL CHECK(commission_cents>=0),
+ payment_status TEXT NOT NULL CHECK(payment_status IN ('pending','paid','waived')),
+ payment_reference TEXT NOT NULL DEFAULT '',
+ completed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+ paid_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS commission_ledger_driver
+ ON booking_commission_ledger(driver_id,payment_status,completed_at);
+
+CREATE TRIGGER IF NOT EXISTS via_commission_on_completion
+ AFTER UPDATE OF status ON bookings
+ WHEN NEW.status='completed' AND OLD.status<>'completed'
+      AND NEW.price_uyu IS NOT NULL
+BEGIN
+ INSERT OR IGNORE INTO booking_commission_ledger
+   (booking_id,driver_id,fare_uyu,rate_bps,commission_cents,payment_status)
+ SELECT NEW.id,a.driver_id,NEW.price_uyu,
+   CASE WHEN q.driver_id=a.driver_id THEN q.commission_bps
+        WHEN u.role='admin' OR p.mode='partner' THEN 0
+        ELSE COALESCE(p.commission_bps,2500) END,
+   CAST(ROUND(NEW.price_uyu*
+     (CASE WHEN q.driver_id=a.driver_id THEN q.commission_bps
+       WHEN u.role='admin' OR p.mode='partner' THEN 0
+       ELSE COALESCE(p.commission_bps,2500) END)/100.0) AS INTEGER),
+   CASE WHEN
+     (CASE WHEN q.driver_id=a.driver_id THEN q.commission_bps
+        WHEN u.role='admin' OR p.mode='partner' THEN 0
+        ELSE COALESCE(p.commission_bps,2500) END)=0
+     THEN 'waived' ELSE 'pending' END
+ FROM driver_assignments a
+ JOIN staff_users u ON u.id=a.driver_id
+ LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id
+ LEFT JOIN booking_quotes q ON q.booking_id=NEW.id
+ WHERE a.booking_id=NEW.id;
+END;
+
 CREATE TABLE IF NOT EXISTS admin_audit (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  actor_id TEXT NOT NULL,
