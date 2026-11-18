@@ -1,7 +1,7 @@
 // Prueba real Chromium solo sobre QA pública, sin crear reservas en producción.
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright-core';
-const URL='https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev/';
+const QA_WEB_URL='https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev/';
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-sandbox']});
 try{
  for(const width of [320,360,390,412]){
@@ -11,7 +11,7 @@ try{
   page.on('pageerror',err=>errors.push(String(err.message).slice(0,140)));
   page.on('response',resp=>{if(resp.url().includes('via-traslados-maestro-api-qa'))network.push({path:new URL(resp.url()).pathname,status:resp.status()});});
   page.on('requestfailed',req=>{if(req.url().includes('via-traslados-maestro-api-qa'))network.push({path:new URL(req.url()).pathname,failed:req.failure()?.errorText});});
-  const response=await page.goto(URL,{waitUntil:'domcontentloaded',timeout:30000});
+  const response=await page.goto(QA_WEB_URL,{waitUntil:'domcontentloaded',timeout:30000});
   assert.equal(response?.status(),200,'home QA '+width);
   const panel=page.locator('#via-maestro-qa-access');
   await panel.waitFor({state:'visible',timeout:20000});
