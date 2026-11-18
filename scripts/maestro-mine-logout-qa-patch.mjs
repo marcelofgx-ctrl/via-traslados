@@ -120,6 +120,17 @@ const handlerNew=[
  " window.addEventListener('storage',event=>{if(event.key==='via-customer-session-v1')void draw()});",
  ""].join('\n');
 app=app.slice(0,handlerStart)+handlerNew+app.slice(handlerEnd);
+// En QA el código de cuenta existente también es sintético; en PROD
+// continúa siendo obligatoria la verificación Turnstile real.
+app=once(app,
+ "if(!S.isDemo()&&!captchaToken){note('Completá la comprobación de seguridad para enviar el correo.');return}",
+ "if(!S.isDemo()&&!window.VIA_QA_SYNTHETIC_OTP&&!captchaToken){note('Completá la comprobación de seguridad para enviar el correo.');return}",
+ 'captcha: exigir Turnstile real salvo QA sintética');
+app=once(app,
+ "note(S.isDemo()?'DEMO: usá el código 123456. No se envió ningún correo.':'Código enviado a '+(result.maskedEmail||'tu correo asociado')+'.');",
+ "note(window.VIA_QA_SYNTHETIC_OTP?'QA: no se envía correo. Usá el código de prueba 123456.':(S.isDemo()?'DEMO: usá el código 123456. No se envió ningún correo.':'Código enviado a '+(result.maskedEmail||'tu correo asociado')+'.'));",
+ 'aviso OTP solo QA');
+
 const choice=[
  '<nav id="mine-identity-choice" class="via-mine-identity-choice hidden" aria-label="Elegir cómo ingresar">',
  '<button id="mine-existing" type="button" class="via-mine-choice via-mine-choice--existing" aria-controls="mine-login-card">Ya tengo cuenta</button>',
