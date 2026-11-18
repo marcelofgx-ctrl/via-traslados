@@ -1,0 +1,28 @@
+name: Vía Traslados — guardia producción OTP y distancias
+on:
+  push:
+    branches: [via-prod-core-regression-gate-20261118, main]
+    paths: [".github/workflows/via-prod-core-guard.yml", "tests/prod-core-invariants.mjs"]
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Via Traslados - produccion (manual)"
+      - "Vía Traslados V35 — backend producción con respaldo y rollback"
+      - "Vía Traslados — publicación productiva incorporación conductores + demo V30"
+    types: [completed]
+permissions: {contents: read}
+concurrency:
+  group: via-prod-core-health-guard
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Pruebas no destructivas de OTP y distancia + app web + APK
+        run: node tests/prod-core-invariants.mjs
