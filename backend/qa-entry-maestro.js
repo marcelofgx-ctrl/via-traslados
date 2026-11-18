@@ -95,8 +95,8 @@ async function reset(req,env,actor){
 // This supplements QA V34 but NEVER belongs in the production Worker bundle.
 const STAGE_EMAIL='pasajero.v35@qa.invalid';
 const QA_PASSENGERS={
- A:{email:'pasajero.a@qa.invalid',name:'Ana de prueba',phone:'099000000'},
- B:{email:'pasajero.b@qa.invalid',name:'Bruno de prueba',phone:'099000000'}
+ A:{email:'pasajero.a@qa.invalid',name:'Ana de prueba',phone:'099000091'},
+ B:{email:'pasajero.b@qa.invalid',name:'Bruno de prueba',phone:'099000092'}
 };
 const allowedPassengerEmail=email=>typeof email==='string'&&(email===STAGE_EMAIL||/^[a-z0-9._+-]{1,40}@qa\.invalid$/.test(email));
 async function qaPassengerLogin(req,env){
@@ -129,6 +129,28 @@ async function syntheticRegistration(req,env,path){
  await env.DB.prepare('INSERT INTO email_verified_sessions(token_hash,email,expires_at) VALUES(?,?,unixepoch()+600)')
   .bind(await sha(raw),email).run();
  return reply({email,verificationToken:raw,qa:true});
+}
+
+// Inicio de sesión QA existente: SOLO cuentas ficticias @qa.invalid.
+// No autentica teléfonos reales ni envía email; código QA 123456.
+async function syntheticExistingLogin(req,env,path){
+ if(!(await limit(env,'qa-existing:'+req.headers.get('CF-Connecting-IP'),35,3600)))
+  return reply({error:'Demasiados intentos de prueba'},429);
+ let data={};try{data=await req.json()}catch{return reply({error:'Solicitud inválida'},400)}
+ const phone=String(data.phone||'').replace(/\D/g,'');
+ if(!/^0?9\d{7,8}$/.test(phone))return reply({error:'Celular de prueba inválido'},400);
+ const account=await env.DB.prepare("SELECT email,name,phone FROM customers WHERE REPLACE(phone,' ','')=? AND email LIKE '%@qa.invalid' LIMIT 1")
+  .bind(phone).first();
+ if(!account||!allowedPassengerEmail(account.email))
+  return reply({sent:false,recognized:false,message:'Ese celular de prueba no está registrado; elegí Soy nuevo.'});
+ if(path==='/api/customer/login/start')
+  return reply({sent:true,recognized:true,maskedEmail:'***@qa.invalid',qa:true,testCode:'123456'});
+ if(String(data.code||'').trim()!=='123456')
+  return reply({error:'Código de prueba incorrecto'},400);
+ const raw=token(),expiresAt=Math.floor(Date.now()/1000)+7200;
+ await env.DB.prepare('INSERT INTO customer_sessions(token_hash,email,expires_at) VALUES(?,?,?)')
+  .bind(await sha(raw),account.email,expiresAt).run();
+ return reply({sessionToken:raw,expiresAt,profile:account,qa:true});
 }
 
 const STAGE_ADMIN='00000000-0000-4000-8000-000000000001';
@@ -201,6 +223,8 @@ export default {async fetch(request,env,ctx){
  if(stage)return stage;
  if((path==='/api/auth/start'||path==='/api/auth/verify')&&method==='POST')
   return syntheticRegistration(request,env,path);
+ if((path==='/api/customer/login/start'||path==='/api/customer/login/verify')&&method==='POST')
+  return syntheticExistingLogin(request,env,path);
  if(path==='/api/customer/session'&&method==='POST'){
   let data={};try{data=await request.clone().json()}catch{return reply({error:'Solicitud de alta inválida'},400)}
   if(!allowedPassengerEmail(String(data.email||'').trim().toLowerCase()))
