@@ -194,7 +194,13 @@ def prepare():
     inventory={}
     for path in paths:
         if path=="index.html" or path.startswith("descargas/"):continue
-        binary,headers=http_get(LIVE+"/"+urllib.parse.quote(path,safe="/"))
+        try:
+            binary,headers=http_get(LIVE+"/"+urllib.parse.quote(path,safe="/"))
+        except urllib.error.HTTPError as e:
+            if e.code==404:
+                print("QA_SKIPPING_OBSOLETE_LIVE_ASSET",path,flush=True)
+                continue
+            raise
         if path.endswith((".js",".mjs",".css",".webp",".svg")) and "text/html" in headers.get("Content-Type","").lower():
             raise AssertionError("Asset inesperado HTML: "+path)
         if path.endswith(".html"):binary=sanitize_html(binary)
@@ -204,12 +210,21 @@ def prepare():
         inventory[path]=digest(binary)
     for path in EXTRAS:
         if path in inventory:continue
-        binary,headers=http_get(LIVE+"/"+urllib.parse.quote(path,safe="/"))
+        try:
+            binary,headers=http_get(LIVE+"/"+urllib.parse.quote(path,safe="/"))
+        except urllib.error.HTTPError as e:
+            if e.code==404:
+                print("QA_SKIPPING_OPTIONAL_LIVE_ASSET",path,flush=True)
+                continue
+            raise
         if "text/html" in headers.get("Content-Type","").lower() and not path.endswith(".html"):
             raise AssertionError("Extra devuelve HTML: "+path)
         if path.endswith(".html"):binary=sanitize_html(binary)
         dest=ASSETS/path;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(binary)
         inventory[path]=digest(binary)
+    required=["app.js","store.js","config.js","geo-v2/core.mjs","reserva.html","map.js","passkeys.js","reference.js","address-autocomplete.js","wizard-ux.js"]
+    missing=[p for p in required if not (ASSETS/p).is_file()]
+    if missing:raise AssertionError("Faltan archivos críticos de V29: "+", ".join(missing))
     # Nunca incluir APK de producción ni credenciales en el paquete QA.
     apk_file=pathlib.Path("qa-apk-file/via-traslados-conductor-maestro-qa-v36.apk")
     has_apk=apk_file.is_file() and apk_file.stat().st_size>100000
