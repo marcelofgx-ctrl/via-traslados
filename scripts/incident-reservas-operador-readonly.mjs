@@ -28,6 +28,9 @@ const quoteDetails=await select("SELECT q.booking_id,b.status,CASE WHEN a.driver
 const publicSettings=await select("SELECT setting_key,setting_value FROM service_settings WHERE setting_key IN ('public_web_enabled')");
 const eligible=await select("SELECT u.role,COUNT(*) AS n FROM staff_users u JOIN staff_contacts c ON c.staff_id=u.id WHERE u.status='approved' AND c.email_verified_at IS NOT NULL GROUP BY u.role");
 const faults=await select("SELECT COUNT(*) AS unassignedRequested FROM bookings b LEFT JOIN driver_assignments a ON a.booking_id=b.id WHERE b.status='requested' AND a.driver_id IS NULL");
+const pairs=await select("SELECT b1.id AS newer,b2.id AS older,CASE WHEN b1.email=b2.email THEN 1 ELSE 0 END AS sameCustomer,CASE WHEN b1.origin=b2.origin AND b1.destination=b2.destination THEN 1 ELSE 0 END AS sameRoute,CASE WHEN b1.trip_date=b2.trip_date AND b1.trip_time=b2.trip_time THEN 1 ELSE 0 END AS sameTime,CAST(strftime('%s',b1.created_at) AS INTEGER)-CAST(strftime('%s',b2.created_at) AS INTEGER) AS secondsApart FROM bookings b1 JOIN bookings b2 ON b1.id='VIA-D314F0E7-93A' AND b2.id='VIA-98D5D7F4-897'");
+const overlaps=await select("SELECT target.id AS requestedId,other.id AS conflictingConfirmedId,other.trip_date,other.trip_time, other.status FROM bookings target JOIN bookings other ON target.id IN ('VIA-98D5D7F4-897','VIA-D314F0E7-93A') AND other.status='confirmed' AND other.trip_date=target.trip_date AND other.trip_time=target.trip_time JOIN driver_assignments a ON a.booking_id=other.id WHERE target.status='requested'");
+console.log('OPERATIONAL_CONFLICTS '+JSON.stringify({duplicateSignals:pairs,overlaps,checkedAt:new Date().toISOString()}));
 console.log('RESERVATION_OPERATOR_AUDIT '+JSON.stringify({
  checkedAt:new Date().toISOString(),statuses:stats,
  recent:recent[0],lastBookings:timeline,drivers:people,
