@@ -139,7 +139,8 @@ async function stagePassenger(request,env,path,method,ctx) {
    let data={};try{data=await request.json()}catch{return reply({error:'ID inválido'},400)}
    const id=String(data.id||'');
    if(!/^VIA-[A-Z0-9-]+$/.test(id))return reply({error:'ID inválido'},400);
-   const removed=await env.DB.prepare('DELETE FROM bookings WHERE id=? AND email=? RETURNING id').bind(id,STAGE_EMAIL).first();
+   const removed=await env.DB.prepare('DELETE FROM bookings WHERE id=? AND email IN (?,?,?) RETURNING id')
+    .bind(id,STAGE_EMAIL,QA_PASSENGERS.A.email,QA_PASSENGERS.B.email).first();
    if(!removed)return reply({error:'Reserva QA inexistente'},404);
    await env.DB.prepare('DELETE FROM customers WHERE email=? AND NOT EXISTS(SELECT 1 FROM bookings WHERE email=?)')
     .bind(STAGE_EMAIL,STAGE_EMAIL).run();
