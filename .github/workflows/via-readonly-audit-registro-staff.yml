@@ -1,0 +1,22 @@
+name: Via Traslados — diagnostico read-only registro conductor y administrador
+on:
+  push:
+    branches: [via-readonly-investiga-registro-099203302-20261118]
+    paths: [".github/workflows/via-readonly-audit-registro-staff.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Leer estado de cuenta sin obtener datos personales ni alterar registros
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/readonly_staff_registration_099203302.mjs
