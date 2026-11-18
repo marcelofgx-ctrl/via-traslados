@@ -55,7 +55,7 @@ const bookings=await select(`SELECT b.id,b.status,b.trip_date,b.trip_time,b.crea
  LEFT JOIN booking_quotes q ON q.booking_id=b.id
  LEFT JOIN driver_assignments a ON a.booking_id=b.id
  ORDER BY b.created_at DESC,b.id DESC LIMIT 10`);
-const userRows=await select(`SELECT
+const userRows=(await select(`SELECT
  (SELECT COUNT(*) FROM customers c WHERE EXISTS(SELECT 1 FROM bookings b WHERE b.email=c.email)) AS customersWithBookings,
  (SELECT COUNT(*) FROM customers c WHERE NOT EXISTS(SELECT 1 FROM bookings b WHERE b.email=c.email)) AS customersWithoutBookings,
  (SELECT COUNT(*) FROM bookings b WHERE NOT EXISTS(SELECT 1 FROM customers c WHERE c.email=b.email)) AS bookingsWithoutCustomer,
