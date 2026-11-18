@@ -53,12 +53,35 @@ try{
   ok(!(await page.locator('#mine-login-card').isVisible()),'B con login expuesto '+width);
   await page.locator('#mine-logout').click();
   await page.waitForFunction(()=>window.ViaStore.customer()===null,null,{timeout:14000});
-  assert.equal(await page.locator('#mine-new').getAttribute('href'),'./index.html',
-    'El registro nuevo no apunta al inicio del flujo de solicitud');
-  const registration=await page.request.get(BASE+'/index.html');
-  assert.equal(registration.status(),200,'El inicio del registro para usuario nuevo no responde');
+  await page.locator('#mine-new').click();
+  ok(await page.locator('#mine-signup-card').isVisible(),'No aparece registro independiente '+width);
+  ok(!(await page.locator('#mine-login-card').isVisible()),'Login visible durante registro nuevo '+width);
+  await page.locator('#mine-existing').click();
+  ok(await page.locator('#mine-login-card').isVisible(),'No vuelve a cuenta existente '+width);
+  ok(!(await page.locator('#mine-signup-card').isVisible()),'Registro nuevo no se oculta '+width);
   ok(errors.length===0,'Errores de navegador '+width+': '+errors.join('; '));
   console.log('MINE_LOGOUT_MOBILE_QA_OK',JSON.stringify({width,logout:true,userA:true,userB:true,newUserOption:true,overflow:false}));
+  await context.close();
+ }
+ // Registro autónomo: crear cuenta con OTP sintético en QA, sin hacer reservas.
+ {
+  const context=await browser.newContext({viewport:{width:390,height:790},isMobile:true,hasTouch:true});
+  const page=await context.newPage();await mine(page);
+  await page.locator('#mine-new').click();
+  await page.locator('#mine-signup-name').fill('Registro sintético QA');
+  await page.locator('#mine-signup-phone').fill('099876543');
+  await page.locator('#mine-signup-email').fill('signup.test.qa@qa.invalid');
+  await page.locator('#mine-signup-send').click();
+  await page.waitForFunction(()=>document.querySelector('#mine-signup-verify')&&!document.querySelector('#mine-signup-verify').classList.contains('hidden'),null,{timeout:15000});
+  assert.match(await page.locator('#mine-signup-feedback').textContent(),/123456/,'Falta aviso de OTP ficticio');
+  await page.locator('#mine-signup-code').fill('123456');
+  await page.locator('#mine-signup-confirm').click();
+  await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='signup.test.qa@qa.invalid',null,{timeout:20000});
+  ok(await page.locator('#mine-welcome').isVisible(),'El alta nueva no inició sesión');
+  ok(!(await page.locator('#mine-signup-card').isVisible()),'El registro sigue visible con sesión creada');
+  await page.locator('#mine-logout').click();
+  await page.waitForFunction(()=>window.ViaStore.customer()===null,null,{timeout:15000});
+  console.log('MINE_SIGNUP_STANDALONE_QA_OK: cuenta nueva sin crear traslado, OTP sintético y logout');
   await context.close();
  }
  // Respuesta de A demorada después de salir: nunca devolver datos de A.
