@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           cp "$RUNNER_TEMP/via-before-reset-rehearsal.sqlite" "$RUNNER_TEMP/via-reset-rehearsal.sqlite"
-          sqlite3 "$RUNNER_TEMP/via-reset-rehearsal.sqlite" 'PRAGMA foreign_keys=ON;' < scripts/v35_prod_transactional_reset.sql
+          { printf 'PRAGMA foreign_keys=ON;\n'; cat scripts/v35_prod_transactional_reset.sql; } | sqlite3 "$RUNNER_TEMP/via-reset-rehearsal.sqlite"
           test "$(sqlite3 "$RUNNER_TEMP/via-reset-rehearsal.sqlite" 'PRAGMA integrity_check;')" = ok
           test "$(sqlite3 "$RUNNER_TEMP/via-reset-rehearsal.sqlite" 'PRAGMA foreign_key_check;' | wc -c)" -eq 0
           test "$(sqlite3 "$RUNNER_TEMP/via-reset-rehearsal.sqlite" 'SELECT COUNT(*) FROM bookings;')" -eq 0
