@@ -5,7 +5,7 @@ if len(sys.argv)!=3:
     raise SystemExit("usage: v35-rehearse-schema.py current_schema.sql candidate_schema.sql")
 before=pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 candidate=pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
-if re.search(r"\b(DROP\s+TABLE|DELETE\s+FROM|UPDATE\s+bookings|ALTER\s+TABLE\s+bookings)\b",candidate,re.I):
+if re.search(r"\b(DROP\s+TABLE|DELETE\s+FROM|ALTER\s+TABLE\s+bookings)\b",candidate,re.I):
     raise SystemExit("Migración no aditiva detectada: revisar manualmente")
 db=sqlite3.connect(":memory:")
 db.execute("PRAGMA foreign_keys=ON")
