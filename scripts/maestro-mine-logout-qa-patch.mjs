@@ -140,7 +140,7 @@ const signupSection=[
  '<div id="mine-signup-verify" class="hidden"><label class="control"><span class="field-label">CÓDIGO DEL CORREO</span><input id="mine-signup-code" type="text" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="6 cifras"></label><button id="mine-signup-confirm" type="button" class="return-primary">Crear mi cuenta</button></div>',
  '<p id="mine-signup-feedback" role="status" aria-live="polite"></p>',
  '</section>'
-].join('\\n');
+].join('\n');
 html=once(html,'</section><div id="mine-tabs"', '</section>'+signupSection+'<div id="mine-tabs"','nuevo registro independiente');
 html=once(html,'id="mine-login-phone" type="tel" autocomplete="tel"','id="mine-login-phone" type="tel" autocomplete="off"','sin teléfono anterior');
 html=once(html,'<script src="./app.js?v=29"></script>','<script src="./app.js?v=29-mineqa1"></script>','cache JS');
