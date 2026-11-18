@@ -1,0 +1,26 @@
+name: Vía Traslados — inventario V30 de web ACTIVA sin escrituras
+on:
+  push:
+    branches: [via-v30-offer-source-audit-20261118]
+    paths: [".github/workflows/via-v30-offer-active-source-audit.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Identificar y guardar los assets PUBLICOS activos de reserva (sin tocar backend)
+        run: node scripts/v30_audit_live_offer_assets.mjs
+      - name: Guardar copia de los assets reales para nueva rama QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v30-source-snapshot-active-web-private
+          path: v30-live-source-snapshot/
+          if-no-files-found: error
+          retention-days: 30
