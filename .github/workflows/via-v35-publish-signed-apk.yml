@@ -1,0 +1,86 @@
+name: Vía Traslados — publicar APK V35 YA FIRMADA (sin rotar clave)
+on:
+  push:
+    branches: [via-v35-release-firmado-prod-20261117]
+    paths: [".github/workflows/via-v35-publish-signed-apk.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-traslados-web-prod-review-v29-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Recuperar exclusivamente la V35 FIRMADA YA EXISTENTE, sin generar otra clave
+        uses: actions/download-artifact@v4
+        with:
+          name: VIA_V35_PROD_APK_SIGNED
+          run-id: 44217589953
+          github-token: ${{ github.token }}
+          path: apk-file
+      - name: Verificar hash fijo de la APK y script de publicación
+        run: |
+          set -euo pipefail
+          test -s apk-file/via-traslados-conductor-v35.apk
+          test -s apk-file/apk-sha256.txt
+          grep -Fx '324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3' apk-file/apk-sha256.txt
+          echo '324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3  apk-file/via-traslados-conductor-v35.apk' | sha256sum -c -
+          unzip -t apk-file/via-traslados-conductor-v35.apk | tail -2
+          python3 -m py_compile scripts/v35_prod_apk_release.py
+          node --check scripts/v35_web_stage_worker_bootstrap.mjs
+      - name: Confirmar web V29, V34 QA y backend V35 antes de publicar
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 4 https://viatraslados.com/ -o /tmp/via-before.html
+          grep -F 'review-compact-v29.css?v=29' /tmp/via-before.html
+          grep -F 'via-driver-v34-download' /tmp/via-before.html
+          curl -fLsS --retry 4 https://viatraslados.com/descargas/via-traslados-conductor-v34-qa.apk -o /tmp/via-v34-before.apk
+          echo 'ecc0bb6f296efeaa048500cd67991702eabebee243dea50e94d438f096026d38  /tmp/via-v34-before.apk' | sha256sum -c -
+          curl -fLsS --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health -o /tmp/via-api-before.json
+          node -e 'if(!require("/tmp/via-api-before.json").ok)process.exit(1)'
+      - name: Preparar assets desde Worker web V29 realmente activo, con rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v35_prod_apk_release.py prepare
+      - name: Build seco del Worker de entrega (ningún despliegue)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v35-prod-apk-release/wrangler.qa.jsonc --dry-run
+      - name: Registrar sólo el Worker V35 de ensayos
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v35_web_stage_worker_bootstrap.mjs
+      - name: Probar descarga y archivos de web en Worker staging, sin publicar
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config v35-prod-apk-release/wrangler.qa.jsonc
+          python3 scripts/v35_prod_apk_release.py verify-qa
+      - name: Publicar SOLO la APK en el Worker web existente con rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v35_prod_apk_release.py release
+      - name: Verificar APK V35 binaria y V34 QA preservada, API indemne
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 5 https://viatraslados.com/descargas/via-traslados-conductor-v35.apk -o /tmp/via-v35-published.apk
+          cmp /tmp/via-v35-published.apk apk-file/via-traslados-conductor-v35.apk
+          curl -fLsS --retry 5 https://viatraslados.com/descargas/via-traslados-conductor-v34-qa.apk -o /tmp/via-v34-published.apk
+          echo 'ecc0bb6f296efeaa048500cd67991702eabebee243dea50e94d438f096026d38  /tmp/via-v34-published.apk' | sha256sum -c -
+          curl -fLsS --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health -o /tmp/via-api-after.json
+          node -e 'if(!require("/tmp/via-api-after.json").ok)process.exit(1)'
+          echo 'VIA_V35_APK_PRODUCTION_PUBLISHED_VERIFIED'

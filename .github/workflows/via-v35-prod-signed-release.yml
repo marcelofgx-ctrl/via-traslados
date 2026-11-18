@@ -1,0 +1,163 @@
+name: Vía Traslados V35 — APK release firmada y publicada en web
+on:
+  push:
+    branches: [via-v35-release-firmado-prod-20261117]
+    paths:
+      - ".github/workflows/via-v35-prod-signed-release.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-traslados-web-prod-review-v29-release
+  cancel-in-progress: false
+jobs:
+  signed_release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.9"}
+      - name: No regenerar por accidente la clave de una versión productiva ya publicada
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          history=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/via-v35-prod-signed-release.yml/runs?status=success&per_page=1" --jq '.total_count')
+          if [ "$history" != 0 ]; then
+            echo 'YA EXISTE RELEASE V35: reutilizar keystore original; prohibido rotar firma.'
+            exit 1
+          fi
+      - name: Probar reglas, backend y fuentes Android antes de firmar
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --test tests/dispatch-business.test.mjs tests/assignment-rules.test.mjs
+          python3 scripts/v29-dispatch-sql-test.py
+          python3 -m py_compile scripts/v35_prod_apk_release.py
+          node --check scripts/v35_web_stage_worker_bootstrap.mjs
+          ! grep -q 'qa-entry' backend/worker.js
+      - name: Instalar Android SDK 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar APK RELEASE, package estable, flags QA prohibidos
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleRelease -PviaProductionRelease=true --no-daemon
+          UNSIGNED=android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$UNSIGNED"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$UNSIGNED" | grep -F "package: name='uy.viatraslados.conductor.production'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$UNSIGNED" | grep -F "versionCode='35'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$UNSIGNED" | grep -F "versionName='0.35.0'"
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$UNSIGNED" AndroidManifest.xml | grep -F 'android:debuggable(0x0101000f)'; then
+            echo 'Release no puede ser depurable'
+            exit 1
+          fi
+      - name: Crear ÚNICA clave de firma V35 (respaldo privado obligatorio)
+        env:
+          SIGN_DIR: ${{ runner.temp }}/via-v35-signing
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$SIGN_DIR" apk-file
+          SIGNPASS="$(openssl rand -hex 24)"
+          test "${#SIGNPASS}" -ge 40
+          keytool -genkeypair -noprompt -alias via-traslados-prod -keyalg RSA -keysize 3072 \
+            -validity 10000 -dname "CN=Via Traslados,O=Via Traslados,C=UY" \
+            -storetype PKCS12 -keystore "$SIGN_DIR/via-traslados-produccion-guardar.p12" \
+            -storepass "$SIGNPASS" -keypass "$SIGNPASS"
+          printf '%s\n' "$SIGNPASS" > "$SIGN_DIR/CLAVE-DE-FIRMA-GUARDAR.txt"
+          printf '%s\n' 'CRÍTICO: guardar p12 + contraseña en lugar privado y offline.' \
+            'Se necesita EXACTAMENTE esta clave para todas las actualizaciones de la app.' \
+            'No subir a una web pública ni subir a repositorio de código.' \
+            'La copia GitHub Actions expira en 90 días.' > "$SIGN_DIR/LEER-PRIMERO.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f 4 \
+            android-driver/app/build/outputs/apk/release/app-release-unsigned.apk \
+            apk-file/app-release-aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks "$SIGN_DIR/via-traslados-produccion-guardar.p12" \
+            --ks-type PKCS12 --ks-key-alias via-traslados-prod \
+            --ks-pass "pass:$SIGNPASS" --key-pass "pass:$SIGNPASS" \
+            --out apk-file/via-traslados-conductor-v35.apk apk-file/app-release-aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs \
+            apk-file/via-traslados-conductor-v35.apk | tee "$SIGN_DIR/FIRMA-CERTIFICADO.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c 4 apk-file/via-traslados-conductor-v35.apk
+          sha256sum apk-file/via-traslados-conductor-v35.apk | cut -d' ' -f1 > apk-file/apk-sha256.txt
+          test -s apk-file/apk-sha256.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging apk-file/via-traslados-conductor-v35.apk | grep -F "package: name='uy.viatraslados.conductor.production'"
+          echo 'APK V35 RELEASE, firmada y con paquete definitivo, verificada.'
+      - name: Resguardar clave privada en artefacto de Actions ANTES de publicar
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIA_V35_PROD_SIGNING_KEY_PRIVATE_BACKUP
+          path: ${{ runner.temp }}/via-v35-signing/*
+          retention-days: 90
+          if-no-files-found: error
+      - name: Resguardar APK firmada y checksum para entrega
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIA_V35_PROD_APK_SIGNED
+          path: |
+            apk-file/via-traslados-conductor-v35.apk
+            apk-file/apk-sha256.txt
+          retention-days: 90
+          if-no-files-found: error
+      - name: Confirmar que web y API real continúan disponibles antes del cambio
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 'https://viatraslados.com/' -o /tmp/via-v35-before.html
+          grep -F 'review-compact-v29.css?v=29' /tmp/via-v35-before.html >/dev/null
+          grep -F 'via-driver-v34-download' /tmp/via-v35-before.html >/dev/null
+          curl -fsSL --retry 3 'https://via-traslados-api.marcelof-gx.workers.dev/api/health' -o /tmp/via-v35-api-health.json
+          node -e 'if(!require("/tmp/via-v35-api-health.json").ok)process.exit(1)'
+      - name: Preparar inventario EXACTO de web actual más APK, y rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v35_prod_apk_release.py prepare
+      - name: Compilar Worker activo recuperado, sin modificar prod
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v35-prod-apk-release/wrangler.qa.jsonc --dry-run
+      - name: Registrar únicamente Worker de stage V35 si falta
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v35_web_stage_worker_bootstrap.mjs
+      - name: Validar APK y visuales en Worker STAGING independiente
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config v35-prod-apk-release/wrangler.qa.jsonc
+          python3 scripts/v35_prod_apk_release.py verify-qa
+      - name: Publicar descarga firmada V35 en la web existente, con rollback automático
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v35_prod_apk_release.py release
+      - name: Verificación final de web, APK productiva y V34 QA
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 4 'https://viatraslados.com/descargas/via-traslados-conductor-v35.apk' -o /tmp/via-v35-final.apk
+          cmp /tmp/via-v35-final.apk apk-file/via-traslados-conductor-v35.apk
+          curl -fLsS --retry 4 'https://viatraslados.com/descargas/via-traslados-conductor-v34-qa.apk' -o /tmp/via-v34-final.apk
+          echo 'ecc0bb6f296efeaa048500cd67991702eabebee243dea50e94d438f096026d38  /tmp/via-v34-final.apk' | sha256sum -c -
+          curl -fLsS --retry 4 'https://via-traslados-api.marcelof-gx.workers.dev/api/health' -o /tmp/via-v35-after.json
+          node -e 'if(!require("/tmp/via-v35-after.json").ok)process.exit(1)'
+          echo 'VIA_V35_SIGNED_PROD_RELEASE_OK: APK release descargable, QA V34 preservada, API prod activa.'
