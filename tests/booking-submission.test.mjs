@@ -5,9 +5,10 @@ if(!globalThis.crypto)globalThis.crypto=webcrypto;
 import worker from '../backend/worker.js';
 import {submissionFromRequest,findExistingSubmission,storeBookingAtomic} from '../backend/booking-submission.js';
 
+const tripDate=new Date(Date.now()+7*864e5).toISOString().slice(0,10);
 const booking={name:'Ana Pereira',phone:'099 123 456',email:'ana@example.com',
  origin:'Shangrilá, Canelones',destination:'Aeropuerto Internacional de Carrasco',
- date:'2026-11-22',time:'10:00',notes:'',passengers:2,bags:1};
+ date:tripDate,time:'10:00',notes:'',passengers:2,bags:1};
 const key='0123456789abcdef'.repeat(4);
 const origin='https://viatraslados.com';
 const headers={'Content-Type':'application/json',Origin:origin,
@@ -15,6 +16,7 @@ const headers={'Content-Type':'application/json',Origin:origin,
 const clone=m=>new Map([...m].map(([k,v])=>[k,structuredClone(v)]));
 class FakeDb {
  constructor(){
+  this.sessionEmail=booking.email;
   this.state={customers:new Map(),bookings:new Map(),events:new Map(),keys:new Map()};
   this.failKind='';
  }
@@ -23,7 +25,7 @@ class FakeDb {
    first:async()=>{
     if(sql.startsWith('SELECT setting_value FROM service_settings'))return {setting_value:'1'};
     if(sql.startsWith('SELECT s.email,s.expires_at,c.name,c.phone FROM customer_sessions'))
-      return {email:booking.email,name:booking.name,phone:booking.phone,expires_at:2000000000};
+      return {email:this.sessionEmail,name:booking.name,phone:booking.phone,expires_at:2000000000};
     if(sql.startsWith('SELECT s.payload_hash,s.email,s.booking_id,b.status')){
       const entry=this.state.keys.get(obj.args[0]);
       if(!entry)return null;
@@ -132,4 +134,27 @@ test('CORS permite Idempotency-Key en preflight',async()=>{
  headers:{Origin:origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type,Idempotency-Key'}}),env);
  assert.equal(result.status,204);
  assert.match(result.headers.get('Access-Control-Allow-Headers'),/Idempotency-Key/);
+});
+
+test('dos envíos concurrentes reutilizan una sola reserva y evento',async()=>{
+ const db=new FakeDb(),env={DB:db,PUBLIC_ORIGIN:origin,OPERATOR_ORIGIN:origin};
+ const [one,two]=await Promise.all([
+   worker.fetch(request(),env),
+   worker.fetch(request(),env)
+ ]);
+ assert.equal(one.status,201);
+ assert.equal(two.status,201);
+ const [a,b]=await Promise.all([one.json(),two.json()]);
+ assert.equal(a.id,b.id);
+ assert.equal(a.access_token,b.access_token);
+ assert.equal(db.state.bookings.size,1);
+ assert.equal(db.state.events.size,1);
+});
+test('sesión B no puede recuperar por clave secreta una reserva de A',async()=>{
+ const db=new FakeDb(),env={DB:db,PUBLIC_ORIGIN:origin,OPERATOR_ORIGIN:origin};
+ assert.equal((await worker.fetch(request(),env)).status,201);
+ db.sessionEmail='b@example.com';
+ const attempt=await worker.fetch(request(),env);
+ assert.equal(attempt.status,403);
+ assert.equal(db.state.bookings.size,1);
 });
