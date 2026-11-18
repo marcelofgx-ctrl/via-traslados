@@ -1,0 +1,77 @@
+name: Vía Traslados V35 — APK productiva candidata (sin publicar)
+on:
+  push:
+    branches: [via-v35-android-produccion-20261117]
+    paths:
+      - "android-driver/**"
+      - ".github/workflows/via-v35-android-rc-clean.yml"
+      - "tests/dispatch-business.test.mjs"
+      - "tests/assignment-rules.test.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-android-production-candidate-v35
+  cancel-in-progress: false
+jobs:
+  android-v35:
+    name: Compilar V35 de producción y preservar V34 QA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Probar reglas existentes sin modificar datos
+        run: |
+          set -euo pipefail
+          node --test tests/dispatch-business.test.mjs tests/assignment-rules.test.mjs
+          python3 scripts/v29-dispatch-sql-test.py
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.9"}
+      - name: Instalar SDK Android 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Comprobar catálogo real V34/V35 sin Android
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/via-catalog-v35
+          javac -encoding UTF-8 -d /tmp/via-catalog-v35 \
+            android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java \
+            tests/ViaVehicleCatalogTest.java
+          java -cp /tmp/via-catalog-v35 uy.viatraslados.conductor.ViaVehicleCatalogTest
+      - name: Compilar Android V35 conectado a API real, paquete separado
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaProduction=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.production'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='35'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+          mkdir -p dist
+          cp "$APK" dist/via-conductor-v35-produccion-candidata.apk
+          (cd dist && sha256sum via-conductor-v35-produccion-candidata.apk > SHA256SUMS-V35.txt)
+      - name: Confirmar que V34 QA sigue siendo compilable y separada
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaCatalogQa=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.v34catalogqa'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='34'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          cp "$APK" dist/via-conductor-v34-qa-preservada.apk
+      - name: Guardar instaladores solo como artefactos privados de CI
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-conductor-v35-prod-rc-y-v34-qa
+          path: dist/*
+          retention-days: 14
+          if-no-files-found: error
