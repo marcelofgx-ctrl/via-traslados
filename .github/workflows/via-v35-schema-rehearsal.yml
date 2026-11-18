@@ -25,6 +25,12 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/cloudflare-d1.mjs
+      - name: Generar configuración con UUID D1 verificado
+        env:
+          VIA_PUBLIC_ORIGIN: ${{ vars.VIA_PUBLIC_ORIGIN }}
+          VIA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
+        run: |
+          set -euo pipefail
           node scripts/create-wrangler.mjs
           grep -Fx 'database_name = "via-traslados-db"' wrangler.toml
           grep -Fx 'name = "via-traslados-api"' wrangler.toml
