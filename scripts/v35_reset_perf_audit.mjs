@@ -33,7 +33,7 @@ assert(tables.includes('bookings')&&tables.includes('staff_users')&&tables.inclu
  'Production schema missing required tables');
 const counts={};
 for (const t of tables) {
- assert(/^[a-z_][a-z0-9_]*$/.test(t),'Invalid table name');
+ assert(/^[A-Za-z_][A-Za-z0-9_]*$/.test(t),'Invalid table name');
  counts[t]=Number((await query('SELECT COUNT(*) AS n FROM "'+t+'"')).rows[0]?.n||0);
 }
 const statuses=(await query('SELECT status,COUNT(*) AS n FROM bookings GROUP BY status ORDER BY status')).rows;
