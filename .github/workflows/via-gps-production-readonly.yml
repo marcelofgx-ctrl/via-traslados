@@ -1,0 +1,41 @@
+name: Vía Traslados — auditoría GPS actual solo lectura
+on:
+  push:
+    branches: [via-web-v29-1-rc1-20261119]
+    paths: [".github/workflows/via-gps-production-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspeccionar código GPS/Reverse activo y respuestas HTTP sin geolocalizar personas
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const sha=b=>createHash('sha256').update(b).digest('hex');
+          for(const path of ['','reference.js','address-autocomplete.js','geo-v2/core.mjs?v=3','map.js','wizard-ux.js']){
+            const url='https://viatraslados.com/'+path;
+            const r=await fetch(url,{signal:AbortSignal.timeout(25000)});
+            const s=await r.text();
+            console.log('GPS_ACTIVE_ASSET',JSON.stringify({path,status:r.status,length:s.length,sha256:sha(s)}));
+            if(!r.ok)throw Error('No existe '+path);
+            if(path==='reference.js'){
+             const i=s.indexOf('location-shortcut');
+             console.log('GPS_ACTIVE_REFERENCE',s.slice(Math.max(0,i-500),Math.min(s.length,i+11500)));
+            }
+            if(path===''){
+             for(const term of ['reference.js','geo-v2/core.mjs','location-shortcut','gps']){
+               let matches=[...s.matchAll(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'))].slice(0,4).map(m=>s.slice(Math.max(0,m.index-135),m.index+180).replace(/\n/g,' '));
+               console.log('GPS_HTML_LINK',JSON.stringify({term,matches}));
+             }
+            }
+          }
+          for(const u of ['/api/direcciones?mode=reverse&lat=-34.834&lng=-56.012','/api/direcciones?mode=reverse&lat=-34.850&lng=-56.02']){
+             const r=await fetch('https://viatraslados.com'+u,{signal:AbortSignal.timeout(25000)});
+             const data=await r.text();
+             console.log('GPS_PUBLIC_REVERSE_TEST',JSON.stringify({url:u,status:r.status,body:data.slice(0,1850)}));
+          }
+          NODE
