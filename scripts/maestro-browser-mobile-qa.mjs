@@ -34,6 +34,8 @@ try{
     assert.equal((await preview.json()).reason,'qa_geoapify_not_configured');
   }
   const invite=page.locator('#via-home-account-invite');
+  const greeting=page.locator('#via-home-user-greeting');
+  const nameSlot=page.locator('#via-home-user-name');
   await invite.waitFor({state:'visible',timeout:16000});
   assert.match(await invite.innerText(),/Creá tu cuenta/,'Falta invitación sin sesión');
   assert.equal(await invite.locator('a').getAttribute('href'),'./mis-reservas.html?accion=registro');
