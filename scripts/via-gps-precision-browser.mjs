@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright-core';
-const URL='https://via-traslados-gps-precision-qa.marcelof-gx.workers.dev/';
+const URL=process.env.GPS_TEST_URL||'https://via-traslados-gps-precision-qa.marcelof-gx.workers.dev/';
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-sandbox']});
 function mockPosition(mode){
  const lat=-34.83362,lng=-56.01048;
