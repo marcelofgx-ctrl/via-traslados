@@ -33,7 +33,22 @@ try{
   await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:18000});
   assert.equal(await page.locator('#mine-login-card').isVisible(),false,
    'CTA no seleccionó registro nuevo');
+  if(width===390){
+    // Registrar usuario nuevo solo en D1 QA y sin solicitar un viaje.
+    await page.locator('#mine-signup-name').fill('Persona CTA QA');
+    await page.locator('#mine-signup-phone').fill('099654321');
+    await page.locator('#mine-signup-email').fill('cta.registro.test@qa.invalid');
+    await page.locator('#mine-signup-send').click();
+    await page.locator('#mine-signup-verify').waitFor({state:'visible',timeout:15000});
+    await page.locator('#mine-signup-code').fill('123456');
+    await page.locator('#mine-signup-confirm').click();
+    await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='cta.registro.test@qa.invalid',null,{timeout:20000});
+    const rows=await page.evaluate(()=>window.ViaStore.mine());
+    assert.equal(rows.length,0,'El alta autónoma QA creó o recuperó reservas inesperadas');
+    console.log('HOME_CTA_REGISTRATION_E2E_OK',JSON.stringify({width,registered:true,bookings:0}));
+  }
   await page.goto(QA_WEB_URL,{waitUntil:'domcontentloaded',timeout:30000});
+  if(width===390)await page.locator('#via-home-account-invite').waitFor({state:'hidden',timeout:15000});
   await page.locator('#via-maestro-qa-access').waitFor({state:'visible',timeout:20000});
   await page.locator('button[data-via-qa="A"]').click();
   try{
