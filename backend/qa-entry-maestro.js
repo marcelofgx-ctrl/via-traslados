@@ -231,7 +231,9 @@ export default {async fetch(request,env,ctx){
   const db=await env.DB.prepare('SELECT COUNT(*) AS n FROM bookings WHERE id LIKE ?')
    .bind('VIA-QA-%').first();
   return reply({ok:true,qa:true,environment:'MAESTRO-STAGE',bookings:db?.n||0,
-   onboarding:true,login:'perfiles de ensayo y cuentas QA pendientes de aprobación',production:false});
+   onboarding:true,login:'perfiles de ensayo y cuentas QA pendientes de aprobación',production:false,
+   routePreviewReady:typeof env.VIA_GEOAPIFY_API_KEY==='string'&&env.VIA_GEOAPIFY_API_KEY.trim().length>=10&&
+     typeof env.OTP_PEPPER==='string'&&env.OTP_PEPPER.length>=24});
  }
  const stage=await stagePassenger(request,env,path,method,ctx);
  if(stage)return stage;
