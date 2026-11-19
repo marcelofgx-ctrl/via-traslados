@@ -1,0 +1,125 @@
+name: Vía Traslados — PUBLICAR SOLO Web V29.1 con rollback automático
+on:
+  push:
+    branches: [via-web-v29-1-rc1-20261119]
+    paths: [".release/via-web-v291-production-authorized.txt"]
+permissions:
+  contents: read
+concurrency:
+  group: via-traslados-web-production-release
+  cancel-in-progress: false
+jobs:
+  production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validar rama y autorización inequívoca
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/via-web-v29-1-rc1-20261119"
+          grep -Fx "OWNER_APPROVED_WEB_V29_1_PRODUCTION_WITH_ROLLBACK_2026_11_19" .release/via-web-v291-production-authorized.txt
+          node --check scripts/via-v291-production-guard.mjs
+          node --check scripts/via-v291-mine-rc.mjs
+          node --check scripts/via-v291-store-rc.mjs
+          node --check scripts/via-v291-home-account.js
+          python3 -m py_compile scripts/via-v291-prepare.py
+      - name: Construir V29.1 limpia desde Worker activo V29
+        run: |
+          set -euo pipefail
+          node scripts/via-v291-store-rc.mjs
+          node scripts/via-v291-mine-rc.mjs
+          node --check dist/via-v291-store.js
+          node --check dist/via-v291-app.js
+          python3 scripts/via-v291-prepare.py prepare
+      - name: Preservar APK V35 FIRMADA y preparar solo Worker WEB para producción
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,urllib.request
+          base=pathlib.Path('via-v291-rc-build')
+          assets=base/'assets'
+          url='https://viatraslados.com/descargas/via-traslados-conductor-v35.apk'
+          request=urllib.request.Request(url,headers={'User-Agent':'VíaTraslados V29.1 release','Cache-Control':'no-cache'})
+          with urllib.request.urlopen(request,timeout=40) as response:
+           assert response.status==200
+           apk=response.read()
+          digest=hashlib.sha256(apk).hexdigest()
+          assert digest=='324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3','APK V35 firmada ya no coincide'
+          assert len(apk)>500_000
+          target=assets/'descargas'/'via-traslados-conductor-v35.apk'
+          target.parent.mkdir(parents=True,exist_ok=True)
+          target.write_bytes(apk)
+          index=assets/'index.html'
+          html=index.read_text()
+          assert '29.1.0-rc1' in html
+          index.write_text(html.replace('29.1.0-rc1','29.1.0',1))
+          config=base/'wrangler.production.jsonc'
+          spec={'name':'via-traslados-web-prod','main':'worker.mjs','compatibility_date':'2026-11-10',
+            'keep_vars':True,'workers_dev':True,
+            'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
+          config.write_text(json.dumps(spec,indent=2)+'\n')
+          # Asegurarse de que no se copie la variante de preview ni datos QA.
+          for path in ('index.html','app.js','store.js','mis-reservas.html','config.js'):
+           contents=(assets/path).read_text()
+           for bad in ('VIA_V291_PREVIEW_ONLY','VIA_QA_SYNTHETIC_OTP','via-maestro-api',
+             'QA · Cuentas','@qa.invalid','Generar código de prueba','SIN CORREOS NI VIAJES REALES'):
+            assert bad not in contents,(path,bad)
+          conf=(assets/'config.js').read_text()
+          assert 'window.VIA_CONFIG' in conf
+          assert 'via-traslados-api.marcelof-gx.workers.dev' in conf,'No apunta a API V35 real'
+          manifest=json.loads((base/'manifest.json').read_text())
+          assert manifest['productionVersionBefore']=='ec35bd52-b832-4cff-bcb2-6a6b84c34c79'
+          manifest['status']='READY_TO_PUBLISH_WEB_ONLY'
+          manifest['version']='29.1.0'
+          manifest['signedApkSha256']=digest
+          manifest['productionWorkerName']='via-traslados-web-prod'
+          manifest['productionConfigSha256']=hashlib.sha256((assets/'config.js').read_bytes()).hexdigest()
+          manifest['modifiedFiles']['index.html']=hashlib.sha256(index.read_bytes()).hexdigest()
+          (base/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print('VIA_V291_RELEASE_PACKAGE_SAFE',json.dumps({'version':'29.1.0',
+            'web':'via-traslados-web-prod','apkPreserved':True,
+            'geoUnchanged':True,'api':'V35','D1':'unchanged'}))
+          PY
+      - name: Preflight ACTIVO — anotar retorno exacto y OTP de producción
+        run: |
+          set -euo pipefail
+          node scripts/via-v291-production-guard.mjs before
+          npx --yes wrangler@4.160.1 deploy --config via-v291-rc-build/wrangler.production.jsonc --dry-run
+          grep -Fx 'OWNER_APPROVED_WEB_V29_1_PRODUCTION_WITH_ROLLBACK_2026_11_19' .release/via-web-v291-production-authorized.txt
+      - name: Publicar SOLO Worker WEB; autorestaurar V29 si falla una verificación
+        run: |
+          set -Eeuo pipefail
+          on_failure() {
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::V29.1 falló; intento rollback a ec35bd52-b832-4cff-bcb2-6a6b84c34c79"
+              node scripts/via-v291-production-guard.mjs rollback || {
+                echo "::error::Rollback API falló, usar Wrangler como segundo método"
+                npx --yes wrangler@4.160.1 rollback ec35bd52-b832-4cff-bcb2-6a6b84c34c79 --name via-traslados-web-prod --message "Revertir web V29.1 tras fallo de verificación" || true
+                node scripts/via-v291-production-guard.mjs rollback || true
+              }
+            fi
+          }
+          trap on_failure EXIT
+          cd via-v291-rc-build
+          npx --yes wrangler@4.160.1 deploy --config wrangler.production.jsonc
+          cd ..
+          node scripts/via-v291-production-guard.mjs after
+          trap - EXIT
+      - name: Guardar evidencia de release / rollback por 90 días
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v291-prod-release-proof
+          path: |
+            release-proof/
+            via-v291-rc-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 90
