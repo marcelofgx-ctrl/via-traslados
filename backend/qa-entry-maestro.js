@@ -3,6 +3,7 @@
 import worker from './worker.js';
 import {identity} from './staff.js';
 import {customerSession} from './customer-auth.js';
+import {routeEstimateRoutes} from './route-estimate.js';
 import {onboarding} from './qa-driver-onboarding.js';
 
 const PERSONAS={
@@ -213,14 +214,18 @@ export default {async fetch(request,env,ctx){
    'Cache-Control':'no-store'}});
  const origin=request.headers.get('Origin');
  if(origin&&origin!==env.PUBLIC_ORIGIN)return reply({error:'Origen no autorizado'},403);
- // La previsualización pública no requiere sesión de conductor. Este
- // entorno QA todavía no tiene su propia clave Geoapify configurada.
- // Nunca calcular rutas con D1/API productivas ni devolver kilómetros falsos.
+ // Consulta pública sobre la misma implementación probada del motor real,
+ // usando EXCLUSIVAMENTE D1 y credenciales configuradas en MAESTRO QA.
+ // Nunca se obtiene información de otra D1 ni del Worker productivo.
  if(path==='/api/public/route-preview'&&method==='POST'){
   if(!await limit(env,'route-qa:'+request.headers.get('CF-Connecting-IP'),12,3600))
    return reply({error:'Límite de rutas de prueba alcanzado. Probá más tarde.'},429);
-  return reply({error:'En QA el cálculo de distancia está pendiente de configurar Geoapify. Podés continuar sin kilómetros de prueba.',
-   qa:true,reason:'qa_geoapify_not_configured'},503);
+  if(typeof env.VIA_GEOAPIFY_API_KEY!=='string'||env.VIA_GEOAPIFY_API_KEY.trim().length<10||
+     typeof env.OTP_PEPPER!=='string'||env.OTP_PEPPER.length<24){
+   return reply({error:'En QA el cálculo de distancia está pendiente de configurar Geoapify. Podés continuar sin kilómetros de prueba.',
+    qa:true,reason:'qa_geoapify_not_configured'},503);
+  }
+  return routeEstimateRoutes(request,env,path,(data,status=200)=>reply(data,status));
  }
  if(path==='/api/health'&&method==='GET'){
   const db=await env.DB.prepare('SELECT COUNT(*) AS n FROM bookings WHERE id LIKE ?')
