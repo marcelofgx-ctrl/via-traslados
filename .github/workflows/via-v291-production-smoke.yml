@@ -1,0 +1,21 @@
+name: Vía Traslados — comprobar Web V29.1 EN PRODUCCIÓN sin escrituras
+on:
+  push:
+    branches: [via-web-v29-1-rc1-20261119]
+    paths: [".github/workflows/via-v291-production-smoke.yml"]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Comprobar navegador real e invariantes sin enviar OTP ni reservar
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          node --check scripts/via-v291-production-smoke.mjs
+          node scripts/via-v291-production-smoke.mjs
