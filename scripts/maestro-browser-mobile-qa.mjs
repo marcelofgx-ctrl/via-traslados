@@ -70,7 +70,7 @@ try{
   await page.locator('#via-qa-toggle').click();
   assert.match(await panel.innerText(),/ENTORNO DE PRUEBAS/);
   await page.locator('button[data-via-qa="A"]').click();
-  assert.equal(await page.locator('#via-qa-panel').isVisible(),false,'No se plegó tras elegir A');
+  await page.locator('#via-qa-panel').waitFor({state:'hidden',timeout:15000});
   try{
     await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid',null,{timeout:8000});
     await invite.waitFor({state:'hidden',timeout:15000});
@@ -84,7 +84,7 @@ try{
   }
   await page.locator('#via-qa-toggle').click();
   await page.locator('button[data-via-qa="B"]').click();
-  assert.equal(await page.locator('#via-qa-panel').isVisible(),false,'No se plegó tras elegir B');
+  await page.locator('#via-qa-panel').waitFor({state:'hidden',timeout:15000});
   await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.b@qa.invalid',null,{timeout:20000});
   const metrics=await page.evaluate(()=>({
     width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
