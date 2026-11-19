@@ -1,0 +1,110 @@
+name: Vía Traslados — PUBLICAR V29.1.1 GPS Chrome con rollback a V29.1
+on:
+  push:
+    branches: [via-gps-precision-qa-20261119]
+    paths: [".release/via-gps-v2911-authorized.txt"]
+permissions:
+  contents: read
+concurrency:
+  group: via-traslados-web-production-release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Gate de autorización y fuentes reales
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/via-gps-precision-qa-20261119'
+          grep -Fx 'OWNER_AUTHORIZED_V29_1_1_GPS_PATCH_WITH_ROLLBACK_TO_V29_1' .release/via-gps-v2911-authorized.txt
+          node --check scripts/via-gps-precision-patch.mjs
+          node --check scripts/via-gps-production-guard.mjs
+          node --check scripts/via-gps-precision-browser.mjs
+          python3 -m py_compile scripts/via-gps-precision-prepare.py
+          python3 scripts/via-gps-precision-prepare.py
+          node scripts/via-gps-precision-patch.mjs
+          node --check gps-precision-build/assets/reference.js
+      - name: Restaurar Worker PROD original y quitar banner QA
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,hashlib,json,runpy
+          c=runpy.run_path('scripts/via-v291-prepare.py')
+          out=pathlib.Path('gps-precision-build')
+          assets=out/'assets'
+          data=json.loads((out/'prod-manifest.json').read_text())
+          assert data['before_web_worker_version']=='49313136-3544-4e5c-a010-2efc201de6f1'
+          def sha(b):return hashlib.sha256(b).hexdigest()
+          for name,expected in data['assets'].items():
+           if name in ('index.html','reference.js'):continue
+           assert sha((assets/name).read_bytes())==expected,name+' unexpectedly altered'
+          assert sha((assets/'reference.js').read_bytes())=='ef28049b873c228284787f0865982a06ce562b93759a97dec5676e18f6166680'
+          home=assets/'index.html'
+          text=home.read_text()
+          banner='<div role="status" style="background:#004c43;color:white;text-align:center;padding:8px;font:600 12px Arial">GPS QA · PRUEBA DE PRECISIÓN · SIN RESERVAS REALES</div>'
+          assert text.count(banner)==1
+          text=text.replace(banner,'')
+          assert text.count('content="29.1.0"')==1
+          text=text.replace('content="29.1.0"','content="29.1.1"',1)
+          assert 'reference.js?v=27' in text and 'app.js?v=29.1' in text and 'store.js?v=19.1' in text
+          home.write_text(text)
+          assert 'GPS QA' not in home.read_text()
+          worker=c['get_live_worker_source']()
+          assert len(worker)>4000
+          (out/'worker.mjs').write_text(worker)
+          config={'name':'via-traslados-web-prod','main':'worker.mjs','compatibility_date':'2026-11-10',
+            'keep_vars':True,'workers_dev':True,
+            'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
+          (out/'wrangler.gps-production.jsonc').write_text(json.dumps(config,indent=2)+'\n')
+          data['candidate_release']='V29.1.1-GPS'
+          data['after_reference_sha256']=sha((assets/'reference.js').read_bytes())
+          data['after_index_sha256']=sha(home.read_bytes())
+          data['worker_source_sha256']=sha(worker.encode())
+          data['status']='READY_TO_PUBLISH'
+          (out/'prod-manifest.json').write_text(json.dumps(data,indent=2)+'\n')
+          print('VIA_GPS_PRODUCTION_PACKAGE_SAFETY_OK',json.dumps({
+             'webOnly':True,'GeoCoreUnchanged':True,'APKV35Unchanged':True,
+             'APIUnchanged':True,'D1Unchanged':True,'referenceVersion':27}))
+          PY
+      - name: Verificar retorno Cloudflare y dry-run ANTES de tocar producción
+        run: |
+          set -euo pipefail
+          node scripts/via-gps-production-guard.mjs before
+          npx --yes wrangler@4.160.1 deploy --config gps-precision-build/wrangler.gps-production.jsonc --dry-run
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+      - name: Publicar SOLO web V29.1.1; revertir automáticamente si falla
+        run: |
+          set -Eeuo pipefail
+          rollback() {
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::Fallo GPS release V29.1.1; restaurar versión web 49313136-3544-4e5c-a010-2efc201de6f1"
+              node scripts/via-gps-production-guard.mjs rollback || {
+                npx --yes wrangler@4.160.1 rollback 49313136-3544-4e5c-a010-2efc201de6f1 --name via-traslados-web-prod --message 'Rollback GPS V29.1.1' || true
+                node scripts/via-gps-production-guard.mjs rollback || true
+              }
+            fi
+          }
+          trap rollback EXIT
+          (cd gps-precision-build && npx --yes wrangler@4.160.1 deploy --config wrangler.gps-production.jsonc)
+          node scripts/via-gps-production-guard.mjs after
+          GPS_TEST_URL='https://viatraslados.com/' node scripts/via-gps-precision-browser.mjs
+          trap - EXIT
+      - name: Archivar evidencia de versión y rollback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-gps-v2911-production-proof
+          path: |
+            gps-release-proof/
+            gps-precision-build/prod-manifest.json
+          if-no-files-found: warn
+          retention-days: 90
