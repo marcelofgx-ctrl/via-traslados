@@ -29,7 +29,7 @@ const config=`name = "via-traslados-maestro-api-qa"
 main = "backend/qa-entry-maestro.js"
 compatibility_date = "2026-11-04"
 workers_dev = true
-keep_vars = false
+keep_vars = true
 
 [[d1_databases]]
 binding = "DB"
