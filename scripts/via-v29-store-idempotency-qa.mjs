@@ -79,6 +79,15 @@ replaceOne(/global\.ViaStore=\{isDemo,startVerification,verifyCode,create,get/,
  }
  global.ViaStore={isDemo,startVerification,verifyCode,create:guardedCreate,get`,
  'bloqueo de doble toque en la API pública');
+// Evitar que la respuesta 401 de A (ya desconectado) borre la cuenta B.
+// La función request() V19 original borra ACCOUNT sin comparar el token.
+replaceOne(/if\(r\.status===401&&path==='\\/api\\/customer\\/me'\)localStorage\.removeItem\(ACCOUNT\);/,
+ "if(r.status===401&&path==='/api/customer/me'){"+
+ "const sent=(opts.headers?.Authorization||'').match(/^Bearer ([a-f0-9]{64})$/i)?.[1];"+
+ "if(sent&&customer()?.sessionToken===sent)localStorage.removeItem(ACCOUNT);"+
+ "}",
+ 'request: revocar solo sesión que produjo 401');
+
 // Seguridad de sesión sobre fuente V19 exacta: no permitir que una consulta A
 // tardía restaure A ni pinte sus reservas al haber ingresado B.
 replaceOne(/async function resume\(\)\{[\s\S]*?\n\}/,
