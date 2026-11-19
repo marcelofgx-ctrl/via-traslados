@@ -126,23 +126,34 @@ QA_API="https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev"
 QA_APK="descargas/via-traslados-conductor-maestro-qa-v36.apk"
 
 def qa_access_script():
+    # Panel QA plegable: nunca tapar el botón de solicitar traslado o el
+    # botón de avanzar. Visible como pequeña pestaña flotante, cerrado por defecto.
     return """(function(){
 'use strict';
 const API='https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev';
 function start(){
+  if(document.getElementById('via-maestro-qa-access'))return;
   const el=document.createElement('aside');
   el.id='via-maestro-qa-access';
-  el.setAttribute('aria-label','Control de cuentas de prueba');
-  el.style.cssText='position:fixed;bottom:7px;right:7px;z-index:30000;background:#f5f9f7;border:1px solid #8aafa5;border-radius:12px;padding:9px 11px;max-width:min(94vw,350px);box-shadow:0 5px 15px #0002;font:12px/1.4 Arial,sans-serif;color:#123b38';
-  el.innerHTML='<div style="font-weight:700;color:#035b54;margin-bottom:5px">ENTORNO DE PRUEBAS · SIN VIAJES REALES</div><div id="via-qa-active" aria-live="polite">Elegí una cuenta ficticia para probar reservas</div><div style="display:flex;gap:6px;margin-top:7px"><button type="button" data-via-qa="A">Pasajero A</button><button type="button" data-via-qa="B">Pasajero B</button><button type="button" data-via-qa="out">Salir</button></div><div id="via-qa-apk-link" style="margin-top:7px"></div>';
+  el.setAttribute('aria-label','Herramientas de ensayo Vía Traslados');
+  el.style.cssText='position:fixed;right:9px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:30000;font:12px/1.45 Arial,sans-serif;color:#123b38;max-width:calc(100vw - 18px)';
+  el.innerHTML='<button id="via-qa-toggle" type="button" aria-expanded="false" aria-controls="via-qa-panel" style="display:block;margin-left:auto;min-height:38px;padding:7px 11px;border-radius:12px;background:#0b554c;color:#fff;border:1px solid #36917f;box-shadow:0 2px 12px #0003;font-weight:700;cursor:pointer">QA · Cuentas</button>'+
+   '<div id="via-qa-panel" hidden style="box-sizing:border-box;margin-top:5px;padding:11px;max-width:min(92vw,330px);background:#f5f9f7;border:1px solid #8aafa5;border-radius:12px;box-shadow:0 5px 15px #0003">'+
+   '<div style="font-weight:700;color:#035b54;margin-bottom:5px">ENTORNO DE PRUEBAS · SIN VIAJES REALES</div>'+
+   '<div id="via-qa-active" aria-live="polite">Elegí una cuenta ficticia para probar reservas</div>'+
+   '<div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap"><button type="button" data-via-qa="A">Pasajero A</button><button type="button" data-via-qa="B">Pasajero B</button><button type="button" data-via-qa="out">Salir</button></div>'+
+   '<div id="via-qa-apk-link" style="margin-top:9px"></div></div>';
   document.body.appendChild(el);
-  el.querySelectorAll('button').forEach(b=>b.style.cssText='min-height:42px;padding:4px 9px;border:1px solid #9bb9b0;border-radius:8px;background:#fff;color:#084943;font:600 12px Arial,sans-serif;cursor:pointer');
+  const toggle=el.querySelector('#via-qa-toggle'),panel=el.querySelector('#via-qa-panel');
+  function setOpen(open){panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));toggle.textContent=open?'Cerrar QA ×':'QA · Cuentas'}
+  toggle.addEventListener('click',()=>setOpen(panel.hidden));
+  el.querySelectorAll('button[data-via-qa]').forEach(b=>b.style.cssText='min-height:42px;padding:5px 8px;border:1px solid #9bb9b0;border-radius:8px;background:#fff;color:#084943;font:600 12px Arial,sans-serif;cursor:pointer');
   const status=el.querySelector('#via-qa-active');
   const update=()=>{const c=window.ViaStore?.customer();status.textContent=c?'Cuenta activa: '+c.profile.name:'Elegí una cuenta ficticia para probar reservas'};
   update();
-  el.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',async()=>{
+  el.querySelectorAll('button[data-via-qa]').forEach(btn=>btn.addEventListener('click',async()=>{
     const persona=btn.dataset.viaQa;
-    for(const b of el.querySelectorAll('button'))b.disabled=true;
+    for(const b of el.querySelectorAll('button[data-via-qa]'))b.disabled=true;
     try{
       if(window.ViaStore?.customer())await window.ViaStore.logout();
       if(persona!=='out'){
@@ -153,15 +164,16 @@ function start(){
       }
       update();
       window.dispatchEvent(new Event('via-customer-session'));
-      status.textContent+=' · Acceso actualizado';
-    }catch(e){status.textContent='QA: '+(e.message||'No se pudo ingresar')}
-    finally{for(const b of el.querySelectorAll('button'))b.disabled=false}
+      setOpen(false);
+    }catch(e){status.textContent='QA: '+(e.message||'No se pudo ingresar');setOpen(true)}
+    finally{for(const b of el.querySelectorAll('button[data-via-qa]'))b.disabled=false}
   }));
   const apk=el.querySelector('#via-qa-apk-link');
-  if(window.VIA_QA_APK_READY===true)apk.innerHTML='<a id="via-qa-debug-download" style="color:#006b60" href="/descargas/via-traslados-conductor-maestro-qa-v36.apk" download>Descargar APK conductores · MAESTRO QA V36</a>';
+  if(window.VIA_QA_APK_READY===true)apk.innerHTML='<a id="via-qa-debug-download" style="color:#006b60" href="/descargas/via-traslados-conductor-maestro-qa-v36.apk" download>APK conductor · MAESTRO QA V36</a>';
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();"""
+
 
 def qa_home(data,apk_ready):
     html=sanitize_html(data).decode("utf-8")
