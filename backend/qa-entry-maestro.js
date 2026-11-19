@@ -12,6 +12,14 @@ const PERSONAS={
  contractor:{id:'00000000-0000-4000-8000-000000000003',role:'driver',name:'Conductor contratado QA'}
 };
 const QA_WEB_ORIGIN='https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev';
+const V291_STAGE_ORIGIN='https://via-traslados-v291-rc1-stage.marcelof-gx.workers.dev';
+const allowedQaOrigin=(origin,env)=>origin===QA_WEB_ORIGIN||origin===V291_STAGE_ORIGIN;
+const delegatedRequest=(request)=>{
+ if(request.headers.get('Origin')!==V291_STAGE_ORIGIN)return request;
+ const headers=new Headers(request.headers);
+ headers.set('Origin',QA_WEB_ORIGIN);
+ return new Request(request,{headers});
+};
 const reply=(payload,status=200)=>new Response(JSON.stringify(payload),{
  status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
   'X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex, nofollow',
@@ -169,13 +177,13 @@ async function stagePassenger(request,env,path,method,ctx) {
    try{data=await request.clone().json()}catch{return reply({error:'Solicitud de ensayo inválida'},400)}
    if(!allowedPassengerEmail(data.email)||!/^[0-9]{8,12}$/.test(String(data.phone||'').replace(/\s/g,'')))
      return reply({error:'Solo datos sintéticos V35'},403);
-   return worker.fetch(request,env,ctx);
+   return worker.fetch(delegatedRequest(request),env,ctx);
  }
  const passenger=path.match(/^\/api\/requests\/(VIA-[A-Z0-9-]+)(?:\/(accept|cancel))?$/);
  if(passenger&&['GET','POST'].includes(method)){
    const row=await env.DB.prepare('SELECT email FROM bookings WHERE id=?').bind(passenger[1]).first();
    if(!allowedPassengerEmail(row?.email))return reply({error:'Solicitud de ensayo no disponible'},404);
-   return worker.fetch(request,env,ctx);
+   return worker.fetch(delegatedRequest(request),env,ctx);
  }
  if(path==='/api/v35/cleanup'&&method==='POST'){
    if(actor?.id!==STAGE_ADMIN)return reply({error:'Administrador de ensayo requerido'},403);
@@ -195,12 +203,12 @@ async function stagePassenger(request,env,path,method,ctx) {
    if(!actor)return reply({error:'Sesión QA requerida'},401);
    const row=await env.DB.prepare('SELECT email FROM bookings WHERE id=?').bind(staff[1]).first();
    if(!allowedPassengerEmail(row?.email))return reply({error:'Solicitud de ensayo no disponible'},404);
-   return worker.fetch(request,env,ctx);
+   return worker.fetch(delegatedRequest(request),env,ctx);
  }
  return null;
 }
 
-export default {async fetch(request,env,ctx){
+async function handleQaRequest(request,env,ctx){
  const path=new URL(request.url).pathname,method=request.method;
  if(env.VIA_QA_MODE!=='1'||!env.DB)
    return reply({error:'QA no configurada'},503);
@@ -208,12 +216,12 @@ export default {async fetch(request,env,ctx){
  if(!host.startsWith('via-traslados-maestro-api-qa.')||!host.endsWith('.workers.dev'))
    return reply({error:'Host QA inválido'},403);
  if(method==='OPTIONS')return new Response(null,{status:204,headers:{
-   'Access-Control-Allow-Origin':env.PUBLIC_ORIGIN,
+   'Access-Control-Allow-Origin':allowedQaOrigin(request.headers.get('Origin'),env)?request.headers.get('Origin'):'null',
    'Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS',
    'Access-Control-Allow-Headers':'Authorization,Content-Type,Idempotency-Key,X-Booking-Token,X-Verification-Token',
    'Cache-Control':'no-store'}});
  const origin=request.headers.get('Origin');
- if(origin&&origin!==env.PUBLIC_ORIGIN)return reply({error:'Origen no autorizado'},403);
+ if(origin&&!allowedQaOrigin(origin,env))return reply({error:'Origen no autorizado'},403);
  // Consulta pública sobre la misma implementación probada del motor real,
  // usando EXCLUSIVAMENTE D1 y credenciales configuradas en MAESTRO QA.
  // Nunca se obtiene información de otra D1 ni del Worker productivo.
@@ -245,7 +253,7 @@ export default {async fetch(request,env,ctx){
   let data={};try{data=await request.clone().json()}catch{return reply({error:'Solicitud de alta inválida'},400)}
   if(!allowedPassengerEmail(String(data.email||'').trim().toLowerCase()))
    return reply({error:'Solo usuarios de prueba @qa.invalid'},403);
-  return worker.fetch(request,env,ctx);
+  return worker.fetch(delegatedRequest(request),env,ctx);
  }
  if(path==='/api/qa/passenger-login'&&method==='POST')return qaPassengerLogin(request,env);
  if(path==='/api/qa/session'&&method==='POST')return session(request,env);
@@ -253,7 +261,7 @@ export default {async fetch(request,env,ctx){
   const customer=await customerSession(request,env);
   if(!customer||!allowedPassengerEmail(customer.email))
    return reply({error:'Sesión pasajero QA requerida'},401);
-  return worker.fetch(request,env,ctx);
+  return worker.fetch(delegatedRequest(request),env,ctx);
  }
  // Las solicitudes y el acceso con contraseña NO se confunden con los perfiles
  // sintéticos públicos; el estado pendiente no genera sesión.
@@ -278,5 +286,15 @@ export default {async fetch(request,env,ctx){
  if(!allowed(path,method))return reply({error:'Ruta no habilitada en QA aislada'},404);
  // Reutilizar la lógica de cotización, bloqueos, estados y comisiones del Worker real.
  // El esquema y los actores son distintos de los de producción.
- return worker.fetch(request,env,ctx);
+ return worker.fetch(delegatedRequest(request),env,ctx);
+}
+export default {async fetch(request,env,ctx){
+ // Origen adicional explícito para preview V29.1. Nunca es un wildcard.
+ const stage=request.headers.get('Origin')===V291_STAGE_ORIGIN;
+ const response=await handleQaRequest(request,env,ctx);
+ if(!stage)return response;
+ const headers=new Headers(response.headers);
+ headers.set('Access-Control-Allow-Origin',V291_STAGE_ORIGIN);
+ headers.set('Vary','Origin');
+ return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};
