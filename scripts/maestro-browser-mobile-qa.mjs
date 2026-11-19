@@ -37,6 +37,7 @@ try{
   const greeting=page.locator('#via-home-user-greeting');
   const nameSlot=page.locator('#via-home-user-name');
   await invite.waitFor({state:'visible',timeout:16000});
+  await greeting.waitFor({state:'hidden',timeout:15000});
   assert.match(await invite.innerText(),/Creá tu cuenta/,'Falta invitación sin sesión');
   assert.equal(await invite.locator('a').getAttribute('href'),'./mis-reservas.html?accion=registro');
   // El botón de reservas y el buscador principal deben sobrevivir sin cambios.
