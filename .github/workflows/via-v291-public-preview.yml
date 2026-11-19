@@ -67,6 +67,8 @@ jobs:
           config.write_text(json.dumps(spec,indent=2)+"\n")
           print("VIA_V291_STAGE_ISOLATED_CONFIG_OK",qa_api)
           PY
+          python3 scripts/via-v291-stage-preview.py
+          node --check via-v291-rc-build/assets/app.js
       - name: Publicar SOLO Worker nuevo de preview, NO web/API productivas
         run: |
           set -euo pipefail
@@ -84,6 +86,7 @@ jobs:
           test "$status" = 200 || { echo "ERROR: vista previa devuelve HTTP $status"; exit 1; }
           grep -F 'via-release-version' /tmp/v291-home.html >/dev/null
           grep -F 'V29.1 PREVISUALIZACIÓN' /tmp/v291-home.html >/dev/null
+          grep -F 'SIN CORREOS NI VIAJES REALES' /tmp/v291-home.html >/dev/null
           grep -F 'via-home-user-greeting' /tmp/v291-home.html >/dev/null
           for path in "mis-reservas.html" "app.js?v=29.1" "store.js?v=19.1" "mine-identity-v291.css?v=1" "via-v291-home-account.js?v=1" "via-v291-home-account.css?v=1"; do
             status=$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 20 "$URL/$path")
@@ -96,6 +99,7 @@ jobs:
             echo 'ERROR: stage apunta a API productiva'
             exit 1
           fi
+          curl -fsSL --max-time 20 "$URL/mis-reservas.html" | grep -F 'Generar código de prueba' >/dev/null
           echo "VIA_V291_PUBLIC_PREVIEW_OK $URL/"
       - name: Abrir URL pública en Chromium real 320/360/390/412
         run: |
