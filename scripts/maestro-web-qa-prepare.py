@@ -192,7 +192,14 @@ def qa_home(data,apk_ready):
       'Creá tu cuenta <span aria-hidden="true">→</span></a></aside>')
     end=matches[0].end()
     html=html[:end]+invite+html[end:]
-    qa_css=('<link rel="stylesheet" href="/qa-home-account-invite.css?v=1">'
+    # Mostrar el saludo dentro de la portada, inmediatamente encima de
+    # "Reservá tu traslado". Sin tocar el logo ni el motor de búsqueda.
+    intro='<div class="home-intro">'
+    if html.count(intro)!=1:raise AssertionError("Cambió el encabezado principal de la portada QA")
+    greeting=('<div id="via-home-user-greeting" hidden aria-live="polite">'
+      'Hola, <strong id="via-home-user-name"></strong></div>')
+    html=html.replace(intro,intro+greeting,1)
+    qa_css=('<link rel="stylesheet" href="/qa-home-account-invite.css?v=2">'
       '<link rel="stylesheet" href="/qa-passenger-identity-fixes.css?v=1">'
       '<script>window.VIA_QA_WIZARD=true;</script>'
       '<style id="via-maestro-qa-only">'
@@ -201,7 +208,7 @@ def qa_home(data,apk_ready):
       '</style>'
       '<meta name="robots" content="noindex,nofollow">')
     html=html.replace("</head>",qa_css+"</head>",1)
-    html=html.replace("</body>",'<script>window.VIA_QA_APK_READY='+('true' if apk_ready else 'false')+';</script><script src="/qa-access.js?v=1"></script><script src="/qa-home-account-invite.js?v=1"></script></body>',1)
+    html=html.replace("</body>",'<script>window.VIA_QA_APK_READY='+('true' if apk_ready else 'false')+';</script><script src="/qa-access.js?v=1"></script><script src="/qa-home-account-invite.js?v=2"></script></body>',1)
     if 'app.js?v=29' not in html or 'store.js?v=19' not in html:
         raise AssertionError("No se preservaron scripts V29 y V19 aprobados")
     return html.encode("utf-8")
@@ -317,6 +324,8 @@ def verify():
     if b'qa-access.js' not in home:raise AssertionError("Sin acceso de pruebas")
     if home.count(b'id="via-home-account-invite"')!=1 or b'mis-reservas.html?accion=registro' not in home:
         raise AssertionError("No se publicó la invitación a registro en QA")
+    if home.count(b'id="via-home-user-greeting"')!=1 or home.count(b'id="via-home-user-name"')!=1:
+        raise AssertionError("No aparece el contenedor personalizado del pasajero en QA")
     q=urllib.parse.urlencode({"mode":"reverse","lat":-34.905,"lng":-56.185})
     reverse,_=http_get(QA_URL+"/api/direcciones?"+q)
     if not isinstance(json.loads(reverse).get("results"),list):
