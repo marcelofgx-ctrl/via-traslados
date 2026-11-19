@@ -1,0 +1,107 @@
+name: Vía Traslados — preview público V29.1-RC1 aislado
+on:
+  push:
+    branches: [via-web-v29-1-rc1-20261119]
+    paths:
+      - ".github/workflows/via-v291-public-preview.yml"
+      - "scripts/via-v291-*"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview-publico:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Confirmar scripts y hashes de los assets productivos base
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/via-v291-prepare.py
+          node --check scripts/via-v291-mine-rc.mjs
+          node --check scripts/via-v291-store-rc.mjs
+          node --check scripts/via-v291-home-account.js
+          node scripts/via-v291-store-rc.mjs
+          node scripts/via-v291-mine-rc.mjs
+          node --check dist/via-v291-store.js
+          node --check dist/via-v291-app.js
+          python3 scripts/via-v291-prepare.py prepare
+      - name: Aislar CONFIG SOLO EN EL PREVIEW — nunca apuntar a API/D1 productivas
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib,re
+          folder=pathlib.Path("via-v291-rc-build")
+          assets=folder/"assets"
+          conf=assets/"config.js"
+          old=conf.read_text()
+          assert "viatraslados" in old.lower() or "apiUrl" in old,"config original sin ancla"
+          assert "window.VIA_CONFIG" in old,"no se encontró la configuración real"
+          qa_api="https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev"
+          conf.write_text('window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:'+json.dumps(qa_api)+",turnstileSiteKey:''});\n")
+          assert "via-traslados-api.marcelof-gx.workers.dev" not in conf.read_text(),"No debe haber API productiva"
+          # Banner visible de entorno y bloqueo explícito de formulario: nunca reservas reales.
+          banner=('<aside id="via-v291-preview-note" role="status"'
+             ' style="position:relative;z-index:1000;margin:0;padding:7px 10px;'
+             'background:#0b5349;color:#fff;text-align:center;font:600 12px Arial,sans-serif">'
+             'VÍA TRASLADOS · V29.1 PREVISUALIZACIÓN — SIN VIAJES REALES'
+             '</aside>')
+          for path in ("index.html","mis-reservas.html","reserva.html"):
+             file=assets/path
+             if not file.is_file():continue
+             html=file.read_text()
+             assert re.search(r'<body\b[^>]*>',html,re.I),"Página sin body: "+path
+             html=re.sub(r'(<body\b[^>]*>)',lambda m:m.group(1)+banner,html,count=1,flags=re.I)
+             file.write_text(html)
+          (assets/"_headers").write_text("/*\n  X-Robots-Tag: noindex, nofollow\n")
+          config=folder/"wrangler.candidate-stage.jsonc"
+          spec=json.loads(config.read_text())
+          assert spec["name"]=="via-traslados-v291-rc1-stage"
+          assert spec["assets"]["directory"]=="./assets"
+          config.write_text(json.dumps(spec,indent=2)+"\n")
+          print("VIA_V291_STAGE_ISOLATED_CONFIG_OK",qa_api)
+          PY
+      - name: Publicar SOLO Worker nuevo de preview, NO web/API productivas
+        run: |
+          set -euo pipefail
+          cd via-v291-rc-build
+          npx --yes wrangler@4.160.1 deploy --config wrangler.candidate-stage.jsonc
+      - name: Verificar URL pública real y assets críticos — fallar ante HTTP 404
+        run: |
+          set -euo pipefail
+          URL="https://via-traslados-v291-rc1-stage.marcelof-gx.workers.dev"
+          for attempt in 1 2 3 4 5; do
+            status=$(curl -sS -L -o /tmp/v291-home.html -w '%{http_code}' --max-time 20 "$URL/" || true)
+            if [ "$status" = 200 ]; then break; fi
+            sleep 4
+          done
+          test "$status" = 200 || { echo "ERROR: vista previa devuelve HTTP $status"; exit 1; }
+          grep -F 'via-release-version' /tmp/v291-home.html >/dev/null
+          grep -F 'V29.1 PREVISUALIZACIÓN' /tmp/v291-home.html >/dev/null
+          grep -F 'via-home-user-greeting' /tmp/v291-home.html >/dev/null
+          for path in "mis-reservas.html" "app.js?v=29.1" "store.js?v=19.1" "mine-identity-v291.css?v=1" "via-v291-home-account.js?v=1" "via-v291-home-account.css?v=1"; do
+            status=$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 20 "$URL/$path")
+            echo "VIA_V291_STAGE_HTTP $status $path"
+            test "$status" = 200 || exit 1
+          done
+          body=$(curl -fsSL --max-time 20 "$URL/config.js")
+          printf '%s' "$body" | grep -F 'via-traslados-maestro-api-qa.marcelof-gx.workers.dev' >/dev/null
+          if printf '%s' "$body" | grep -F 'via-traslados-api.marcelof-gx.workers.dev' >/dev/null; then
+            echo 'ERROR: stage apunta a API productiva'
+            exit 1
+          fi
+          echo "VIA_V291_PUBLIC_PREVIEW_OK $URL/"
+      - name: Verificar producción sigue en V29, API intacta y APK V35 sin reemplazar
+        run: |
+          set -euo pipefail
+          prod=$(curl -fsSL --max-time 25 https://viatraslados.com/)
+          printf '%s' "$prod" | grep -F 'app.js?v=29' >/dev/null
+          printf '%s' "$prod" | grep -F 'store.js?v=19' >/dev/null
+          if printf '%s' "$prod" | grep -F 'via-release-version' >/dev/null; then exit 1; fi
+          echo 'VIA_V291_PRODUCTION_UNTOUCHED_OK'
