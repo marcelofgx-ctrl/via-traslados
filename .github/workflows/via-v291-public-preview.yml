@@ -97,6 +97,12 @@ jobs:
             exit 1
           fi
           echo "VIA_V291_PUBLIC_PREVIEW_OK $URL/"
+      - name: Abrir URL pública en Chromium real 320/360/390/412
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          node --check scripts/via-v291-preview-smoke.mjs
+          node scripts/via-v291-preview-smoke.mjs
       - name: Verificar producción sigue en V29, API intacta y APK V35 sin reemplazar
         run: |
           set -euo pipefail
