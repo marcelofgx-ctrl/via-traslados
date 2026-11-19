@@ -104,6 +104,7 @@ try{
   await page.locator('button[data-via-qa="out"]').click();
   await page.waitForFunction(()=>window.ViaStore?.customer()===null,null,{timeout:20000});
   await invite.waitFor({state:'visible',timeout:15000});
+  await greeting.waitFor({state:'hidden',timeout:15000});
   const intro=await page.evaluate(()=>({
     width:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,
     hasVisiblePrompt:!!document.querySelector('#via-home-account-invite:not([hidden])')
