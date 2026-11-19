@@ -39,4 +39,32 @@ try{
   console.log('VIA_V291_LIVE_PUBLIC_BROWSER_OK '+JSON.stringify({width,home:200,signup:true,login:true,qaApi:true,noScroll:true}));
   await context.close();
  }
+ // Reproducir el fallo reportado: nunca enviar código REAL desde la vista previa.
+ const ctx=await browser.newContext({viewport:{width:390,height:800},isMobile:true,hasTouch:true});
+ const pg=await ctx.newPage();
+ const failures=[];
+ pg.on('pageerror',e=>failures.push(e.message));
+ let apiCalls=0;
+ pg.on('request',request=>{if(request.url().includes('/api/auth/start'))apiCalls++});
+ await pg.goto(url+'mis-reservas.html?accion=registro',{waitUntil:'domcontentloaded'});
+ await pg.locator('#mine-signup-card').waitFor({state:'visible',timeout:15000});
+ assert.match(await pg.locator('#mine-signup-card').innerText(),/no se envían correos/i);
+ assert.equal(await pg.locator('#mine-signup-send').textContent(),'Generar código de prueba');
+ await pg.locator('#mine-signup-name').fill('Persona Prueba V291');
+ await pg.locator('#mine-signup-phone').fill('099875431');
+ await pg.locator('#mine-signup-email').fill('no-es-un-destinatario@example.com');
+ await pg.locator('#mine-signup-send').click();
+ assert.match(await pg.locator('#mine-signup-feedback').textContent(),/no envía correos/i);
+ assert.equal(apiCalls,0,'Correo normal generó solicitud desde preview');
+ await pg.locator('#mine-signup-email').fill('persona.preview.v291@qa.invalid');
+ await pg.locator('#mine-signup-send').click();
+ await pg.waitForFunction(()=>document.querySelector('#mine-signup-feedback')?.textContent?.includes('123456'),null,{timeout:15000});
+ assert.equal(await pg.locator('#mine-signup-verify').isVisible(),true,'No mostró confirmación del OTP sintético');
+ assert.equal(apiCalls,1,'El OTP sintético no llegó a la API QA');
+ await pg.locator('#mine-signup-code').fill('123456');
+ await pg.locator('#mine-signup-confirm').click();
+ await pg.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='persona.preview.v291@qa.invalid',null,{timeout:20000});
+ assert.equal(failures.length,0,failures.join('; '));
+ console.log('VIA_V291_PREVIEW_SYNTHETIC_REGISTRATION_OK no_real_email=true otp=synthetic account_isolated=true');
+ await ctx.close();
 }finally{await browser.close();}
