@@ -18,7 +18,17 @@ try{
   assert(cfg?.apiUrl?.includes('via-traslados-maestro-api-qa'),'Vista previa apunta a API productiva');
   await page.locator('#via-home-account-invite a').click();
   await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:15000});
-  assert.equal(await page.locator('#mine-login-card').isVisible(),false,'Login duplicado durante registro');
+  const beforeStable=await page.evaluate(()=>{
+    const login=document.querySelector('#mine-login-card'),signup=document.querySelector('#mine-signup-card');
+    return {loginClass:login?.className,signupClass:signup?.className,
+      loginDisplay:getComputedStyle(login).display,signupDisplay:getComputedStyle(signup).display};
+  });
+  if(beforeStable.loginDisplay!=='none')console.log('VIA_V291_TRANSITION_DIAG',JSON.stringify({width,...beforeStable}));
+  await page.waitForFunction(()=>{
+    const login=document.querySelector('#mine-login-card'),signup=document.querySelector('#mine-signup-card');
+    return login&&signup&&getComputedStyle(login).display==='none'&&getComputedStyle(signup).display!=='none';
+  },null,{timeout:12000});
+  assert.equal(await page.locator('#mine-login-card').isVisible(),false,'Login duplicado después de finalizar transición');
   assert.equal((await page.locator('#mine-signup-card h2').textContent()).trim(),'Crear tu cuenta');
   await page.locator('#mine-existing').click();
   await page.locator('#mine-login-card').waitFor({state:'visible',timeout:10000});
