@@ -28,7 +28,7 @@ try{
   // Validar DOM y URL efectiva, no el evento "load" del navegador.
   console.log('HOME_CTA_NAV_CHECK',JSON.stringify({width,url:page.url()}));
   await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:20000});
-  assert.match(page.url(),/mis-reservas\.html\?accion=registro/,
+  assert.match(page.url(),/mis-reservas(?:\.html)?\?accion=registro/,
     'El CTA no abre el registro independiente');
   await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:18000});
   assert.equal(await page.locator('#mine-login-card').isVisible(),false,
