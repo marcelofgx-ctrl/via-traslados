@@ -27,7 +27,7 @@ ASSETS=OUT/"assets"
 APK_SOURCE=None
 APK_NAME="descargas/via-traslados-conductor-v35.apk"
 EXPECTED_APK_SHA256=""
-BRANCH_SRC="193fee54512870b1e530cc98baa6442be0f817d8"
+BRANCH_SRC="4ee78e500a773afb702e50092dcba15b52457492"
 EXTRAS=("flow-premium.css","flow-premium.js","via-refinement.css","admin.html")
 EXPECTED_MARKERS=(b"review-compact-v29.css?v=29",b"app.js?v=29",b"geo-v2/core.mjs?v=3")
 
