@@ -26,12 +26,26 @@ try{
   assert.equal(cardDisplay.display,'none','La cuenta anterior sigue visible por CSS');
   assert.equal(cardDisplay.qa,true,'Sin marca del wizard QA');
   if(width===390){
-    const preview=await page.request.post('https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev/api/public/route-preview',{
+    const api='https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev';
+    const health=await (await page.request.get(api+'/api/health')).json();
+    const preview=await page.request.post(api+'/api/public/route-preview',{
       headers:{Origin:'https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev'},
-      data:{origin:'Shangrilá, Canelones',destination:'Aeropuerto de Carrasco, Canelones'}
+      data:{origin:'Montevideo Shopping',destination:'Aeropuerto Internacional de Carrasco'}
     });
-    assert.equal(preview.status(),503);
-    assert.equal((await preview.json()).reason,'qa_geoapify_not_configured');
+    const result=await preview.json();
+    if(health.routePreviewReady){
+      assert.equal(preview.status(),200,'Proveedor QA configurado pero la ruta vial no responde');
+      assert(Number(result.distanceKm)>0&&Number(result.durationMinutes)>0,
+        'QA debe devolver kilómetros y minutos reales, no valores ficticios');
+      assert.equal(result.source,'Geoapify');
+      console.log('MAESTRO_QA_GEOAPIFY_ROUTE_OK',JSON.stringify({
+        distanceKm:result.distanceKm,durationMinutes:result.durationMinutes,source:result.source
+      }));
+    }else{
+      assert.equal(preview.status(),503,'QA sin credenciales debe fallar de forma explícita');
+      assert.equal(result.reason,'qa_geoapify_not_configured');
+      console.log('MAESTRO_QA_GEOAPIFY_PENDING: secretos QA independientes aún no configurados');
+    }
   }
   const invite=page.locator('#via-home-account-invite');
   const greeting=page.locator('#via-home-user-greeting');
