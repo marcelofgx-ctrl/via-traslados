@@ -83,6 +83,31 @@ jobs:
             sleep 3
           done
           test "$ok" -eq 1
+      - name: Verificar CORS del preview V29.1 y rechazo de correo REAL (sin enviar mensajes)
+        run: |
+          set -euo pipefail
+          API="https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev"
+          ORIGIN="https://via-traslados-v291-rc1-stage.marcelof-gx.workers.dev"
+          curl -fsS -D /tmp/v291-cors-options.txt -o /dev/null -X OPTIONS "$API/api/auth/start" \
+            -H "Origin: $ORIGIN" -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type'
+          grep -Fi "access-control-allow-origin: $ORIGIN" /tmp/v291-cors-options.txt >/dev/null
+          code=$(curl -sS -o /tmp/v291-fake-start.json -D /tmp/v291-cors-post.txt -w '%{http_code}' \
+            -X POST "$API/api/auth/start" -H "Origin: $ORIGIN" -H 'Content-Type: application/json' \
+            --data '{"email":"preview-check@qa.invalid"}')
+          test "$code" = 200
+          grep -Fi "access-control-allow-origin: $ORIGIN" /tmp/v291-cors-post.txt >/dev/null
+          node -e "let x=require('/tmp/v291-fake-start.json');if(!x.qa||x.testCode!=='123456')process.exit(1)"
+          code=$(curl -sS -o /tmp/v291-real-forbidden.json -w '%{http_code}' \
+            -X POST "$API/api/auth/start" -H "Origin: $ORIGIN" -H 'Content-Type: application/json' \
+            --data '{"email":"not-a-recipient@example.com"}')
+          test "$code" = 403
+          node -e "let x=require('/tmp/v291-real-forbidden.json');if(!x.error.includes('qa.invalid'))process.exit(1)"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST "$API/api/auth/start" -H 'Origin: https://not-authorized.example.org' \
+            -H 'Content-Type: application/json' --data '{"email":"preview-check@qa.invalid"}')
+          test "$code" = 403
+          echo 'VIA_V291_STAGE_CORS_AND_NO_REAL_EMAIL_OK'
       - name: E2E con HTTP REAL en QA — pasajeros, idempotencia, roles, tarifas, 25% y limpieza sintética
         run: node scripts/maestro-passenger-driver-e2e.mjs
       - name: E2E con dos cuentas de pasajero A/B y bloqueo de accesos ajenos
