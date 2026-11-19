@@ -15,7 +15,8 @@ try{
   assert.equal(response?.status(),200,'home QA '+width);
   const panel=page.locator('#via-maestro-qa-access');
   await panel.waitFor({state:'visible',timeout:20000});
-  assert.match(await panel.innerText(),/ENTORNO DE PRUEBAS/);
+  assert.equal(await page.locator('#via-qa-toggle').getAttribute('aria-expanded'),'false');
+  assert.equal(await page.locator('#via-qa-panel').isVisible(),false,'Panel de pruebas debe iniciar plegado');
   const invite=page.locator('#via-home-account-invite');
   await invite.waitFor({state:'visible',timeout:16000});
   assert.match(await invite.innerText(),/Creá tu cuenta/,'Falta invitación sin sesión');
@@ -50,7 +51,10 @@ try{
   await page.goto(QA_WEB_URL,{waitUntil:'domcontentloaded',timeout:30000});
   if(width===390)await page.locator('#via-home-account-invite').waitFor({state:'hidden',timeout:15000});
   await page.locator('#via-maestro-qa-access').waitFor({state:'visible',timeout:20000});
+  await page.locator('#via-qa-toggle').click();
+  assert.match(await panel.innerText(),/ENTORNO DE PRUEBAS/);
   await page.locator('button[data-via-qa="A"]').click();
+  assert.equal(await page.locator('#via-qa-panel').isVisible(),false,'No se plegó tras elegir A');
   try{
     await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid',null,{timeout:8000});
     await invite.waitFor({state:'hidden',timeout:15000});
@@ -62,7 +66,9 @@ try{
     console.error('MAESTRO_BROWSER_DIAG',JSON.stringify({width,state,network,errors}));
     throw err;
   }
+  await page.locator('#via-qa-toggle').click();
   await page.locator('button[data-via-qa="B"]').click();
+  assert.equal(await page.locator('#via-qa-panel').isVisible(),false,'No se plegó tras elegir B');
   await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.b@qa.invalid',null,{timeout:20000});
   const metrics=await page.evaluate(()=>({
     width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
@@ -72,6 +78,7 @@ try{
   assert(metrics.qa,'store QA apunta a producción');
   assert.equal(metrics.email,'pasajero.b@qa.invalid');
   assert(metrics.scrollWidth<=metrics.width+2,'Scroll horizontal '+JSON.stringify(metrics));
+  await page.locator('#via-qa-toggle').click();
   await page.locator('button[data-via-qa="out"]').click();
   await page.waitForFunction(()=>window.ViaStore?.customer()===null,null,{timeout:20000});
   await invite.waitFor({state:'visible',timeout:15000});
