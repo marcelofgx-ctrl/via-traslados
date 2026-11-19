@@ -81,7 +81,7 @@ replaceOne(/global\.ViaStore=\{isDemo,startVerification,verifyCode,create,get/,
  'bloqueo de doble toque en la API pública');
 // Evitar que la respuesta 401 de A (ya desconectado) borre la cuenta B.
 // La función request() V19 original borra ACCOUNT sin comparar el token.
-replaceOne(/if\(r\.status===401&&path==='\\/api\\/customer\\/me'\)localStorage\.removeItem\(ACCOUNT\);/,
+replaceOne(/if\(r\.status===401&&path==='\/api\/customer\/me'\)localStorage\.removeItem\(ACCOUNT\);/,
  "if(r.status===401&&path==='/api/customer/me'){"+
  "const sent=(opts.headers?.Authorization||'').match(/^Bearer ([a-f0-9]{64})$/i)?.[1];"+
  "if(sent&&customer()?.sessionToken===sent)localStorage.removeItem(ACCOUNT);"+
