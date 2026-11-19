@@ -170,7 +170,9 @@ def qa_home(data,apk_ready):
     # HTML efectivo del motor de reservas, abortar (fail-closed).
     target=r'<a class="reference-reservations" href="./mis-reservas.html">.*?</a>'
     matches=list(re.finditer(target,html,flags=re.S))
-    if len(matches)!=1:raise AssertionError("No se encontró un botón único de Mis reservas en la web real")
+    if len(matches)!=1:
+        sample=re.findall(r'.{0,100}reference-reservations.{0,180}',html,flags=re.S)[:3]
+        raise AssertionError("Botón de Mis reservas no coincide con el selector esperado: "+repr(sample)[:900])
     invite=('<aside id="via-home-account-invite" hidden aria-label="Invitación a crear una cuenta">'
       '<span class="via-home-account-invite__copy"><strong>¿Primera vez en Vía?</strong>'
       '<span>Tu cuenta, tus reservas.</span></span>'
