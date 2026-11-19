@@ -77,6 +77,8 @@ try{
   try{
     await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid',null,{timeout:8000});
     await invite.waitFor({state:'hidden',timeout:15000});
+    await greeting.waitFor({state:'visible',timeout:15000});
+    assert.equal(await nameSlot.textContent(),'Ana');
   }catch(err){
     const state=await page.evaluate(()=>({store:!!window.ViaStore,config:window.VIA_CONFIG?.apiUrl,
       customer:window.ViaStore?.customer()?.profile?.email||null,
