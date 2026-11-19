@@ -107,4 +107,33 @@ try{
   console.log('MAESTRO_BROWSER_QA_OK',JSON.stringify({width,horizontalScroll:false,loginAB:true,logout:true,pageErrors:errors}));
   await context.close();
  }
+ // Regresión exacta reportada en Samsung: paso de identidad y cambio A/B.
+ const c=await browser.newContext({viewport:{width:390,height:810},isMobile:true,hasTouch:true});
+ const w=await c.newPage();
+ await w.goto(QA_WEB_URL,{waitUntil:'domcontentloaded'});
+ await w.locator('#via-qa-toggle').click();
+ await w.locator('button[data-via-qa="A"]').click();
+ await w.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid');
+ await w.locator('#start-booking').click();
+ await w.evaluate(()=>{
+  document.getElementById('origin').value='Centro de Montevideo';
+  document.getElementById('destination').value='Aeropuerto de Carrasco';
+  document.getElementById('date').value=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+ });
+ await w.locator('#to-contact').click();
+ await w.locator('#known-customer').waitFor({state:'visible'});
+ assert.equal(await w.locator('#phone-first').isVisible(),false,'Cuenta reconocida y teléfono visibles a la vez');
+ await w.locator('#via-qa-toggle').click();
+ await w.locator('button[data-via-qa="B"]').click();
+ await w.waitForFunction(()=>document.getElementById('known-customer-title')?.textContent==='Hola, Bruno');
+ await w.locator('#via-qa-toggle').click();
+ await w.locator('button[data-via-qa="out"]').click();
+ await w.locator('#known-customer').waitFor({state:'hidden'});
+ await w.locator('#phone-first').waitFor({state:'visible'});
+ await w.locator('#account-phone').fill('099000091');
+ await w.locator('#phone-lookup').click();
+ await w.waitForFunction(()=>document.getElementById('form-result')?.textContent?.includes('QA · Cuentas'));
+ console.log('MAESTRO_IDENTITY_WIZARD_QA_OK: A/B/Salir, sin cuenta fantasma ni CAPTCHA erróneo');
+ await c.close();
+
 }finally{await browser.close()}
