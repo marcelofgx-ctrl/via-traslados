@@ -177,7 +177,13 @@ def prepare():
         raise AssertionError("La versión activa cambió; reauditar antes de generar RC")
     raw_home,_=http_get(LIVE+"/")
     if digest(raw_home)!=EXPECTED_PUBLIC[""]:
-        raise AssertionError("HTML público ya no coincide con la captura de rollback")
+        print("VIA_V291_HTML_DIAG",json.dumps({
+         "raw":digest(raw_home),"rawBytes":len(raw_home),
+         "sanitized":digest(sanitize_html(raw_home)),
+         "sanitizedBytes":len(sanitize_html(raw_home)),
+         "expected":EXPECTED_PUBLIC[""]}),flush=True)
+        if digest(sanitize_html(raw_home))!=EXPECTED_PUBLIC[""]:
+            raise AssertionError("HTML público ya no coincide con la captura de rollback, ni después de sanitizar Cloudflare")
     for marker in EXPECTED_MARKERS:
         if marker not in raw_home:raise AssertionError("Falta asset activo "+repr(marker))
     worker=get_live_worker_source()
