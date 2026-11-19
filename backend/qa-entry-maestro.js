@@ -213,6 +213,15 @@ export default {async fetch(request,env,ctx){
    'Cache-Control':'no-store'}});
  const origin=request.headers.get('Origin');
  if(origin&&origin!==env.PUBLIC_ORIGIN)return reply({error:'Origen no autorizado'},403);
+ // La previsualización pública no requiere sesión de conductor. Este
+ // entorno QA todavía no tiene su propia clave Geoapify configurada.
+ // Nunca calcular rutas con D1/API productivas ni devolver kilómetros falsos.
+ if(path==='/api/public/route-preview'&&method==='POST'){
+  if(!await limit(env,'route-qa:'+request.headers.get('CF-Connecting-IP'),12,3600))
+   return reply({error:'Límite de rutas de prueba alcanzado. Probá más tarde.'},429);
+  return reply({error:'En QA el cálculo de distancia está pendiente de configurar Geoapify. Podés continuar sin kilómetros de prueba.',
+   qa:true,reason:'qa_geoapify_not_configured'},503);
+ }
  if(path==='/api/health'&&method==='GET'){
   const db=await env.DB.prepare('SELECT COUNT(*) AS n FROM bookings WHERE id LIKE ?')
    .bind('VIA-QA-%').first();
