@@ -130,8 +130,8 @@ app=app.slice(0,handlerStart)+handlerNew+app.slice(handlerEnd);
 // La pantalla original exige Turnstile incluso con clave de sitio vacía;
 // en QA no se hace búsqueda de números reales: se accede con A/B ficticios.
 app=once(app,
- "if(!S.isDemo()&&!turnstileToken)return error('Completá la verificación de seguridad.');",
- "if(window.VIA_QA_WIZARD&&!hasSession())return error('En este entorno de prueba usá el botón QA · Cuentas y elegí Pasajero A o B. No ingreses un celular real.');\n  if(!S.isDemo()&&!turnstileToken&&!hasSession())return error('Completá la verificación de seguridad.');",
+ "  if(digits.length<8||digits.length>15)return error('Ingresá un número de celular válido.');\n  if(!S.isDemo()&&!turnstileToken)return error('Completá la verificación de seguridad.');",
+ "  if(digits.length<8||digits.length>15)return error('Ingresá un número de celular válido.');\n  if(window.VIA_QA_WIZARD&&!hasSession())return error('En esta QA elegí Pasajero A o B desde QA · Cuentas. No uses tu número real.');\n  if(!S.isDemo()&&!turnstileToken&&!hasSession())return error('Completá la verificación de seguridad.');",
  'wizard: advertencia sin confundir QA con Turnstile real');
 // El panel QA emite este evento; actualizar de inmediato la identidad
 // del wizard para ocultar el número previo y no mezclar cuentas.
