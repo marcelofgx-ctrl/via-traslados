@@ -24,7 +24,7 @@ try{
   assert.equal(await page.locator('#start-booking').count(),1);
   assert.equal(await page.locator('.reference-reservations').count(),1);
   await invite.locator('a').click();
-  await page.waitForURL(/mis-reservas\.html\?accion=registro/,{timeout:16000});
+  await page.waitForURL(/mis-reservas\.html\?accion=registro/,{waitUntil:'domcontentloaded',timeout:16000});
   await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:18000});
   assert.equal(await page.locator('#mine-login-card').isVisible(),false,
    'CTA no seleccionó registro nuevo');
