@@ -1,0 +1,33 @@
+name: Vía Traslados — auditoría solo lectura de versiones y rollback
+on:
+  push:
+    branches: [via-release-auditoria-readonly-20261119]
+    paths:
+      - "scripts/via-production-readonly-manifest.mjs"
+      - ".github/workflows/via-production-readonly-manifest.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validar auditoría exclusivamente de lectura
+        run: |
+          set -euo pipefail
+          node --check scripts/via-production-readonly-manifest.mjs
+          if grep -nE 'fetch\([^,]+,\{[^}]*method:' scripts/via-production-readonly-manifest.mjs; then exit 1; fi
+      - name: Registrar deployments exactos de Workers y hashes de la web pública
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/via-production-readonly-manifest.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-prod-auditoria-readonly-versiones
+          path: audit/production-readonly-manifest.json
+          retention-days: 30
