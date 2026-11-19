@@ -5,6 +5,7 @@ const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-
 function ok(a,m){assert(a,m)}
 async function choose(page,which){
  await page.goto(BASE+'/',{waitUntil:'domcontentloaded',timeout:30000});
+ await page.locator('#via-qa-toggle').click();
  await page.locator('button[data-via-qa="'+which+'"]').click();
  await page.waitForFunction(email=>window.ViaStore?.customer()?.profile?.email===email,
   which==='A'?'pasajero.a@qa.invalid':'pasajero.b@qa.invalid',{timeout:18000});
