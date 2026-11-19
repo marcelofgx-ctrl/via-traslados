@@ -130,7 +130,7 @@ app=app.slice(0,handlerStart)+handlerNew+app.slice(handlerEnd);
 // No se altera CAPTCHA ni backend.
 app=once(app,
  "S.resume().then(()=>{if(step===2)remembered()}).catch(()=>{});",
- "S.resume().then(()=>{if(step===2)remembered()}).catch(()=>{});\\n window.addEventListener('via-customer-session',()=>{selectedPhone='';grant='';turnstileToken='';if(step===2)remembered();});",
+ "S.resume().then(()=>{if(step===2)remembered()}).catch(()=>{});\n window.addEventListener('via-customer-session',()=>{selectedPhone='';grant='';turnstileToken='';if(step===2)remembered();});",
  'wizard: cambio de identidad');
 
 const choice=[
