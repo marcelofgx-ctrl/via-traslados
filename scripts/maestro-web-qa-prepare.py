@@ -166,13 +166,26 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 def qa_home(data,apk_ready):
     html=sanitize_html(data).decode("utf-8")
     if html.count("</body>")!=1:raise AssertionError("HTML de producción cambió")
-    qa_css=('<style id="via-maestro-qa-only">'
+    # Insertar un solo CTA pequeño junto a Mis reservas. Si cambia el
+    # HTML efectivo del motor de reservas, abortar (fail-closed).
+    target=r'<a class="reference-reservations" href="./mis-reservas.html">[\\s\\S]*?</a>'
+    matches=list(re.finditer(target,html))
+    if len(matches)!=1:raise AssertionError("No se encontró un botón único de Mis reservas en la web real")
+    invite=('<aside id="via-home-account-invite" hidden aria-label="Invitación a crear una cuenta">'
+      '<span class="via-home-account-invite__copy"><strong>¿Primera vez en Vía?</strong>'
+      '<span>Tu cuenta, tus reservas.</span></span>'
+      '<a class="via-home-account-invite__link" href="./mis-reservas.html?accion=registro">'
+      'Creá tu cuenta <span aria-hidden="true">→</span></a></aside>')
+    end=matches[0].end()
+    html=html[:end]+invite+html[end:]
+    qa_css=('<link rel="stylesheet" href="/qa-home-account-invite.css?v=1">'
+      '<style id="via-maestro-qa-only">'
       'a[href*="/descargas/"][href$=".apk"]:not(#via-qa-debug-download){display:none!important}'
       'body{padding-bottom:145px!important}'
       '</style>'
       '<meta name="robots" content="noindex,nofollow">')
     html=html.replace("</head>",qa_css+"</head>",1)
-    html=html.replace("</body>",'<script>window.VIA_QA_APK_READY='+('true' if apk_ready else 'false')+';</script><script src="/qa-access.js?v=1"></script></body>',1)
+    html=html.replace("</body>",'<script>window.VIA_QA_APK_READY='+('true' if apk_ready else 'false')+';</script><script src="/qa-access.js?v=1"></script><script src="/qa-home-account-invite.js?v=1"></script></body>',1)
     if 'app.js?v=29' not in html or 'store.js?v=19' not in html:
         raise AssertionError("No se preservaron scripts V29 y V19 aprobados")
     return html.encode("utf-8")
@@ -253,6 +266,11 @@ def prepare():
     (ASSETS/"mine-identity-qa.css").write_bytes(mine_css.read_bytes())
     (ASSETS/"config.js").write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:"+json.dumps(QA_API)+",turnstileSiteKey:''});\n",encoding="utf-8")
     (ASSETS/"qa-access.js").write_text(qa_access_script(),encoding="utf-8")
+    # CTA de portada separado de los scripts críticos, sin capturar teléfonos.
+    (ASSETS/"qa-home-account-invite.js").write_text(
+        pathlib.Path("scripts/qa-home-account-invite.js").read_text(encoding="utf-8"),encoding="utf-8")
+    (ASSETS/"qa-home-account-invite.css").write_text(
+        pathlib.Path("scripts/qa-home-account-invite.css").read_text(encoding="utf-8"),encoding="utf-8")
     (OUT/"worker.mjs").write_text(worker,encoding="utf-8")
     spec={"name":QA,"main":"worker.mjs","compatibility_date":"2026-11-10","workers_dev":True,
           "assets":{"directory":"./assets","binding":"ASSETS","run_worker_first":["/api/*"]}}
@@ -260,13 +278,13 @@ def prepare():
     (OUT/"manifest.json").write_text(json.dumps({
      "productionWebVersionReadOnly":live_version,"productionOrigin":LIVE,"webQa":QA_URL,
      "original":inventory,
-     "modified":{"store.js":digest(patched.read_bytes()),"app.js":digest(mine_app.read_bytes()),"mis-reservas.html":digest((ASSETS/"mis-reservas.html").read_bytes()),"mine-identity-qa.css":digest(mine_css.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes())}
+     "modified":{"store.js":digest(patched.read_bytes()),"app.js":digest(mine_app.read_bytes()),"mis-reservas.html":digest((ASSETS/"mis-reservas.html").read_bytes()),"mine-identity-qa.css":digest(mine_css.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes()),"qa-home-account-invite.js":digest((ASSETS/"qa-home-account-invite.js").read_bytes()),"qa-home-account-invite.css":digest((ASSETS/"qa-home-account-invite.css").read_bytes())}
     },indent=2))
     print("MAESTRO_QA_WEB_READY",len(inventory),"ORIGINAL_ASSETS",len(worker),"WORKER_BYTES",
           "LIVE_VERSION",live_version,"APK_INCLUDED",has_apk,flush=True)
 
 def verify():
-    for path in ("","store.js","config.js","app.js","mis-reservas.html","mine-identity-qa.css","geo-v2/core.mjs","qa-access.js","reserva.html"):
+    for path in ("","store.js","config.js","app.js","mis-reservas.html","mine-identity-qa.css","geo-v2/core.mjs","qa-access.js","qa-home-account-invite.js","qa-home-account-invite.css","reserva.html"):
         url=QA_URL+"/"+path
         binary,h=http_get(url)
         if path=="store.js":
@@ -279,6 +297,8 @@ def verify():
     home,_=http_get(QA_URL+"/")
     if b'ENTORNO DE PRUEBAS' not in (ASSETS/"qa-access.js").read_bytes():raise AssertionError("Sin banner QA")
     if b'qa-access.js' not in home:raise AssertionError("Sin acceso de pruebas")
+    if home.count(b'id="via-home-account-invite"')!=1 or b'mis-reservas.html?accion=registro' not in home:
+        raise AssertionError("No se publicó la invitación a registro en QA")
     q=urllib.parse.urlencode({"mode":"reverse","lat":-34.905,"lng":-56.185})
     reverse,_=http_get(QA_URL+"/api/direcciones?"+q)
     if not isinstance(json.loads(reverse).get("results"),list):
