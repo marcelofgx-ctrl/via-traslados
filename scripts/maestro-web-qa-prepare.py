@@ -168,8 +168,8 @@ def qa_home(data,apk_ready):
     if html.count("</body>")!=1:raise AssertionError("HTML de producción cambió")
     # Insertar un solo CTA pequeño junto a Mis reservas. Si cambia el
     # HTML efectivo del motor de reservas, abortar (fail-closed).
-    target=r'<a class="reference-reservations" href="./mis-reservas.html">[\\s\\S]*?</a>'
-    matches=list(re.finditer(target,html))
+    target=r'<a class="reference-reservations" href="./mis-reservas.html">.*?</a>'
+    matches=list(re.finditer(target,html,flags=re.S))
     if len(matches)!=1:raise AssertionError("No se encontró un botón único de Mis reservas en la web real")
     invite=('<aside id="via-home-account-invite" hidden aria-label="Invitación a crear una cuenta">'
       '<span class="via-home-account-invite__copy"><strong>¿Primera vez en Vía?</strong>'
