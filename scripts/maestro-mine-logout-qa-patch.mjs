@@ -26,7 +26,7 @@ assert(drawStart>0&&drawEnd>drawStart,'Sin función draw de Mis reservas');
 const oldDraw=app.slice(drawStart,drawEnd);
 assert(oldDraw.includes("welcome?.classList.toggle('hidden',!person)")&&oldDraw.includes('mineRows=await S.mine()'),'Se modificó la vista original');
 const drawNew=[
- " let mineDrawEpoch=0,authMode='choice',signupMode=false,signupEmail='',signupCaptchaToken='',signupCaptchaReady=false,signupGeneration=0;",
+ " let mineDrawEpoch=0,authMode=(new URLSearchParams(window.location.search).get('accion')==='registro'?'signup':'choice'),signupMode=false,signupEmail='',signupCaptchaToken='',signupCaptchaReady=false,signupGeneration=0;",
  " async function draw(){",
  "  const seq=++mineDrawEpoch,account=S.customer(),person=account?.profile;",
  "  login?.classList.toggle('hidden',!!person||authMode!=='login');",
