@@ -6,7 +6,7 @@
  const greeting=document.getElementById('via-home-user-greeting');
  const nameSlot=document.getElementById('via-home-user-name');
  if(!invite||!greeting||!nameSlot)return;
- let sequence=0;
+ let sequence=0,checkingToken=null;
  const clear=()=>{
   greeting.hidden=true;
   nameSlot.textContent='';
@@ -17,6 +17,7 @@
  };
  async function update(){
   const my=++sequence;
+  checkingToken=null;
   const store=window.ViaStore;
   // Evitar pintar una identidad guardada localmente mientras la sesión
   // aún no fue validada con el backend correspondiente.
@@ -26,6 +27,7 @@
   let before;
   try{before=store.customer()}catch{if(my===sequence)showGuest();return}
   if(!before?.sessionToken){if(my===sequence)showGuest();return}
+  checkingToken=before.sessionToken;
   try{
    const verified=await store.resume();
    if(my!==sequence)return;
@@ -42,9 +44,17 @@
    } else clear();
   }catch{
    if(my===sequence)showGuest();
+  }finally{
+   if(my===sequence)checkingToken=null;
   }
  }
- window.addEventListener('via-customer-session',()=>{void update()});
+ window.addEventListener('via-customer-session',()=>{
+  const token=window.ViaStore?.customer()?.sessionToken||null;
+  // resume() vuelve a guardar la MISMA sesión y emite este evento.
+  // Ignorarlo evita un ciclo ilimitado de verificaciones.
+  if(token&&checkingToken===token)return;
+  void update();
+ });
  window.addEventListener('pageshow',()=>{void update()});
  window.addEventListener('focus',()=>{void update()});
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void update()});
