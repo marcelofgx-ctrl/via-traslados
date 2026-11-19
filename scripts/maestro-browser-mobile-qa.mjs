@@ -24,7 +24,12 @@ try{
   assert.equal(await page.locator('#start-booking').count(),1);
   assert.equal(await page.locator('.reference-reservations').count(),1);
   await invite.locator('a').click();
-  await page.waitForURL(/mis-reservas\.html\?accion=registro/,{waitUntil:'domcontentloaded',timeout:16000});
+  // Chrome puede seguir esperando scripts externos del sitio tras navegar.
+  // Validar DOM y URL efectiva, no el evento "load" del navegador.
+  console.log('HOME_CTA_NAV_CHECK',JSON.stringify({width,url:page.url()}));
+  await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:20000});
+  assert.match(page.url(),/mis-reservas\.html\?accion=registro/,
+    'El CTA no abre el registro independiente');
   await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:18000});
   assert.equal(await page.locator('#mine-login-card').isVisible(),false,
    'CTA no seleccionó registro nuevo');
