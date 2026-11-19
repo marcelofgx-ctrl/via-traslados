@@ -91,6 +91,7 @@ try{
   await page.locator('button[data-via-qa="B"]').click();
   await page.locator('#via-qa-panel').waitFor({state:'hidden',timeout:15000});
   await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.b@qa.invalid',null,{timeout:20000});
+  await page.waitForFunction(()=>document.getElementById('via-home-user-name')?.textContent==='Bruno',null,{timeout:15000});
   const metrics=await page.evaluate(()=>({
     width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
     email:window.ViaStore.customer().profile.email,
