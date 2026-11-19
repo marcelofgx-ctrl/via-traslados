@@ -193,9 +193,11 @@ def qa_home(data,apk_ready):
     end=matches[0].end()
     html=html[:end]+invite+html[end:]
     qa_css=('<link rel="stylesheet" href="/qa-home-account-invite.css?v=1">'
+      '<link rel="stylesheet" href="/qa-passenger-identity-fixes.css?v=1">'
+      '<script>window.VIA_QA_WIZARD=true;</script>'
       '<style id="via-maestro-qa-only">'
       'a[href*="/descargas/"][href$=".apk"]:not(#via-qa-debug-download){display:none!important}'
-      'body{padding-bottom:145px!important}'
+      'body{padding-bottom:28px!important}'
       '</style>'
       '<meta name="robots" content="noindex,nofollow">')
     html=html.replace("</head>",qa_css+"</head>",1)
@@ -285,6 +287,8 @@ def prepare():
         pathlib.Path("scripts/qa-home-account-invite.js").read_text(encoding="utf-8"),encoding="utf-8")
     (ASSETS/"qa-home-account-invite.css").write_text(
         pathlib.Path("scripts/qa-home-account-invite.css").read_text(encoding="utf-8"),encoding="utf-8")
+    (ASSETS/"qa-passenger-identity-fixes.css").write_text(
+        pathlib.Path("scripts/qa-passenger-identity-fixes.css").read_text(encoding="utf-8"),encoding="utf-8")
     (OUT/"worker.mjs").write_text(worker,encoding="utf-8")
     spec={"name":QA,"main":"worker.mjs","compatibility_date":"2026-11-10","workers_dev":True,
           "assets":{"directory":"./assets","binding":"ASSETS","run_worker_first":["/api/*"]}}
@@ -292,13 +296,13 @@ def prepare():
     (OUT/"manifest.json").write_text(json.dumps({
      "productionWebVersionReadOnly":live_version,"productionOrigin":LIVE,"webQa":QA_URL,
      "original":inventory,
-     "modified":{"store.js":digest(patched.read_bytes()),"app.js":digest(mine_app.read_bytes()),"mis-reservas.html":digest((ASSETS/"mis-reservas.html").read_bytes()),"mine-identity-qa.css":digest(mine_css.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes()),"qa-home-account-invite.js":digest((ASSETS/"qa-home-account-invite.js").read_bytes()),"qa-home-account-invite.css":digest((ASSETS/"qa-home-account-invite.css").read_bytes())}
+     "modified":{"store.js":digest(patched.read_bytes()),"app.js":digest(mine_app.read_bytes()),"mis-reservas.html":digest((ASSETS/"mis-reservas.html").read_bytes()),"mine-identity-qa.css":digest(mine_css.read_bytes()),"config.js":digest((ASSETS/"config.js").read_bytes()),"index.html":digest((ASSETS/"index.html").read_bytes()),"qa-access.js":digest((ASSETS/"qa-access.js").read_bytes()),"qa-home-account-invite.js":digest((ASSETS/"qa-home-account-invite.js").read_bytes()),"qa-home-account-invite.css":digest((ASSETS/"qa-home-account-invite.css").read_bytes()),"qa-passenger-identity-fixes.css":digest((ASSETS/"qa-passenger-identity-fixes.css").read_bytes())}
     },indent=2))
     print("MAESTRO_QA_WEB_READY",len(inventory),"ORIGINAL_ASSETS",len(worker),"WORKER_BYTES",
           "LIVE_VERSION",live_version,"APK_INCLUDED",has_apk,flush=True)
 
 def verify():
-    for path in ("","store.js","config.js","app.js","mis-reservas.html","mine-identity-qa.css","geo-v2/core.mjs","qa-access.js","qa-home-account-invite.js","qa-home-account-invite.css","reserva.html"):
+    for path in ("","store.js","config.js","app.js","mis-reservas.html","mine-identity-qa.css","geo-v2/core.mjs","qa-access.js","qa-home-account-invite.js","qa-home-account-invite.css","qa-passenger-identity-fixes.css","reserva.html"):
         url=QA_URL+"/"+path
         binary,h=http_get(url)
         if path=="store.js":
