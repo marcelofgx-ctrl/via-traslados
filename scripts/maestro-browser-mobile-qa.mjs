@@ -17,6 +17,22 @@ try{
   await panel.waitFor({state:'visible',timeout:20000});
   assert.equal(await page.locator('#via-qa-toggle').getAttribute('aria-expanded'),'false');
   assert.equal(await page.locator('#via-qa-panel').isVisible(),false,'Panel de pruebas debe iniciar plegado');
+  const cardDisplay=await page.evaluate(()=>{
+    document.body.classList.add('in-booking');
+    const card=document.getElementById('known-customer');
+    card.classList.add('hidden');
+    return {display:getComputedStyle(card).display,qa:window.VIA_QA_WIZARD};
+  });
+  assert.equal(cardDisplay.display,'none','La cuenta anterior sigue visible por CSS');
+  assert.equal(cardDisplay.qa,true,'Sin marca del wizard QA');
+  if(width===390){
+    const preview=await page.request.post('https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev/api/public/route-preview',{
+      headers:{Origin:'https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev'},
+      data:{origin:'Shangrilá, Canelones',destination:'Aeropuerto de Carrasco, Canelones'}
+    });
+    assert.equal(preview.status(),503);
+    assert.equal((await preview.json()).reason,'qa_geoapify_not_configured');
+  }
   const invite=page.locator('#via-home-account-invite');
   await invite.waitFor({state:'visible',timeout:16000});
   assert.match(await invite.innerText(),/Creá tu cuenta/,'Falta invitación sin sesión');
