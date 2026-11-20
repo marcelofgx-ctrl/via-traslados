@@ -1,0 +1,117 @@
+name: Vía Traslados — Web V29.1.5 UI móvil publicación controlada
+on:
+  push:
+    branches: [via-ui-v2915-qa-20261120]
+    paths: ['.release/via-ui-v2915-authorized.txt']
+permissions:
+  contents: read
+concurrency:
+  group: via-traslados-web-production-release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Gate propietario, producción exacta y compilación sin cambios a API/D1
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/via-ui-v2915-qa-20261120
+          grep -Fx OWNER_AUTHORIZED_WEB_V29_1_5_UI_ROLLBACK_V29_1_4 .release/via-ui-v2915-authorized.txt
+          python3 scripts/via-ui-v2915-prepare.py
+          node scripts/via-ui-v2915-patch.mjs
+          node --check ui-v2915-build/assets/reference.js
+          node --check ui-v2915-build/assets/address-autocomplete.js
+          node --check scripts/via-ui-v2915-production-guard.mjs
+          node --check scripts/via-ui-v2915-browser.mjs
+      - name: Generar Worker desde fuente web vigente y retirar únicamente distintivo QA
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import runpy,pathlib,json,re,hashlib,os
+          c=runpy.run_path('scripts/via-v291-prepare.py')
+          out=pathlib.Path('ui-v2915-build');assets=out/'assets'
+          data=json.loads((out/'manifest.json').read_text())
+          def sha(x):return hashlib.sha256(x).hexdigest()
+          assert data['baseline_web_version']=='2d0205bf-990f-44ae-94e4-cf517a9d2093'
+          assert data['rollback_web_version']=='2d0205bf-990f-44ae-94e4-cf517a9d2093'
+          for name,expected in data['assets_before'].items():
+           if name in ('index.html','reference.js','address-autocomplete.js'):continue
+           assert sha((assets/name).read_bytes())==expected, name+' alterado inesperadamente'
+          stable={'app.js':'73afe2490a64b9a1c1b6cf4ce61283c1f68184208cbe783a70126cecc3b21e69',
+           'store.js':'3dc61982cbf5498402ae7eebdf01a03979d34fca9d81d5d77497d748e3b4e6c8',
+           'address-selected-preview.js':'bf0f7aa019eab8f42fe8dc5fe12a2c559f5871ff07266a4c8ea0dc1fb4f234e8',
+           'geo-v2/core.mjs':'17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1',
+           'config.js':'51c35d348defb7f6b804457ffee090642cc609a9c22d57f3521e6a7706247273'}
+          for name,digest in stable.items():assert sha((assets/name).read_bytes())==digest, 'Invariante '+name
+          home=assets/'index.html';text=home.read_text()
+          pattern=r'<div role="status" id="via-gps-qa-banner"[^>]*>UI QA · V29\.1\.5 · SIN RESERVAS REALES</div>'
+          text,count=re.subn(pattern,'',text)
+          assert count==1,'Distintivo de QA no único'
+          for marker in ['content="29.1.5"','app.js?v=29.2','reference.js?v=30',
+            'address-autocomplete.js?v=27','address-selected-preview.js?v=29',
+            'store.js?v=19.1','geo-v2/core.mjs?v=3']:assert marker in text,marker
+          home.write_text(text)
+          worker=c['get_live_worker_source']()
+          assert len(worker)>4000,'Worker web no recuperado'
+          (out/'worker.mjs').write_text(worker)
+          cfg={'name':'via-traslados-web-prod','main':'worker.mjs','compatibility_date':'2026-11-10',
+            'keep_vars':True,'workers_dev':True,
+            'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
+          (out/'wrangler.prod.jsonc').write_text(json.dumps(cfg,indent=2)+'\n')
+          data.update({'stage':'READY_TO_DEPLOY','source_commit':os.environ['GITHUB_SHA'],
+           'webOnly':True,'changed':['index.html','reference.js','address-autocomplete.js'],
+           'candidate_html_sha256':sha(home.read_bytes()),
+           'candidate_gps_sha256':sha((assets/'reference.js').read_bytes()),
+           'candidate_autocomplete_sha256':sha((assets/'address-autocomplete.js').read_bytes()),
+           'worker_source_sha256':sha(worker.encode())})
+          (out/'manifest.json').write_text(json.dumps(data,indent=2)+'\n')
+          print('VIA_UI_V2915_RELEASE_PACKAGE '+json.dumps({
+            'changed':data['changed'],'apiV35Unchanged':True,'d1Unchanged':True,
+            'apkUnchanged':True,'geoUnchanged':True,'rollback':data['rollback_web_version']}))
+          PY
+      - name: Preflight production y wrangler dry-run
+        run: |
+          set -euo pipefail
+          node scripts/via-ui-v2915-production-guard.mjs before
+          npx --yes wrangler@4.160.1 deploy --config ui-v2915-build/wrangler.prod.jsonc --dry-run
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+      - name: Publicar solamente web, verificar y revertir automáticamente ante regresión
+        run: |
+          set -Eeuo pipefail
+          revertir() {
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::V29.1.5 falló. Intentando rollback V29.1.4"
+              node scripts/via-ui-v2915-production-guard.mjs rollback || {
+                npx --yes wrangler@4.160.1 rollback 2d0205bf-990f-44ae-94e4-cf517a9d2093 --name via-traslados-web-prod --message 'Rollback V29.1.5' || true
+                node scripts/via-ui-v2915-production-guard.mjs rollback || true
+              }
+            fi
+          }
+          trap revertir EXIT
+          (cd ui-v2915-build && npx --yes wrangler@4.160.1 deploy --config wrangler.prod.jsonc)
+          node scripts/via-ui-v2915-production-guard.mjs after
+          UI_TEST_URL=https://viatraslados.com/ node scripts/via-ui-v2915-browser.mjs
+          GPS_TEST_URL=https://viatraslados.com/ node scripts/via-gps-v2913-browser.mjs
+          IDENTITY_TEST_URL=https://viatraslados.com/ node scripts/via-identity-v2914-browser.mjs
+          curl -fsSL 'https://viatraslados.com/api/direcciones?mode=reverse&lat=-34.834&lng=-56.012' | python3 -c 'import json,sys;r=json.load(sys.stdin);assert len(r.get("results",[]))>0'
+          trap - EXIT
+          echo VIA_UI_V2915_PRODUCTION_FINISHED_AND_VERIFIED
+      - name: Conservar hashes y evidencia privada
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-ui-v2915-production-proof
+          path: |
+            ui-v2915-release-proof/
+            ui-v2915-build/manifest.json
+          retention-days: 90
+          if-no-files-found: warn
