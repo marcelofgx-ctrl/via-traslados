@@ -77,7 +77,7 @@ jobs:
       - name: Verificar QA HTTP200, código nuevo y producción V29.1.1 intacta
         run: |
           set -euo pipefail
-          URL=https://via-traslados-gps-v2912-qa.marcelof-gx.workers.dev
+          URL=https://via-traslados-gps-precision-qa.marcelof-gx.workers.dev
           for i in 1 2 3 4 5; do
             code=$(curl -L -sS --max-time 20 -o /tmp/gps-v2912-home -w '%{http_code}' "$URL/" || true)
             if [ "$code" = 200 ]; then break; fi
