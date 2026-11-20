@@ -29,4 +29,7 @@ jobs:
           console.log('GPS_V2912_HTML_CONTROLS',JSON.stringify([...html.matchAll(/<(?:button|input)[^>]{0,350}>/g)].map(x=>x[0]).filter(x=>/map|origin|location|ubicaci|direcci|start|search|buscar/i.test(x)).slice(0,65)));
           const i=src.indexOf('// El GPS es estrictamente opt-in');if(i<0)throw Error('No GPS marker');console.log('GPS_V2912_REFERENCE_CODE',src.slice(i,i+10500));
           console.log('GPS_V2912_HTML_MARKERS',JSON.stringify({v2911:html.includes('content="29.1.1"'),ref27:html.includes('reference.js?v=27'),geo3:html.includes('geo-v2/core.mjs?v=3')}));
+          console.log('GPS_V2912_SCRIPT_SOURCES',JSON.stringify([...html.matchAll(/<script[^>]*src=["']([^"']+)["']/g)].map(x=>x[1])));
+          console.log('GPS_V2912_MAP_HTML',JSON.stringify([...html.matchAll(/.{0,240}(?:mapa|map-point|point-picker|map-pick).{0,300}/gi)].slice(0,12).map(x=>x[0])));
+          for(const file of ['map-point-picker.js','address-selected-preview.js','address-autocomplete.js']){try{const j=await get(file);console.log('GPS_V2912_MAP_SOURCE '+file+' '+j.slice(0,7000));}catch(e){console.log('GPS_V2912_MAP_ASSET_ERROR '+file+' '+e.message)}}
           NODE
