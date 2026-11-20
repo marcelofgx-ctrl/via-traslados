@@ -50,6 +50,8 @@ mine=once(mine,"$('mine-signup-card')?.classList.toggle('hidden',!!person||authM
 mine=once(mine,"$('mine-identity-choice')?.classList.toggle('hidden',!!person);", "$('mine-identity-choice')?.classList.toggle('hidden',mineChecking||!!person);");
 mine=once(mine,"$('mine-entry-hero')?.classList.toggle('hidden',!!person||authMode!=='choice');", "$('mine-entry-hero')?.classList.toggle('hidden',mineChecking||!!person||authMode!=='choice');");
 mine=once(mine,"$('mine-greeting').textContent='Hola, '+first;", "$('mine-greeting').textContent=first?'Hola, '+first:'Tu cuenta';");
+mine=once(mine,"if(S.isDemo()||S.customer()||turnstileLoaded||!window.VIA_CONFIG?.turnstileSiteKey)return;",
+ "if(S.isDemo()||mineVerifiedToken||mineChecking||turnstileLoaded||!window.VIA_CONFIG?.turnstileSiteKey)return;");
 mine=once(mine,"if(seq!==mineDrawEpoch||S.customer()?.sessionToken!==account.sessionToken)return;",
  "if(seq!==mineDrawEpoch)return;\n   if(S.customer()?.sessionToken!==account.sessionToken){void refreshMineIdentity();return}");
 mine=once(mine,"window.addEventListener('via-customer-session',()=>{if(S.customer()){authMode='choice';signupMode=false;}void draw()});\n window.addEventListener('storage',event=>{if(event.key==='via-customer-session-v1')void draw()});\n await draw();\n await S.resume();\n await draw();",

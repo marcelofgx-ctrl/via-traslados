@@ -34,7 +34,7 @@ while pending:
      if u.netloc or u.scheme or not u.path:continue
      child=pathlib.PurePosixPath(name).parent/u.path.removeprefix('./').removeprefix('/')
      child=str(child)
-     if not child.endswith(('.html','.css','.js','.mjs','.svg','.webmanifest','.png')):continue
+     if not child.endswith(('.css','.js','.mjs','.svg','.webmanifest','.png')):continue
      if child.startswith('../'):continue
      required.add(child)
      if child not in inventory and child not in names:pending.add(child);names.add(child)
