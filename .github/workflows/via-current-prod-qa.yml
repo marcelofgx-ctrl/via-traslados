@@ -2,7 +2,7 @@ name: Vía Traslados — Clonar producción actual a QA aislada
 on:
   push:
     branches: [via-prod-snapshot-qa-20261120]
-    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py']
+    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
@@ -25,6 +25,7 @@ jobs:
           set -euo pipefail
           python3 scripts/via-current-prod-qa.py
           node --check via-current-qa/assets/app.js
+          node --check via-current-qa/assets/via-qa-browser-diagnostics.js
       - name: Verify isolation and critical integrity
         run: |
           set -euo pipefail
@@ -38,7 +39,9 @@ jobs:
           assert hashlib.sha256((a/'config.js').read_bytes()).hexdigest()==m['production_sha256']['config.js']
           assert 'via-qa-version' in (a/'index.html').read_text()
           assert 'via-qa-browser-compat' in (a/'index.html').read_text()
-          assert 'QA v29.1.7' in (a/'index.html').read_text()
+          assert 'QA v29.1.8' in (a/'index.html').read_text()
+          assert 'via-qa-browser-diagnostics.js?v=2918' in (a/'index.html').read_text()
+          assert (a/'via-qa-browser-diagnostics.js').stat().st_size>2000
           print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
           PY
       - name: Deploy ONLY isolated QA Worker
@@ -52,6 +55,7 @@ jobs:
             sleep 5
           done
           curl -fsSL "$URL/mis-reservas.html" | grep -q 'Mis reservas'
+          curl -fsSL "$URL/via-qa-browser-diagnostics.js" | grep -q 'Diagnóstico QA'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/customer/me")" = 503
           curl -fsSL "$URL/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185" | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin).get("results"),list)'
