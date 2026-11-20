@@ -20,7 +20,8 @@ function mock({permission,fix}){
    else if(fix==='timeout')setTimeout(()=>bad({code:3}),80);
    return id;
   },
-  clearWatch(id){window.__gpsMock.clears.push(id)}
+  clearWatch(id){window.__gpsMock.clears.push(id)},
+  getCurrentPosition(ok,bad,options){setTimeout(()=>bad({code:1,message:'Map GPS permission unavailable in synthetic QA'}),35)}
  }});
 }
 async function scenario(width,permission,fix,expected){
