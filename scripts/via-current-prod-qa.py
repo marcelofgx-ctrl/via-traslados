@@ -41,12 +41,12 @@ for critical in ('index.html','mis-reservas.html','app.js','store.js','config.js
 assert s['active_version']()==version,'Production changed during snapshot'
 (out/'production-manifest.json').write_text(json.dumps({'production_worker_version':version,'production_sha256':done,'missing_optional':sorted(missing),'source':'production-read-only'},indent=2))
 # Isolate ALL QA API endpoints; never use production credentials or origin.
-(assets/'config.js').write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:location.origin,turnstileSiteKey:''});\n")
+# Keep original production config bytes; QA worker intercepts local /api/* and allows only public geocoding GET.
 (assets/'sw.js').unlink(missing_ok=True) # avoid installing production service worker on QA
 home=(assets/'index.html').read_text()
 assert home.count('</footer>')==1
 home=home.replace('</footer>','<small id="via-qa-version" style="display:inline-block;margin-left:8px;font:500 10px/1.4 system-ui,sans-serif;letter-spacing:.02em;opacity:.58">QA · snapshot '+version[:8]+'</small></footer>',1)
 (assets/'index.html').write_text(home)
-(out/'worker.mjs').write_text("export default {async fetch(req,env){const u=new URL(req.url);if(u.pathname.startsWith('/api/'))return new Response(JSON.stringify({error:'QA aislada: API deshabilitada'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});return env.ASSETS.fetch(req)}};\n")
+(out/'worker.mjs').write_text("""export default {async fetch(req,env){const u=new URL(req.url);if(u.pathname.startsWith('/api/')){if(req.method==='GET'&&u.pathname==='/api/direcciones'){const upstream=new URL('https://viatraslados.com/api/direcciones');upstream.search=u.search;const response=await fetch(upstream.toString(),{method:'GET',headers:{'Accept':'application/json'},redirect:'error'});return new Response(response.body,{status:response.status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'}})}return new Response(JSON.stringify({error:'QA aislada: API de escritura y datos privados deshabilitada'}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}})}return env.ASSETS.fetch(req)}};\n""")
 (out/'wrangler.jsonc').write_text(json.dumps({'name':'via-traslados-current-prod-qa','main':'worker.mjs','compatibility_date':'2026-11-10','workers_dev':True,'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}},indent=2))
 print('READ_ONLY_PRODUCTION_SNAPSHOT_READY',len(done),version,flush=True)
