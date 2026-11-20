@@ -80,6 +80,9 @@ for(const a of ['content="29.1.3"','app.js?v=29.1','reference.js?v=29','store.js
 }
 html=html.replace('content="29.1.3"','content="29.1.4"')
  .replace('app.js?v=29.1','app.js?v=29.2');
+assert.equal(html.split('</head>').length,2,'No hay head único');
+html=html.replace('</head>',
+ '<style id="via-identity-v2914-visibility">body.premium-page.in-booking #known-customer.hidden,body.premium-page.in-booking #phone-first.hidden,body.premium-page.in-booking #return-form.hidden,body.premium-page.in-booking #new-account.hidden,body.premium-page.in-booking #turnstile-box.hidden{display:none!important}</style></head>');
 await writeFile(dir+'app.js',app);
 await writeFile(dir+'index.html',html);
 console.log('VIA_IDENTITY_V2914_PATCHED '+JSON.stringify({
