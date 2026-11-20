@@ -1,0 +1,88 @@
+name: Vía Traslados — V29.1.4 identidad QA aislada
+on:
+  push:
+    branches: [via-identity-recognized-qa-20261120]
+    paths: ['.github/workflows/via-identity-v2914-qa.yml', 'scripts/via-identity-v2914-*']
+permissions:
+  contents: read
+concurrency:
+  group: via-identity-v2914-qa
+  cancel-in-progress: true
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Releer y congelar V29.1.3 productiva. No tocar API ni D1
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/via-identity-v2914-prepare.py
+          node --check scripts/via-identity-v2914-patch.mjs
+          node --check scripts/via-identity-v2914-browser.mjs
+          python3 scripts/via-identity-v2914-prepare.py
+          node scripts/via-identity-v2914-patch.mjs
+          node --check identity-v2914-build/assets/app.js
+          test "$(sha256sum identity-v2914-build/assets/reference.js | cut -d' ' -f1)" = 7e4841b60c7a9796673ed7ad41e54446cac3eded802bcb1cb37971cec61fd47b
+          test "$(sha256sum identity-v2914-build/assets/geo-v2/core.mjs | cut -d' ' -f1)" = 17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1
+          test "$(sha256sum identity-v2914-build/assets/store.js | cut -d' ' -f1)" = 3dc61982cbf5498402ae7eebdf01a03979d34fca9d81d5d77497d748e3b4e6c8
+      - name: Aislar API QA y bloquear POST de reservas reales
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          file=Path('identity-v2914-build/assets/config.js')
+          assert 'via-traslados-api.marcelof-gx.workers.dev' in file.read_text()
+          file.write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:'https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev',turnstileSiteKey:''});\n")
+          assert 'via-traslados-api.marcelof-gx.workers.dev' not in file.read_text()
+          print('VIA_IDENTITY_V2914_QA_NO_PROD_API')
+          PY
+      - name: Desplegar SOLO Worker QA preexistente
+        run: |
+          set -euo pipefail
+          cd identity-v2914-build
+          npx --yes wrangler@4.160.1 deploy --config wrangler.qa.jsonc
+      - name: Verificar HTTP 200 real, versión, hashes y 503 para reservas QA
+        run: |
+          set -euo pipefail
+          URL=https://via-traslados-gps-precision-qa.marcelof-gx.workers.dev
+          for i in $(seq 1 12); do
+            code=$(curl -sSL --max-time 20 -H 'Cache-Control: no-cache' -o /tmp/via-identity-qa -w '%{http_code}' "$URL/?identity_qa=2914" || true)
+            if [ "$code" = 200 ] &&
+              grep -Fq 'content="29.1.4"' /tmp/via-identity-qa &&
+              grep -Fq 'app.js?v=29.2' /tmp/via-identity-qa &&
+              grep -Fq 'IDENTIDAD QA' /tmp/via-identity-qa; then break; fi
+            sleep 3
+          done
+          test "$code" = 200
+          grep -Fq 'content="29.1.4"' /tmp/via-identity-qa
+          grep -Fq 'app.js?v=29.2' /tmp/via-identity-qa
+          curl -fsSL "$URL/app.js?v=29.2" | grep -F 'revalidateIdentity' >/dev/null
+          curl -fsSL "$URL/config.js" | grep -F 'via-traslados-maestro-api-qa' >/dev/null
+          test "$(curl -fsSL "$URL/geo-v2/core.mjs?v=3" | sha256sum | cut -d' ' -f1)" = 17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
+          curl -fsSL https://viatraslados.com/ | grep -F 'app.js?v=29.1' >/dev/null
+          test "$(curl -fsSL 'https://viatraslados.com/app.js?v=29.1' | sha256sum | cut -d' ' -f1)" = 3df13d2f4d318511ea189e90446da78fd448d8edf90fc4d41df7d7e7e0f03a0c
+          echo VIA_IDENTITY_V2914_QA_PUBLIC_200_AND_PRODUCTION_UNCHANGED
+      - name: Chrome móvil — identidad verificable, expiración, no duplicación y pantalla
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          node scripts/via-identity-v2914-browser.mjs
+      - name: Evidencias del release candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-identity-v2914-qa-evidence
+          path: |
+            identity-v2914-build/manifest.json
+            identity-v2914-build/assets/app.js
+            identity-v2914-build/assets/index.html
+          retention-days: 30
+          if-no-files-found: warn
