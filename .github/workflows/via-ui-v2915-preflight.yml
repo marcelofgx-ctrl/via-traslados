@@ -1,0 +1,35 @@
+name: Vía Traslados V29.1.5 — preflight read-only assets hashes
+on:
+  push:
+    branches: [via-ui-v2915-qa-20261120]
+    paths: ['.github/workflows/via-ui-v2915-preflight.yml']
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Confirmar versiones Cloudflare y hashes efectivos
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const sha=b=>createHash('sha256').update(b).digest('hex');
+          for(const name of ['via-traslados-web-prod','via-traslados-api']){
+            const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+'/workers/scripts/'+name+'/deployments',
+              {headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(25000)});
+            if(!r.ok)throw Error(name+' '+r.status);
+            const data=await r.json();if(!data.success)throw Error(JSON.stringify(data.errors));
+            console.log('V2915_CF',JSON.stringify({name,version:data.result.deployments[0].versions[0].version_id,percentage:data.result.deployments[0].versions[0].percentage}));
+          }
+          for(const p of ['','app.js?v=29.2','address-autocomplete.js?v=11','address-selected-preview.js?v=26',
+             'address-autocomplete.css?v=11','address-selected-preview.css?v=26','reference.js?v=29','reference.css?v=13',
+             'geo-v2/core.mjs?v=3','config.js','store.js?v=19.1']){
+            const r=await fetch('https://viatraslados.com/'+p,{signal:AbortSignal.timeout(25000)});
+            if(!r.ok)throw Error(p+' '+r.status);
+            const buf=Buffer.from(await r.arrayBuffer()); console.log('V2915_ASSET',JSON.stringify({path:p||'index.html',hash:sha(buf),len:buf.length}));
+            if(!p){const html=buf.toString('utf8');console.log('V2915_LINKS',JSON.stringify([...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)].map(x=>x[1]).filter(x=>/address|reference|app\.js|preview|css/.test(x))));if(!html.includes('content="29.1.4"'))throw Error('V29.1.4 missing');}
+          }
+          NODE
