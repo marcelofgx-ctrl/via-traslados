@@ -81,15 +81,21 @@ jobs:
         run: |
           set -euo pipefail
           URL=https://via-traslados-gps-precision-qa.marcelof-gx.workers.dev
-          for i in 1 2 3 4 5; do
-            code=$(curl -L -sS --max-time 20 -o /tmp/gps-v2913-home -w '%{http_code}' "$URL/" || true)
-            if [ "$code" = 200 ]; then break; fi
+          for i in $(seq 1 12); do
+            code=$(curl -L -sS --max-time 20 -H 'Cache-Control: no-cache' -o /tmp/gps-v2913-home -w '%{http_code}' "$URL/?gps_qa_check=2913" || true)
+            if [ "$code" = 200 ] &&
+               grep -Fq 'content="29.1.3"' /tmp/gps-v2913-home &&
+               grep -Fq 'reference.js?v=29' /tmp/gps-v2913-home &&
+               grep -Fq 'GPS QA' /tmp/gps-v2913-home; then
+               echo VIA_GPS_V2913_HTML_PROPAGATED; break
+            fi
+            echo "Propagación QA intento $i HTTP=$code; sin afirmar versión nueva todavía"
             sleep 3
           done
           test "$code" = 200
-          grep -F 'content="29.1.3"' /tmp/gps-v2913-home
-          grep -F 'reference.js?v=29' /tmp/gps-v2913-home
-          grep -F 'GPS QA' /tmp/gps-v2913-home
+          grep -Fq 'content="29.1.3"' /tmp/gps-v2913-home
+          grep -Fq 'reference.js?v=29' /tmp/gps-v2913-home
+          grep -Fq 'GPS QA' /tmp/gps-v2913-home
           curl -fsSL "$URL/reference.js?v=29" | grep -F 'function blockedGps' >/dev/null
           curl -fsSL "$URL/config.js" | grep -F 'via-traslados-maestro-api-qa' >/dev/null
           test "$(curl -fsSL "$URL/geo-v2/core.mjs?v=3" | sha256sum | cut -d' ' -f1)" = 17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1
