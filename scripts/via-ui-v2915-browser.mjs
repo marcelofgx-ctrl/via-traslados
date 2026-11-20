@@ -101,7 +101,18 @@ async function gps(variant){
   });
   const start=page.locator('#location-shortcut'),source=page.locator('#home-origin');
   await start.click();
-  await page.locator('#via-gps-feedback').getByText('Ubicación obtenida').waitFor({timeout:10000});
+  try{await page.locator('#via-gps-feedback').getByText('Ubicación obtenida').waitFor({timeout:10000})}
+  catch(err){
+   console.log('VIA_UI_V2915_GPS_DIAG '+JSON.stringify(await page.evaluate(()=>({
+    ua:navigator.userAgent,secure:window.isSecureContext,policy:window.__viaGpsPolicy,
+    watches:window.__gpsStats?.watches,
+    feedback:document.getElementById('via-gps-feedback')?.textContent,
+    origin:document.getElementById('home-origin')?.value,
+    source:document.getElementById('home-origin')?.dataset,
+    button:document.getElementById('location-shortcut')?.disabled
+   }))));
+   throw err;
+  }
   const policy=await page.evaluate(()=>window.__viaGpsPolicy);
   assert.equal(policy,variant==='chrome'?'chrome-family':variant==='samsung'?'samsung-internet':'other-browser');
   assert.match(await source.inputValue(),/151/,'No se recibió número GPS orientativo');
