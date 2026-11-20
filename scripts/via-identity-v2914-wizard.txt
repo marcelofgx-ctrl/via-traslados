@@ -31,9 +31,15 @@
   });
   void revalidateIdentity().then(()=>{if(step===2)remembered()}).catch(()=>{});
   window.addEventListener('via-customer-session',()=>{
-   const next=current()?.sessionToken||null;
-   if(observedToken!==next){observedToken=next;validatedToken=null;++identityEpoch}
+   const next=current()?.sessionToken||null,changed=observedToken!==next;
+   const hadVerified=!!validatedToken;
+   if(changed){observedToken=next;validatedToken=null;++identityEpoch}
    selectedPhone='';grant='';turnstileToken='';
+   if(changed&&hadVerified&&step===3){
+    $('booking-confirm')?.replaceChildren();
+    remembered();changeStep(2);loadCaptcha();
+    return;
+   }
    if(step===2)remembered();
   });
   window.addEventListener('storage',event=>{
@@ -41,6 +47,6 @@
    const next=current()?.sessionToken||null;
    if(next===observedToken)return;
    observedToken=next;validatedToken=null;++identityEpoch;
-   if(step===3){remembered();changeStep(2);loadCaptcha()}
+   if(step===3){$('booking-confirm')?.replaceChildren();remembered();changeStep(2);loadCaptcha()}
    else if(step===2)remembered();
   });
