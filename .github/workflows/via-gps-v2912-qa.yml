@@ -32,4 +32,6 @@ jobs:
           console.log('GPS_V2912_SCRIPT_SOURCES',JSON.stringify([...html.matchAll(/<script[^>]*src=["']([^"']+)["']/g)].map(x=>x[1])));
           console.log('GPS_V2912_MAP_HTML',JSON.stringify([...html.matchAll(/.{0,240}(?:mapa|map-point|point-picker|map-pick).{0,300}/gi)].slice(0,12).map(x=>x[0])));
           for(const file of ['map-point-picker.js','address-selected-preview.js','address-autocomplete.js']){try{const j=await get(file);console.log('GPS_V2912_MAP_SOURCE '+file+' '+j.slice(0,7000));}catch(e){console.log('GPS_V2912_MAP_ASSET_ERROR '+file+' '+e.message)}}
+          const picker=await get('map-point-picker.js');
+          console.log('GPS_V2912_PICKER_HOOKS',JSON.stringify([...picker.matchAll(/.{0,220}(?:window\.Via|\.addEventListener\(|\.open\(|dispatchEvent|via:picker|via:map|openPicker).{0,280}/g)].map(x=>x[0]).filter(x=>/open|Via|pointer|click|focus|event/.test(x)).slice(-65)));
           NODE
