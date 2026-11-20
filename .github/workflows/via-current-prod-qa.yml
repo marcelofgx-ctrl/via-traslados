@@ -34,7 +34,8 @@ jobs:
           for name in ('app.js','store.js','geo-v2/core.mjs','descargas/via-traslados-conductor-v35.apk'):
            assert hashlib.sha256((a/name).read_bytes()).hexdigest()==m['production_sha256'][name],name
           assert "QA aislada" in (p/'worker.mjs').read_text()
-          assert 'apiUrl:location.origin' in (a/'config.js').read_text()
+          assert "upstream.search=u.search" in (p/'worker.mjs').read_text()
+          assert hashlib.sha256((a/'config.js').read_bytes()).hexdigest()==m['production_sha256']['config.js']
           assert 'via-qa-version' in (a/'index.html').read_text()
           print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
           PY
@@ -50,6 +51,8 @@ jobs:
           done
           curl -fsSL "$URL/mis-reservas.html" | grep -q 'Mis reservas'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/customer/me")" = 503
+          curl -fsSL "$URL/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185" | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin).get("results"),list)'
           echo "QA_SNAPSHOT_DEPLOYED_NO_PROD_WRITES $URL"
       - name: Store exact source hashes
         if: always()
