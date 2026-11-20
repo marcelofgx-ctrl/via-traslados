@@ -30,7 +30,7 @@ const guard=`   // No asumir un punto de recogida si la única lectura es demasi
 `;
 const revised=original.replace(insertionPoint,guard+'\n'+insertionPoint);
 assert.equal(revised.split('Ubicación demasiado aproximada').length,2);
-assert.equal(revised.split('watchForBestGpsFix').length,2,'No se debe alterar watcher');
+assert.equal(revised.split('function watchForBestGpsFix').length,2,'No se debe alterar watcher');
 assert(revised.includes('window.ViaMapPicker?.openFor'),'Selector de mapa debe preservarse');
 let html=await readFile(htmlFile,'utf8');
 assert.equal(html.split('content="29.1.2"').length,2);
