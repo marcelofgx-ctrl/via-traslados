@@ -96,6 +96,7 @@ async function scenario({name,width=390,mode='valid',action='step',delay=0}){
   await step2.waitFor({state:'visible',timeout:12000});
   assert.equal(await page.locator('#known-customer').isVisible(),false);
   assert.equal(await page.locator('#wizard-progress-label').textContent(),'PASO 2 DE 3');
+  if(await page.locator('#booking-confirm').isVisible())console.log('VIA_IDENTITY_V2914_VISIBILITY_DIAG '+JSON.stringify(await page.locator('#booking-confirm').evaluate(el=>({self:el.className,parent:el.closest('.wizard-step')?.className,selfDisplay:getComputedStyle(el).display,parentDisplay:getComputedStyle(el.closest('.wizard-step')).display,step:document.getElementById('wizard-progress-label')?.textContent}))));
   assert.equal(await page.locator('#booking-confirm').isVisible(),false);
   assert.equal(requests.length,0);
  }
