@@ -10,6 +10,7 @@ const UAS={
 const point=(lat,lng,accuracy=35)=>({coords:{latitude:lat,longitude:lng,accuracy},timestamp:Date.now()});
 let passed=0;
 function installGps(){
+ const point=(lat,lng,accuracy=35)=>({coords:{latitude:lat,longitude:lng,accuracy},timestamp:Date.now()});
  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:async()=>({state:'granted'})}});
  window.__gpsStats={watches:0,clears:[],callback:null};
  const positions=[
