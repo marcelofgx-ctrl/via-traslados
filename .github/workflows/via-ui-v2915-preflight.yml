@@ -49,3 +49,11 @@ jobs:
            for(const a of starts)console.log('V2915_SOURCE_LINES '+path+' '+a+'\n'+lines.slice(a-1,a+44).map((x,i)=>(a+i)+': '+x).join('\n')+'\nEND_V2915_SOURCE');
           }
           NODE
+
+      - name: Regla de número aproximado del motor geográfico original
+        run: |
+          node --input-type=module <<'NODE'
+          const r=await fetch('https://viatraslados.com/geo-v2/core.mjs?v=3',{signal:AbortSignal.timeout(25000)});
+          const lines=(await r.text()).split('\n');
+          console.log('V2915_GEO_CORE '+lines.map((x,i)=>(i+1)+': '+x).join('\n').slice(0,12500));
+          NODE
