@@ -24,12 +24,28 @@ jobs:
             const data=await r.json();if(!data.success)throw Error(JSON.stringify(data.errors));
             console.log('V2915_CF',JSON.stringify({name,version:data.result.deployments[0].versions[0].version_id,percentage:data.result.deployments[0].versions[0].percentage}));
           }
-          for(const p of ['','app.js?v=29.2','address-autocomplete.js?v=11','address-selected-preview.js?v=26',
+          for(const p of ['','app.js?v=29.2','address-autocomplete.js?v=26','address-selected-preview.js?v=29',
              'address-autocomplete.css?v=11','address-selected-preview.css?v=26','reference.js?v=29','reference.css?v=13',
              'geo-v2/core.mjs?v=3','config.js','store.js?v=19.1']){
             const r=await fetch('https://viatraslados.com/'+p,{signal:AbortSignal.timeout(25000)});
             if(!r.ok)throw Error(p+' '+r.status);
             const buf=Buffer.from(await r.arrayBuffer()); console.log('V2915_ASSET',JSON.stringify({path:p||'index.html',hash:sha(buf),len:buf.length}));
             if(!p){const html=buf.toString('utf8');console.log('V2915_LINKS',JSON.stringify([...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)].map(x=>x[1]).filter(x=>/address|reference|app\.js|preview|css/.test(x))));if(!html.includes('content="29.1.4"'))throw Error('V29.1.4 missing');}
+          }
+          NODE
+
+      - name: Leer solo los fragmentos de código de los assets realmente usados
+        run: |
+          node --input-type=module <<'NODE'
+          for(const [path,starts] of [
+           ['address-autocomplete.js?v=26',[1,36,65,94]],
+           ['address-selected-preview.js?v=29',[1,40,70]],
+           ['reference.js?v=29',[6,82,127,154,170,185]]
+          ]){
+           const r=await fetch('https://viatraslados.com/'+path,{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(20000)});
+           if(!r.ok)throw Error(path+' '+r.status);
+           const lines=(await r.text()).split('\n');
+           console.log('V2915_SOURCE '+path+' LINES '+lines.length);
+           for(const a of starts)console.log('V2915_SOURCE_LINES '+path+' '+a+'\n'+lines.slice(a-1,a+44).map((x,i)=>(a+i)+': '+x).join('\n')+'\nEND_V2915_SOURCE');
           }
           NODE
