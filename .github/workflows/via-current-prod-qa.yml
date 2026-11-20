@@ -68,6 +68,9 @@ jobs:
           curl -fsSL "$URL/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185" | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin).get("results"),list)'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/public/route-preview" -H 'content-type: application/json' --data '{}')" = 400
           curl -fsSL "$URL/config.js" | grep -q 'apiUrl:location.origin'
+          curl -fsSL "$URL/config.js" > /tmp/via-qa-config.js
+          node --check /tmp/via-qa-config.js
+          curl -fsS --max-time 25 -X POST "$URL/api/public/route-preview" -H 'content-type: application/json' --data '{"origin":{"lat":-34.880922,"lng":-56.079391},"destination":{"lat":-34.8384,"lng":-56.0308}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); print("QA_ROUTE_PREVIEW",str(d)[:350]); assert isinstance(d,dict) and (d.get("distanceKm") is not None or d.get("distance_km") is not None or d.get("distanceMeters") is not None or d.get("distance_m") is not None or d.get("distance") is not None)'
           echo "QA_SNAPSHOT_DEPLOYED_NO_PROD_WRITES $URL"
       - name: Store exact source hashes
         if: always()
