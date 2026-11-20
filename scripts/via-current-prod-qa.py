@@ -41,7 +41,9 @@ for critical in ('index.html','mis-reservas.html','app.js','store.js','config.js
 assert s['active_version']()==version,'Production changed during snapshot'
 (out/'production-manifest.json').write_text(json.dumps({'production_worker_version':version,'production_sha256':done,'missing_optional':sorted(missing),'source':'production-read-only'},indent=2))
 # Isolate ALL QA API endpoints; never use production credentials or origin.
-# Keep original production config bytes; QA worker intercepts local /api/* and allows only public geocoding GET.
+# QA must route ALL API requests to its own isolated origin, not to the production API.
+# The QA worker explicitly allows public route-preview and geocoding only.
+(assets/'config.js').write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:location.origin,turnstileSiteKey:''});\\n")
 (assets/'via-qa-browser-diagnostics.js').write_bytes(pathlib.Path('scripts/via-qa-browser-diagnostics.js').read_bytes())
 (assets/'sw.js').unlink(missing_ok=True) # avoid installing production service worker on QA
 home=(assets/'index.html').read_text()
