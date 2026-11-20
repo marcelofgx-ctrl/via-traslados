@@ -1,0 +1,12 @@
+   const summary=$('booking-confirm'),person=profile();
+   summary.replaceChildren();
+   if(person){
+    const first=String(person.name||'').trim().split(/\s+/)[0].slice(0,40);
+    const heading=document.createElement('strong');
+    heading.textContent='Hola, '+first+'. Tu cuenta está verificada.';
+    heading.style.display='block';
+    const contact=document.createElement('small');
+    contact.textContent=[person.phone,person.email].filter(Boolean).join(' · ');
+    contact.style.display='block';contact.style.marginTop='4px';contact.style.overflowWrap='anywhere';
+    summary.append(heading,contact);
+   }else summary.textContent='Cuenta verificada. Confirmá los detalles del traslado.';
