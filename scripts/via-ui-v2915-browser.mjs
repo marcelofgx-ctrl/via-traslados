@@ -89,6 +89,8 @@ async function keyboard(width){
 }
 async function gps(variant){
  const {page,context,errors}=await launch(UAS[variant],installGps);
+ // Chrome puede reponer su objeto nativo de geolocalización después del init script.
+ await page.evaluate(installGps);
  try{
   let reverse=0;
   await page.route('**/api/direcciones?mode=reverse*',route=>{
