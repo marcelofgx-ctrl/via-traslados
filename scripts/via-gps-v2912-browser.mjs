@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright-core';
-const url=process.env.GPS_TEST_URL||'https://via-traslados-gps-v2912-qa.marcelof-gx.workers.dev/';
+const url=process.env.GPS_TEST_URL||'https://via-traslados-gps-precision-qa.marcelof-gx.workers.dev/';
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-sandbox']});
 function mock({permission,fix}){
  const point=m=>({coords:{latitude:-34.83362,longitude:-56.01048,accuracy:m},timestamp:Date.now()});
