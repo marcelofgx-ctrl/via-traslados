@@ -34,32 +34,32 @@ replaceBlock(" const current=S.customer,hasSession=()=>!!current()?.profile;",
  " const error=message=>",
  helper+" const hidden=(id,yes)=>$(id)?.classList.toggle('hidden',yes);\n",
  'trust account');
-replaceBlock("  $('wizard-back').addEventListener('click',()=>{",
- "  $('forget-customer')?.addEventListener('click',async()=>{",
+replaceBlock(" $('wizard-back').addEventListener('click',()=>{",
+ " $('forget-customer')?.addEventListener('click',async()=>{",
  wizard,'verified direct step3');
 replaceOne(
- "   $('verification-description').textContent=needsPinReset?\n    'Ya verificaste tu correo. Elegí un PIN nuevo y confirmá tu viaje.':\n    'Tu cuenta está verificada. Solo falta confirmar la solicitud.';",
- "   $('verification-description').textContent=needsPinReset?\n    'Ya verificaste tu correo. Elegí un PIN nuevo y confirmá tu viaje.':\n    'Tu cuenta está verificada. Solo falta confirmar la solicitud.';\n"+summary.trimEnd(),
+ "  $('verification-description').textContent=needsPinReset?\n   'Ya verificaste tu correo. Elegí un PIN nuevo y confirmá tu viaje.':\n   'Tu cuenta está verificada. Solo falta confirmar la solicitud.';",
+ "  $('verification-description').textContent=needsPinReset?\n   'Ya verificaste tu correo. Elegí un PIN nuevo y confirmá tu viaje.':\n   'Tu cuenta está verificada. Solo falta confirmar la solicitud.';\n"+summary.trimEnd(),
  'verified summary');
 replaceOne(
- "  $('forget-customer')?.addEventListener('click',async()=>{\n   await S.logout();",
- "  $('forget-customer')?.addEventListener('click',async()=>{\n   ++identityEpoch;validatedToken=null;\n   await S.logout();",
+ " $('forget-customer')?.addEventListener('click',async()=>{\n  await S.logout();",
+ " $('forget-customer')?.addEventListener('click',async()=>{\n   ++identityEpoch;validatedToken=null;\n  await S.logout();",
  'logout pending validation');
-replaceOne("    await S.pinLogin(selectedPhone,pin,grant);remembered();",
- "    await S.pinLogin(selectedPhone,pin,grant);validatedToken=current()?.sessionToken||null;remembered();",
+replaceOne("   await S.pinLogin(selectedPhone,pin,grant);remembered();",
+ "   await S.pinLogin(selectedPhone,pin,grant);validatedToken=current()?.sessionToken||null;remembered();",
  'PIN proof');
-replaceOne("   try{await window.ViaPasskeys.signIn(selectedPhone);remembered();openConfirmation(false)}",
- "   try{await window.ViaPasskeys.signIn(selectedPhone);validatedToken=current()?.sessionToken||null;remembered();openConfirmation(false)}",
+replaceOne("  try{await window.ViaPasskeys.signIn(selectedPhone);remembered();openConfirmation(false)}",
+ "  try{await window.ViaPasskeys.signIn(selectedPhone);validatedToken=current()?.sessionToken||null;remembered();openConfirmation(false)}",
  'passkey proof');
-replaceOne("   try{await S.finishPhoneLogin(selectedPhone,code);remembered();openConfirmation(needsPinReset)}",
- "   try{await S.finishPhoneLogin(selectedPhone,code);validatedToken=current()?.sessionToken||null;remembered();openConfirmation(needsPinReset)}",
+replaceOne("  try{await S.finishPhoneLogin(selectedPhone,code);remembered();openConfirmation(needsPinReset)}",
+ "  try{await S.finishPhoneLogin(selectedPhone,code);validatedToken=current()?.sessionToken||null;remembered();openConfirmation(needsPinReset)}",
  'email proof');
 replaceOne(
- "     await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});\n     enrolled=true;",
- "     await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});\n     validatedToken=current()?.sessionToken||null;\n     enrolled=true;",
+ "    await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});\n    enrolled=true;",
+ "    await S.verifyCode(verifiedEmail,code,{name:signupPayload.name,phone:signupPayload.phone});\n     validatedToken=current()?.sessionToken||null;\n    enrolled=true;",
  'enrollment proof');
 replaceOne(
- "    const result=await S.create(trip());",
+ "   const result=await S.create(trip());",
  "    // La sesión pudo vencer durante la confirmación: revalidar antes de POST.\n"+
  "    if(hasSession()){\n"+
  "     const token=current()?.sessionToken;\n"+
@@ -69,7 +69,7 @@ replaceOne(
  "      throw Error('Tu sesión no pudo verificarse. Volvé a ingresar antes de solicitar el traslado.');\n"+
  "     }\n"+
  "    }\n"+
- "    const result=await S.create(trip());",
+ "   const result=await S.create(trip());",
  'secure final booking');
 assert.equal(app.split("openConfirmation(false); // Paso 2 omitido").length,2,'Debe saltar el paso 2');
 assert.equal(app.split('function previewRoute(').length,2,'Distancia geográfica modificada');
