@@ -1,0 +1,36 @@
+name: Vía Traslados — auditoría UX móvil y navegador SOLO LECTURA
+on:
+  push:
+    branches: [via-ui-mobile-audit-20261120]
+    paths: ['.github/workflows/via-ui-mobile-audit-20261120.yml']
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Inspeccionar recursos realmente publicados, sin datos de usuarios
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://viatraslados.com/';
+          const names=['','reference.js?v=29','app.js?v=29.2','address-autocomplete.js?v=11',
+          'address-selected-preview.js?v=26','reference.css?v=13',
+          'address-autocomplete.css?v=11','address-selected-preview.css?v=26',
+          'wizard-ux.css?v=12','premium.css','sw.js'];
+          for(const name of names){
+           const res=await fetch(base+name,{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(25000)});
+           const s=await res.text(),lines=s.split('\n');
+           console.log('UI_FILE',JSON.stringify({path:name||'index.html',status:res.status,bytes:s.length,contentType:res.headers.get('content-type'),htmlStarts:/^\s*<!doctype/i.test(s)}));
+           if(res.status!==200||(!name&&s.indexOf('content="29.1.4"')<0))throw Error('Producción cambió '+name);
+           const pattern=/visualViewport|virtualKeyboard|userAgent|SamsungBrowser|Chrome\/|isChrome|customTab|keyboard|scrollIntoView|position:(fixed|absolute|sticky)|z-index|overflow|address-selected-preview|GPS|origin|selected|suggestion|autocomplete|match|candidates|reverse|via:address|setTimeout|numberIsApproximate|postalStatus/i;
+           const match=lines.map((line,i)=>({line,i})).filter(o=>pattern.test(o.line));
+           const selected=new Set();
+           for(const {i} of match.slice(0,name.includes('reference.js')?80:65))
+            for(let k=Math.max(i-1,0);k<=Math.min(lines.length-1,i+2);k++)selected.add(k);
+           const excerpt=[...selected].sort((a,b)=>a-b).map(n=>(n+1)+': '+lines[n]).join('\n');
+           const UA=/\buserAgent\b|\bSamsungBrowser\b|visualViewport|virtualKeyboard|isChrome|customTab/g;
+           console.log('UI_DETECT',JSON.stringify({path:name||'index.html',browserDetection:[...s.matchAll(UA)].map(a=>a[0]).slice(0,40),matchingLines:match.length}));
+           if(/reference\.js|address-auto|address-selected|wizard-ux|premium\.css/.test(name))
+            console.log('UI_SNIPPET_START '+name+'\n'+excerpt.slice(0,17500)+'\nUI_SNIPPET_END '+name);
+          }
+          NODE
