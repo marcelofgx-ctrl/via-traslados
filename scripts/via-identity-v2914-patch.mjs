@@ -23,6 +23,7 @@ const replaceBlock=(from,to,newCode,label)=>{
  const passenger=app.indexOf('function initPassenger()');
  const passengerEnd=app.indexOf('function initDriver(',passenger);
  const i=app.indexOf(from,passenger),j=app.indexOf(to,i+from.length);
+ if(!(passenger>=0&&i>=passenger&&j>i&&(passengerEnd<0||j<passengerEnd)))console.log('VIA_IDENTITY_V2914_PATCH_DIAG',JSON.stringify({label,passenger,passengerEnd,i,j,fromCount:app.split(from).length-1,toCount:app.split(to).length-1,near:app.slice(Math.max(passenger,0)+140,Math.max(passenger,0)+380)}));
  assert(passenger>=0&&i>=passenger&&j>i&&(passengerEnd<0||j<passengerEnd),'Rango pasajero inválido '+label);
  app=app.slice(0,i)+newCode+app.slice(j);
 };
