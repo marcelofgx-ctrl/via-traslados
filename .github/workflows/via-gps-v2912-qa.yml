@@ -35,3 +35,77 @@ jobs:
           const picker=await get('map-point-picker.js');
           console.log('GPS_V2912_PICKER_HOOKS',JSON.stringify([...picker.matchAll(/.{0,220}(?:window\.Via|\.addEventListener\(|\.open\(|dispatchEvent|via:picker|via:map|openPicker).{0,280}/g)].map(x=>x[0]).filter(x=>/open|Via|pointer|click|focus|event/.test(x)).slice(-65)));
           NODE
+
+  qa:
+    needs: audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reconstruir exclusivamente desde versión web realmente publicada
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/via-gps-v2912-prepare.py
+          node --check scripts/via-gps-v2912-patch.mjs
+          node --check scripts/via-gps-v2912-browser.mjs
+          python3 scripts/via-gps-v2912-prepare.py
+          node scripts/via-gps-v2912-patch.mjs
+          node --check gps-v2912-build/assets/reference.js
+          test "$(sha256sum gps-v2912-build/assets/geo-v2/core.mjs | cut -d' ' -f1)" = 17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1
+      - name: Bloquear la API productiva y todo POST en QA
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('gps-v2912-build/assets/config.js')
+          assert 'via-traslados-api.marcelof-gx.workers.dev' in p.read_text()
+          p.write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:'https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev',turnstileSiteKey:''});\n")
+          assert 'via-traslados-api.marcelof-gx.workers.dev' not in p.read_text()
+          print('VIA_GPS_V2912_QA_NO_PROD_API')
+          PY
+      - name: Publicar SOLO nuevo Worker aislado GPS V29.1.2
+        run: |
+          set -euo pipefail
+          cd gps-v2912-build
+          npx --yes wrangler@4.160.1 deploy --config wrangler.qa.jsonc
+      - name: Verificar QA HTTP200, código nuevo y producción V29.1.1 intacta
+        run: |
+          set -euo pipefail
+          URL=https://via-traslados-gps-v2912-qa.marcelof-gx.workers.dev
+          for i in 1 2 3 4 5; do
+            code=$(curl -L -sS --max-time 20 -o /tmp/gps-v2912-home -w '%{http_code}' "$URL/" || true)
+            if [ "$code" = 200 ]; then break; fi
+            sleep 3
+          done
+          test "$code" = 200
+          grep -F 'content="29.1.2"' /tmp/gps-v2912-home
+          grep -F 'reference.js?v=28' /tmp/gps-v2912-home
+          grep -F 'GPS QA' /tmp/gps-v2912-home
+          curl -fsSL "$URL/reference.js?v=28" | grep -F 'function blockedGps' >/dev/null
+          curl -fsSL "$URL/config.js" | grep -F 'via-traslados-maestro-api-qa' >/dev/null
+          test "$(curl -fsSL "$URL/geo-v2/core.mjs?v=3" | sha256sum | cut -d' ' -f1)" = 17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
+          curl -fsSL https://viatraslados.com/ | grep -F 'reference.js?v=27' >/dev/null
+          test "$(curl -fsSL https://viatraslados.com/reference.js?v=27 | sha256sum | cut -d ' ' -f1)" = ef28049b873c228284787f0865982a06ce562b93759a97dec5676e18f6166680
+          echo VIA_GPS_V2912_QA_PUBLIC_200_PRODUCTION_UNTOUCHED
+      - name: Chrome móvil — permisos, mapa, precisión y cancelación
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          node scripts/via-gps-v2912-browser.mjs
+      - name: Evidencia y rollback preparado sin modificar base de datos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-gps-v2912-qa-evidence
+          path: |
+            gps-v2912-build/manifest.json
+            gps-v2912-build/assets/reference.js
+            gps-v2912-build/assets/index.html
+          retention-days: 30
+          if-no-files-found: warn
