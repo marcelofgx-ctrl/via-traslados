@@ -2,7 +2,7 @@ name: Vía Traslados — Clonar producción actual a QA aislada
 on:
   push:
     branches: [via-prod-snapshot-qa-20261120]
-    paths: ['.github/workflows/via-current-prod-qa.yml']
+    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
@@ -37,6 +37,8 @@ jobs:
           assert "upstream.search=u.search" in (p/'worker.mjs').read_text()
           assert hashlib.sha256((a/'config.js').read_bytes()).hexdigest()==m['production_sha256']['config.js']
           assert 'via-qa-version' in (a/'index.html').read_text()
+          assert 'via-qa-browser-compat' in (a/'index.html').read_text()
+          assert 'QA v29.1.7' in (a/'index.html').read_text()
           print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
           PY
       - name: Deploy ONLY isolated QA Worker
