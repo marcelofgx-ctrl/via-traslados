@@ -1,0 +1,22 @@
+ const current=S.customer;
+ let validatedToken=null,identityEpoch=0,observedToken=current()?.sessionToken||null;
+ // Nunca confundir una cuenta recordada con una sesión validada por la API.
+ const authenticated=()=>{
+  const account=current();
+  return account?.sessionToken&&account.sessionToken===validatedToken&&account.profile?account:null;
+ };
+ const hasSession=()=>!!authenticated();
+ const profile=()=>authenticated()?.profile||null;
+ async function revalidateIdentity(){
+  const before=current(),token=before?.sessionToken;
+  if(!token){validatedToken=null;return null}
+  const confirmed=await S.resume(); // Consulta /api/customer/me
+  const after=current();
+  if(!confirmed||after?.sessionToken!==token||
+     !after.profile?.name||!after.profile?.phone||!after.profile?.email){
+   if(validatedToken===token)validatedToken=null;
+   return null;
+  }
+  validatedToken=token;
+  return after.profile;
+ }
