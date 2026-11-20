@@ -1,0 +1,46 @@
+  $('wizard-back').addEventListener('click',()=>{
+   ++identityEpoch; // Nunca navegar luego de una validación obsoleta.
+   if(step===1){
+    ++routePending;wizard.classList.add('hidden');hero.classList.remove('hidden');
+    document.body.classList.remove('in-booking','in-identity');
+    hero.scrollIntoView({block:'start',behavior:'smooth'});
+   }else changeStep(step===3&&hasSession()?1:step-1);
+  });
+  $('to-contact').addEventListener('click',async()=>{
+   const p=trip(),v=validTrip(p);if(v)return error(v);
+   const epoch=++identityEpoch,before=current()?.sessionToken||null;
+   onBusy('to-contact',true,'Comprobando tu sesión…');
+   try{
+    if(before){
+     const verified=await revalidateIdentity();
+     if(epoch!==identityEpoch||current()?.sessionToken!==before)return;
+     if(verified){
+      $('name').value=verified.name;
+      $('phone').value=verified.phone;
+      $('email').value=verified.email;
+      remembered();
+      openConfirmation(false); // Paso 2 omitido: el servidor ya validó la sesión.
+      return;
+     }
+    }
+    if(epoch!==identityEpoch)return;
+    remembered();changeStep(2);loadCaptcha();
+   }catch{
+    if(epoch===identityEpoch){validatedToken=null;remembered();changeStep(2);loadCaptcha()}
+   }finally{onBusy('to-contact',false)}
+  });
+  void revalidateIdentity().then(()=>{if(step===2)remembered()}).catch(()=>{});
+  window.addEventListener('via-customer-session',()=>{
+   const next=current()?.sessionToken||null;
+   if(observedToken!==next){observedToken=next;validatedToken=null;++identityEpoch}
+   selectedPhone='';grant='';turnstileToken='';
+   if(step===2)remembered();
+  });
+  window.addEventListener('storage',event=>{
+   if(event.key!=='via-customer-session-v1')return;
+   const next=current()?.sessionToken||null;
+   if(next===observedToken)return;
+   observedToken=next;validatedToken=null;++identityEpoch;
+   if(step===3){remembered();changeStep(2);loadCaptcha()}
+   else if(step===2)remembered();
+  });
