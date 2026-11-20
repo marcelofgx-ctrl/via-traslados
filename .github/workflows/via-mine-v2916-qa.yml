@@ -1,0 +1,78 @@
+name: Vía Traslados — Mis reservas V29.1.6 QA aislada
+on:
+  push:
+    branches: [via-mine-access-qa-20261120]
+    paths: ['scripts/via-mine-v2916*', '.github/workflows/via-mine-v2916-qa.yml']
+permissions: {contents: read}
+concurrency:
+  group: via-mine-v2916-qa
+  cancel-in-progress: true
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Copiar producción vigente y reparar solo acceso de pasajeros
+        run: |
+          set -euo pipefail
+          python3 scripts/via-mine-v2916-prepare.py
+          node scripts/via-mine-v2916-patch.mjs
+          node --check mine-v2916-build/assets/app.js
+          python3 - <<'PY'
+          import pathlib,json,hashlib
+          out=pathlib.Path('mine-v2916-build');assets=out/'assets'
+          spec=json.loads((out/'manifest.json').read_text())
+          changed=[]
+          for name,expected in spec['assets_before'].items():
+           if hashlib.sha256((assets/name).read_bytes()).hexdigest()!=expected:changed.append(name)
+          assert sorted(changed)==['app.js','mis-reservas.html'],changed
+          assert (assets/'mine-identity-v291.css').is_file()
+          for name in spec['required_assets']:assert (assets/name).is_file(),name
+          (assets/'config.js').write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:location.origin,turnstileSiteKey:''});\n")
+          for name in ['index.html','mis-reservas.html']:
+           file=assets/name;text=file.read_text()
+           import re
+           text,n=re.subn(r'(<body[^>]*>)',r'\1<div id="via-mine-qa-banner" style="background:#085b51;color:white;padding:8px;text-align:center;font:14px Arial">QA · Prueba de acceso · Sin reservas reales</div>',text,count=1)
+           assert n==1;file.write_text(text)
+          print('MINE_QA_ISOLATED_NO_PRODUCTION_API')
+          PY
+      - name: Publicar solo Worker QA independiente
+        run: npx --yes wrangler@4.160.1 deploy --config mine-v2916-build/wrangler.qa.jsonc
+      - name: Verificar HTML, CSS y aislamiento de escrituras
+        run: |
+          set -euo pipefail
+          URL=https://via-traslados-mine-access-qa.marcelof-gx.workers.dev
+          curl --retry 4 --retry-all-errors --retry-delay 3 -fsSL "$URL/mis-reservas.html" | grep -F 'app.js?v=29.3' >/dev/null
+          curl -fsSL "$URL/mine-identity-v291.css?v=2" | grep -F '#mine-welcome.hidden' >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
+      - name: Chrome móvil — acceso, sesión, logout y cambio de usuario
+        run: |
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          node scripts/via-mine-v2916-browser.mjs
+      - name: Regresión GPS, teclado e identidad del formulario de reserva
+        env:
+          UI_TEST_URL: https://via-traslados-mine-access-qa.marcelof-gx.workers.dev/
+          GPS_TEST_URL: https://via-traslados-mine-access-qa.marcelof-gx.workers.dev/
+          IDENTITY_TEST_URL: https://via-traslados-mine-access-qa.marcelof-gx.workers.dev/
+        run: |
+          node scripts/via-ui-v2915-browser.mjs
+          node scripts/via-identity-v2914-browser.mjs
+      - name: Evidencia y paquete recuperable
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-mine-v2916-qa-proof
+          path: |
+            mine-v2916-proof/
+            mine-v2916-build/manifest.json
+            mine-v2916-build/assets/mis-reservas.html
+            mine-v2916-build/assets/app.js
+            mine-v2916-build/assets/mine-identity-v291.css
+          retention-days: 30
