@@ -32,6 +32,8 @@ async function scenario({name,width=390,mode='valid',action='step',delay=0}){
   await route.fulfill({status:ok?200:mode==='offline'?503:401,
    contentType:'application/json',body:JSON.stringify(response)});
  });
+ await page.route('**/api/customer/logout',route=>route.fulfill({
+  status:200,contentType:'application/json',body:JSON.stringify({ok:true})}));
  await page.route('**/api/requests',route=>{
   requests.push(JSON.parse(route.request().postData()||'{}'));
   return route.fulfill({status:201,contentType:'application/json',
@@ -80,6 +82,12 @@ async function scenario({name,width=390,mode='valid',action='step',delay=0}){
    await page.locator('#wizard-back').click();
    await page.locator('.wizard-step[data-step="1"]').waitFor({state:'visible',timeout:5000});
    assert.equal(await page.locator('#wizard-progress-label').textContent(),'PASO 1 DE 3');
+  }else if(action==='logout-current-tab'){
+   await page.evaluate(()=>window.ViaStore.logout());
+   await step2.waitFor({state:'visible',timeout:5000});
+   assert.equal(await page.locator('#known-customer').isVisible(),false);
+   assert.equal(await page.locator('#booking-confirm').textContent(),'');
+   assert.equal(requests.length,0);
   }else if(action==='logout-other-tab'){
    await page.evaluate(()=>{
     localStorage.setItem('via-customer-session-v1',JSON.stringify({
@@ -116,5 +124,6 @@ try{
  await scenario({name:'expired-during-confirmation',mode:'valid',action:'submit-expired'});
  await scenario({name:'back-skips-unnecessary-identity',mode:'valid',action:'back'});
  await scenario({name:'other-tab-account-change',mode:'valid',action:'logout-other-tab'});
+ await scenario({name:'same-tab-signout',mode:'valid',action:'logout-current-tab'});
  console.log('VIA_IDENTITY_V2914_CHROME_ALL_PASSED '+passed);
 }finally{await browser.close()}
