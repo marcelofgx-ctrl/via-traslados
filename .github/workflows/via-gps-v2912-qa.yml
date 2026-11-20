@@ -5,6 +5,9 @@ on:
     paths: ['.github/workflows/via-gps-v2912-qa.yml', 'scripts/via-gps-v2912-*']
 permissions:
   contents: read
+concurrency:
+  group: via-gps-v2912-qa
+  cancel-in-progress: true
 jobs:
   audit:
     runs-on: ubuntu-24.04
