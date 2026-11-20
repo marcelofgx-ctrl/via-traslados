@@ -20,9 +20,10 @@ const replaceOne=(a,b,label)=>{
  app=app.replace(a,b);
 };
 const replaceBlock=(from,to,newCode,label)=>{
- assert.equal(app.split(from).length,2,'Inicio no único '+label);
- const i=app.indexOf(from),j=app.indexOf(to,i+from.length);
- assert(i>=0&&j>i&&app.indexOf(to,j+to.length)<0,'Rango no único '+label);
+ const passenger=app.indexOf('function initPassenger()');
+ const passengerEnd=app.indexOf('function initDriver(',passenger);
+ const i=app.indexOf(from,passenger),j=app.indexOf(to,i+from.length);
+ assert(passenger>=0&&i>=passenger&&j>i&&(passengerEnd<0||j<passengerEnd),'Rango pasajero inválido '+label);
  app=app.slice(0,i)+newCode+app.slice(j);
 };
 const helper=await readFile('scripts/via-identity-v2914-helpers.txt','utf8');
