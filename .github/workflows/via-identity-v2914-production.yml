@@ -1,0 +1,112 @@
+name: Vía Traslados — Web V29.1.4 identidad publicación controlada
+on:
+  push:
+    branches: [via-identity-recognized-qa-20261120]
+    paths: ['.release/via-identity-v2914-authorized.txt']
+permissions:
+  contents: read
+concurrency:
+  group: via-traslados-web-production-release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Gate de versión y consentimiento de publicación web
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/via-identity-recognized-qa-20261120
+          grep -Fx OWNER_AUTHORIZED_WEB_V29_1_4_IDENTITY_ROLLBACK_V29_1_3 .release/via-identity-v2914-authorized.txt
+          python3 scripts/via-identity-v2914-prepare.py
+          node scripts/via-identity-v2914-patch.mjs
+          node --check identity-v2914-build/assets/app.js
+          node --check scripts/via-identity-v2914-production-guard.mjs
+          node --check scripts/via-identity-v2914-browser.mjs
+      - name: Construir únicamente web desde activos productivos
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import runpy,pathlib,json,re,hashlib,os
+          c=runpy.run_path('scripts/via-v291-prepare.py')
+          out=pathlib.Path('identity-v2914-build');assets=out/'assets'
+          data=json.loads((out/'manifest.json').read_text())
+          def sha(x):return hashlib.sha256(x).hexdigest()
+          assert data['baseline_web_version']=='ae77208c-2200-4a83-9411-c27170112009'
+          assert data['rollback_web_version']=='ae77208c-2200-4a83-9411-c27170112009'
+          for name,expected in data['assets_before'].items():
+           if name in ('index.html','app.js'):continue
+           assert sha((assets/name).read_bytes())==expected, name+' cambió sin autorización'
+          assert sha((assets/'store.js').read_bytes())=='3dc61982cbf5498402ae7eebdf01a03979d34fca9d81d5d77497d748e3b4e6c8'
+          assert sha((assets/'reference.js').read_bytes())=='7e4841b60c7a9796673ed7ad41e54446cac3eded802bcb1cb37971cec61fd47b'
+          assert sha((assets/'geo-v2/core.mjs').read_bytes())=='17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1'
+          assert sha((assets/'config.js').read_bytes())=='51c35d348defb7f6b804457ffee090642cc609a9c22d57f3521e6a7706247273'
+          home=assets/'index.html';text=home.read_text()
+          pattern=r'<div role="status" id="via-gps-qa-banner"[^>]*>IDENTIDAD QA · V29\.1\.4 · SIN RESERVAS REALES</div>'
+          text,count=re.subn(pattern,'',text)
+          assert count==1,'No se encontró banner QA único'
+          assert 'content="29.1.4"' in text and 'app.js?v=29.2' in text
+          assert 'store.js?v=19.1' in text and 'reference.js?v=29' in text
+          assert 'geo-v2/core.mjs?v=3' in text
+          home.write_text(text)
+          worker=c['get_live_worker_source']()
+          assert len(worker)>4000
+          (out/'worker.mjs').write_text(worker)
+          cfg={'name':'via-traslados-web-prod','main':'worker.mjs',
+           'compatibility_date':'2026-11-10','keep_vars':True,'workers_dev':True,
+           'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
+          (out/'wrangler.prod.jsonc').write_text(json.dumps(cfg,indent=2)+'\n')
+          data.update({'stage':'READY_TO_DEPLOY','webOnly':True,'changed':['index.html','app.js'],
+           'source_commit':os.environ['GITHUB_SHA'],
+           'candidate_app_sha256':sha((assets/'app.js').read_bytes()),
+           'candidate_html_sha256':sha(home.read_bytes()),
+           'worker_source_sha256':sha(worker.encode())})
+          (out/'manifest.json').write_text(json.dumps(data,indent=2)+'\n')
+          print('VIA_IDENTITY_V2914_RELEASE_PACKAGE '+json.dumps({
+            'changed':['index.html','app.js'],'rollback':'ae77208c-2200-4a83-9411-c27170112009',
+            'apiV35Unchanged':True,'d1Unchanged':True,'apkUnchanged':True,
+            'storeUnchanged':True,'geoUnchanged':True,'gpsUnchanged':True}))
+          PY
+      - name: Preflight sin escrituras a Cloudflare
+        run: |
+          set -euo pipefail
+          node scripts/via-identity-v2914-production-guard.mjs before
+          npx --yes wrangler@4.160.1 deploy --config identity-v2914-build/wrangler.prod.jsonc --dry-run
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+      - name: Publicar web con rollback automático si falla la verificación
+        run: |
+          set -Eeuo pipefail
+          revertir() {
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::Falló V29.1.4, restaurando V29.1.3"
+              node scripts/via-identity-v2914-production-guard.mjs rollback || {
+                npx --yes wrangler@4.160.1 rollback ae77208c-2200-4a83-9411-c27170112009 --name via-traslados-web-prod --message 'Rollback V29.1.4 identidad' || true
+                node scripts/via-identity-v2914-production-guard.mjs rollback || true
+              }
+            fi
+          }
+          trap revertir EXIT
+          (cd identity-v2914-build && npx --yes wrangler@4.160.1 deploy --config wrangler.prod.jsonc)
+          node scripts/via-identity-v2914-production-guard.mjs after
+          IDENTITY_TEST_URL=https://viatraslados.com/ node scripts/via-identity-v2914-browser.mjs
+          curl -fsSL 'https://viatraslados.com/api/direcciones?mode=reverse&lat=-34.834&lng=-56.012' | python3 -c 'import json,sys;r=json.load(sys.stdin);assert len(r.get("results",[]))>0'
+          trap - EXIT
+          echo VIA_IDENTITY_V2914_PRODUCTION_FINISHED_AND_VERIFIED
+      - name: Evidencia privada y manifiesto con hashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-identity-v2914-production-proof
+          path: |
+            identity-v2914-release-proof/
+            identity-v2914-build/manifest.json
+          retention-days: 90
+          if-no-files-found: warn
