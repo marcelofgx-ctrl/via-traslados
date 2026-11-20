@@ -1,0 +1,32 @@
+name: Vía Traslados — V29.1.2 auditoría previa solo lectura
+on:
+  push:
+    branches: [via-gps-v2912-qa-20261119]
+    paths: ['.github/workflows/via-gps-v2912-qa.yml', 'scripts/via-gps-v2912-*']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Releer versión activa y código GPS verdadero sin modificar Workers
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const sha=b=>createHash('sha256').update(b).digest('hex');
+          const cf=async name=>{const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+'/workers/scripts/'+name+'/deployments',{headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN}});if(!r.ok)throw Error('CF '+r.status);const x=await r.json();if(!x.success)throw Error('CF error');const d=x.result.deployments[0];return {deployment:d.id,version:d.versions[0].version_id,percentage:d.versions[0].percentage}};
+          console.log('GPS_V2912_CF_VERSIONS',JSON.stringify({web:await cf('via-traslados-web-prod'),api:await cf('via-traslados-api')}));
+          const get=async path=>{const r=await fetch('https://viatraslados.com/'+path,{headers:{'Cache-Control':'no-cache'}});const b=Buffer.from(await r.arrayBuffer());if(r.status!==200)throw Error(path+' '+r.status);console.log('GPS_V2912_LIVE_FILE',JSON.stringify({path,len:b.length,sha:sha(b)}));return b.toString('utf8')};
+          const html=await get('');const src=await get('reference.js?v=27');await get('geo-v2/core.mjs?v=3');await get('config.js');
+          console.log('GPS_V2912_HTML_LINKS',JSON.stringify([...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)].map(x=>x[1]).filter(x=>/reference|gps|map|css|sw\.js/.test(x))));
+          console.log('GPS_V2912_HTML_CONTROLS',JSON.stringify([...html.matchAll(/<(?:button|input)[^>]{0,350}>/g)].map(x=>x[0]).filter(x=>/map|origin|location|ubicaci|direcci|start|search|buscar/i.test(x)).slice(0,65)));
+          const i=src.indexOf('// El GPS es estrictamente opt-in');if(i<0)throw Error('No GPS marker');console.log('GPS_V2912_REFERENCE_CODE',src.slice(i,i+10500));
+          console.log('GPS_V2912_HTML_MARKERS',JSON.stringify({v2911:html.includes('content="29.1.1"'),ref27:html.includes('reference.js?v=27'),geo3:html.includes('geo-v2/core.mjs?v=3')}));
+          NODE
