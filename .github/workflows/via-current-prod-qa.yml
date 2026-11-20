@@ -70,7 +70,19 @@ jobs:
           curl -fsSL "$URL/config.js" | grep -q 'apiUrl:location.origin'
           curl -fsSL "$URL/config.js" > /tmp/via-qa-config.js
           node --check /tmp/via-qa-config.js
-          curl -fsS --max-time 25 -X POST "$URL/api/public/route-preview" -H 'content-type: application/json' --data '{"origin":{"lat":-34.880922,"lng":-56.079391},"destination":{"lat":-34.8384,"lng":-56.0308}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); print("QA_ROUTE_PREVIEW",str(d)[:350]); assert isinstance(d,dict) and (d.get("distanceKm") is not None or d.get("distance_km") is not None or d.get("distanceMeters") is not None or d.get("distance_m") is not None or d.get("distance") is not None)'
+          echo "::group::QA live route preview diagnostics"
+          curl -sS --max-time 25 -o /tmp/qa-route.json -w 'QA_ROUTE_HTTP=%{http_code} QA_ROUTE_SECONDS=%{time_total}\\n' -X POST "$URL/api/public/route-preview" -H 'content-type: application/json' --data '{"origin":{"lat":-34.880922,"lng":-56.079391},"destination":{"lat":-34.8384,"lng":-56.0308}}'
+          python3 - <<'PY'
+          import json,pathlib
+          raw=pathlib.Path('/tmp/qa-route.json').read_text()
+          print('QA_ROUTE_BODY_PREFIX',raw[:900])
+          try: d=json.loads(raw)
+          except json.JSONDecodeError as e: raise AssertionError('QA route returned non-JSON') from e
+          assert isinstance(d,dict),'QA route response not an object'
+          assert not d.get('error'),'QA route service returned error: '+str(d.get('error'))
+          assert any(k in d for k in ('distanceKm','distance_km','distanceMeters','distance_m','distance','distance_km_road','distance_meters','route')),'QA route response lacks recognized route data: '+str(list(d))
+          PY
+          echo "::endgroup::"
           echo "QA_SNAPSHOT_DEPLOYED_NO_PROD_WRITES $URL"
       - name: Store exact source hashes
         if: always()
