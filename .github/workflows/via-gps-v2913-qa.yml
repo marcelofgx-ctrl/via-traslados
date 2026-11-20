@@ -1,0 +1,115 @@
+name: Vía Traslados — V29.1.3 QA aislada precisión extrema
+on:
+  push:
+    branches: [via-gps-lowaccuracy-qa-20261120]
+    paths: ['.github/workflows/via-gps-v2913-qa.yml', 'scripts/via-gps-v2913-*']
+permissions:
+  contents: read
+concurrency:
+  group: via-gps-v2913-qa
+  cancel-in-progress: true
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Releer versión activa y código GPS verdadero sin modificar Workers
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const sha=b=>createHash('sha256').update(b).digest('hex');
+          const cf=async name=>{const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+'/workers/scripts/'+name+'/deployments',{headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN}});if(!r.ok)throw Error('CF '+r.status);const x=await r.json();if(!x.success)throw Error('CF error');const d=x.result.deployments[0];return {deployment:d.id,version:d.versions[0].version_id,percentage:d.versions[0].percentage}};
+          console.log('GPS_V2913_CF_VERSIONS',JSON.stringify({web:await cf('via-traslados-web-prod'),api:await cf('via-traslados-api')}));
+          const get=async path=>{const r=await fetch('https://viatraslados.com/'+path,{headers:{'Cache-Control':'no-cache'}});const b=Buffer.from(await r.arrayBuffer());if(r.status!==200)throw Error(path+' '+r.status);console.log('GPS_V2913_LIVE_FILE',JSON.stringify({path,len:b.length,sha:sha(b)}));return b.toString('utf8')};
+          const html=await get('');const src=await get('reference.js?v=28');await get('geo-v2/core.mjs?v=3');await get('config.js');
+          console.log('GPS_V2913_HTML_LINKS',JSON.stringify([...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)].map(x=>x[1]).filter(x=>/reference|gps|map|css|sw\.js/.test(x))));
+          console.log('GPS_V2913_HTML_CONTROLS',JSON.stringify([...html.matchAll(/<(?:button|input)[^>]{0,350}>/g)].map(x=>x[0]).filter(x=>/map|origin|location|ubicaci|direcci|start|search|buscar/i.test(x)).slice(0,65)));
+          const i=src.indexOf('// V29.1.2 — GPS Android/Chrome');if(i<0)throw Error('No GPS marker');console.log('GPS_V2913_REFERENCE_CODE',src.slice(i,i+10500));
+          console.log('GPS_V2913_HTML_MARKERS',JSON.stringify({v2912:html.includes('content="29.1.2"'),ref28:html.includes('reference.js?v=28'),geo3:html.includes('geo-v2/core.mjs?v=3')}));
+          console.log('GPS_V2913_SCRIPT_SOURCES',JSON.stringify([...html.matchAll(/<script[^>]*src=["']([^"']+)["']/g)].map(x=>x[1])));
+          console.log('GPS_V2913_MAP_HTML',JSON.stringify([...html.matchAll(/.{0,240}(?:mapa|map-point|point-picker|map-pick).{0,300}/gi)].slice(0,12).map(x=>x[0])));
+          for(const file of ['map-point-picker.js','address-selected-preview.js','address-autocomplete.js']){try{const j=await get(file);console.log('GPS_V2913_MAP_SOURCE '+file+' '+j.slice(0,7000));}catch(e){console.log('GPS_V2913_MAP_ASSET_ERROR '+file+' '+e.message)}}
+          const picker=await get('map-point-picker.js');
+          console.log('GPS_V2913_PICKER_HOOKS',JSON.stringify([...picker.matchAll(/.{0,220}(?:window\.Via|\.addEventListener\(|\.open\(|dispatchEvent|via:picker|via:map|openPicker).{0,280}/g)].map(x=>x[0]).filter(x=>/open|Via|pointer|click|focus|event/.test(x)).slice(-65)));
+          NODE
+
+  qa:
+    needs: audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reconstruir exclusivamente desde versión web realmente publicada
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/via-gps-v2913-prepare.py
+          node --check scripts/via-gps-v2913-patch.mjs
+          node --check scripts/via-gps-v2913-browser.mjs
+          python3 scripts/via-gps-v2913-prepare.py
+          node scripts/via-gps-v2913-patch.mjs
+          node --check gps-v2913-build/assets/reference.js
+          test "$(sha256sum gps-v2913-build/assets/geo-v2/core.mjs | cut -d' ' -f1)" = 17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1
+      - name: Bloquear la API productiva y todo POST en QA
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('gps-v2913-build/assets/config.js')
+          assert 'via-traslados-api.marcelof-gx.workers.dev' in p.read_text()
+          p.write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:'https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev',turnstileSiteKey:''});\n")
+          assert 'via-traslados-api.marcelof-gx.workers.dev' not in p.read_text()
+          print('VIA_GPS_V2913_QA_NO_PROD_API')
+          PY
+      - name: Publicar SOLO nuevo Worker aislado GPS V29.1.3
+        run: |
+          set -euo pipefail
+          cd gps-v2913-build
+          npx --yes wrangler@4.160.1 deploy --config wrangler.qa.jsonc
+      - name: Verificar QA HTTP200, código nuevo y producción V29.1.2 intacta
+        run: |
+          set -euo pipefail
+          URL=https://via-traslados-gps-precision-qa.marcelof-gx.workers.dev
+          for i in 1 2 3 4 5; do
+            code=$(curl -L -sS --max-time 20 -o /tmp/gps-v2913-home -w '%{http_code}' "$URL/" || true)
+            if [ "$code" = 200 ]; then break; fi
+            sleep 3
+          done
+          test "$code" = 200
+          grep -F 'content="29.1.3"' /tmp/gps-v2913-home
+          grep -F 'reference.js?v=29' /tmp/gps-v2913-home
+          grep -F 'GPS QA' /tmp/gps-v2913-home
+          curl -fsSL "$URL/reference.js?v=29" | grep -F 'function blockedGps' >/dev/null
+          curl -fsSL "$URL/config.js" | grep -F 'via-traslados-maestro-api-qa' >/dev/null
+          test "$(curl -fsSL "$URL/geo-v2/core.mjs?v=3" | sha256sum | cut -d' ' -f1)" = 17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
+          curl -fsSL https://viatraslados.com/ | grep -F 'reference.js?v=28' >/dev/null
+          test "$(curl -fsSL https://viatraslados.com/reference.js?v=28 | sha256sum | cut -d ' ' -f1)" = 0d406c29b3339e3f18a3c0fdc2155ca4cd2015e72b93e4ad8d28cc44c70ba0a5
+          echo VIA_GPS_V2913_QA_PUBLIC_200_PRODUCTION_UNTOUCHED
+      - name: Chrome móvil — permisos, mapa, precisión y cancelación
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          node scripts/via-gps-v2913-browser.mjs
+      - name: Evidencia y rollback preparado sin modificar base de datos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-gps-v2913-qa-evidence
+          path: |
+            gps-v2913-build/manifest.json
+            gps-v2913-build/assets/reference.js
+            gps-v2913-build/assets/index.html
+          retention-days: 30
+          if-no-files-found: warn
