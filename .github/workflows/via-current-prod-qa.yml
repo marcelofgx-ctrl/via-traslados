@@ -2,7 +2,7 @@ name: Vía Traslados — Clonar producción actual a QA aislada
 on:
   push:
     branches: [via-prod-snapshot-qa-20261120]
-    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js']
+    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
@@ -26,6 +26,8 @@ jobs:
           python3 scripts/via-current-prod-qa.py
           node --check via-current-qa/assets/app.js
           node --check via-current-qa/assets/via-qa-browser-diagnostics.js
+          node --check via-current-qa/worker.mjs
+          node --check via-current-qa/geo-directions.mjs
       - name: Verify isolation and critical integrity
         run: |
           set -euo pipefail
@@ -35,7 +37,9 @@ jobs:
           for name in ('app.js','store.js','geo-v2/core.mjs','descargas/via-traslados-conductor-v35.apk'):
            assert hashlib.sha256((a/name).read_bytes()).hexdigest()==m['production_sha256'][name],name
           assert "QA aislada" in (p/'worker.mjs').read_text()
-          assert "upstream.search=u.search" in (p/'worker.mjs').read_text()
+          assert "geo.fetch(req,env)" in (p/'worker.mjs').read_text()
+          assert "direcciones.ide.uy" in (p/'geo-directions.mjs').read_text()
+          assert "viatraslados.com/api/direcciones" not in (p/'worker.mjs').read_text()
           assert hashlib.sha256((a/'config.js').read_bytes()).hexdigest()==m['production_sha256']['config.js']
           assert 'via-qa-version' in (a/'index.html').read_text()
           assert 'via-qa-browser-compat' in (a/'index.html').read_text()
@@ -58,6 +62,7 @@ jobs:
           curl -fsSL "$URL/via-qa-browser-diagnostics.js" | grep -q 'Diagnóstico QA'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/customer/me")" = 503
+          curl -fsSL "$URL/api/direcciones?mode=places&q=aeropuerto" | python3 -c 'import json,sys; assert any("Carrasco" in x.get("label","") for x in json.load(sys.stdin)["results"])'
           curl -fsSL "$URL/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185" | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin).get("results"),list)'
           echo "QA_SNAPSHOT_DEPLOYED_NO_PROD_WRITES $URL"
       - name: Store exact source hashes
