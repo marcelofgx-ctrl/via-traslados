@@ -1,0 +1,60 @@
+name: Vía Traslados — V29.1.6 publicación protegida
+on:
+  push:
+    branches: [via-mine-v2916-prod-release-20261120]
+    paths: ['.github/workflows/via-mine-v2916-prod.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: via-traslados-web-prod-review-v29-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Snapshot production and apply narrowly scoped tested fix
+        run: |
+          set -euo pipefail
+          python3 scripts/via-mine-v2916-prepare.py
+          node scripts/via-mine-v2916-patch.mjs
+          node --check mine-v2916-build/assets/app.js
+          python3 scripts/via-mine-v2916-prod-release.py prepare
+      - name: Save original release metadata and hashes
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v2916-preprod-rollback
+          path: |
+            mine-v2916-build/rollback-version.txt
+            mine-v2916-build/release-manifest.json
+          retention-days: 30
+      - name: Stage in isolated Worker with API writes blocked
+        run: |
+          set -euo pipefail
+          cp mine-v2916-build/worker.mjs /tmp/via-v2916-original-worker.mjs
+          printf "export default {async fetch(req,env){if(new URL(req.url).pathname.startsWith('/api/'))return new Response('QA sin reservas reales',{status:503});return env.ASSETS.fetch(req)}};\n" > mine-v2916-build/worker.mjs
+          npx --yes wrangler@4.160.1 deploy --config mine-v2916-build/wrangler.stage.jsonc --keep-vars
+          python3 scripts/via-mine-v2916-prod-release.py stage
+          cp /tmp/via-v2916-original-worker.mjs mine-v2916-build/worker.mjs
+      - name: Confirm critical unchanged files and production worker
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,hashlib,pathlib
+          p=pathlib.Path('mine-v2916-build')
+          m=json.loads((p/'release-manifest.json').read_text())
+          a=p/'assets'
+          for name in ('store.js','config.js','geo-v2/core.mjs','descargas/via-traslados-conductor-v35.apk'):
+           assert hashlib.sha256((a/name).read_bytes()).hexdigest()==m['original'][name],name
+          assert len((p/'worker.mjs').read_text())>4000
+          assert 'via-release-indicator' in (a/'index.html').read_text()
+          PY
+      - name: Publish with automatic rollback on failed smoke
+        run: python3 scripts/via-mine-v2916-prod-release.py release
