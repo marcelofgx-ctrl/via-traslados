@@ -29,6 +29,7 @@ function installGps(){
 }
 async function launch(ua=UAS.chrome,init=null,width=390){
  const context=await browser.newContext({viewport:{width,height:850},isMobile:true,hasTouch:true,userAgent:ua});
+ if(init===installGps)await context.grantPermissions(['geolocation'],{origin:new URL(url).origin});
  const page=await context.newPage(),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  if(init)await page.addInitScript(init);
