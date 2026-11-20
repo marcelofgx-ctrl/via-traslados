@@ -1,0 +1,60 @@
+name: Vía Traslados — Clonar producción actual a QA aislada
+on:
+  push:
+    branches: [via-prod-snapshot-qa-20261120]
+    paths: ['.github/workflows/via-current-prod-qa.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: via-current-prod-qa-only
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Download actual production snapshot read-only
+        run: |
+          set -euo pipefail
+          python3 scripts/via-current-prod-qa.py
+          node --check via-current-qa/assets/app.js
+      - name: Verify isolation and critical integrity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,json,hashlib
+          p=pathlib.Path('via-current-qa');a=p/'assets';m=json.loads((p/'production-manifest.json').read_text())
+          for name in ('app.js','store.js','geo-v2/core.mjs','descargas/via-traslados-conductor-v35.apk'):
+           assert hashlib.sha256((a/name).read_bytes()).hexdigest()==m['production_sha256'][name],name
+          assert "QA aislada" in (p/'worker.mjs').read_text()
+          assert 'apiUrl:location.origin' in (a/'config.js').read_text()
+          assert 'via-qa-version' in (a/'index.html').read_text()
+          print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
+          PY
+      - name: Deploy ONLY isolated QA Worker
+        run: npx --yes wrangler@4.160.1 deploy --config via-current-qa/wrangler.jsonc
+      - name: Verify QA pages and deny API writes
+        run: |
+          set -euo pipefail
+          URL=https://via-traslados-current-prod-qa.marcelof-gx.workers.dev
+          for n in $(seq 1 20); do
+            if curl -fsSL "$URL/" | grep -q 'via-qa-version'; then break; fi
+            sleep 5
+          done
+          curl -fsSL "$URL/mis-reservas.html" | grep -q 'Mis reservas'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
+          echo "QA_SNAPSHOT_DEPLOYED_NO_PROD_WRITES $URL"
+      - name: Store exact source hashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-current-production-snapshot-manifest
+          path: via-current-qa/production-manifest.json
+          retention-days: 30
