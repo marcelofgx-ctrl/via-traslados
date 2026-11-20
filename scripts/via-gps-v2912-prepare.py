@@ -67,7 +67,7 @@ for item, expected in [('reference.js', EXPECTED_REF),
     "return env.ASSETS.fetch(req)}};\n"
 )
 (out / 'wrangler.qa.jsonc').write_text(json.dumps({
-    'name': 'via-traslados-gps-v2912-qa',
+    'name': 'via-traslados-gps-precision-qa',
     'main': 'worker.mjs', 'compatibility_date': '2026-11-10',
     'workers_dev': True,
     'assets': {'directory': './assets', 'binding': 'ASSETS',
