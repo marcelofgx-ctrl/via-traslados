@@ -7,7 +7,7 @@
 - Se restauró únicamente el Worker WEB `via-traslados-web-prod` a `0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b` (web pública **v29.1.6**) con comprobación de la página realmente servida, ejecución https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44948688379 .
 - El rollback NO modificó la API, D1, passkeys, identidad de pasajeros ni reservas. La auditoría de `main` fue actualizada para exigir nuevamente la versión web V29.1.6; auditoría completa aprobada https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44948747898 .
 - La V29.1.7 permanece documentada como entrega fallida. No republicarla.
-- Un proyecto de corrección visual `via-mine-v2918-guest-fix-20261121` está aislado en QA, nunca asumir su aprobación ni liberación. Priorizar que el formulario completo y botones se vean con teclado Android/iOS, y que el no-scroll del cuerpo no recorte contenidos interactivos. Solicitar comprobación visual antes de volver a producción.
+- **Corrección V29.1.8 únicamente en QA**, rama `via-mine-v2918-guest-fix-20261121`, con nuevo logo corporativo y panel de acceso de altura natural. QA verificada con **8 pruebas específicas** Android/iOS (incluye teclado abierto y botón de huella/correo dentro del área visible) y **7 pruebas de acceso/paginación**: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44949924595 . Vista previa visual `https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/mis-reservas.html` (QA: API deshabilitada, NO iniciar sesión real allí). **NO publicar a producción sin aprobación visual explícita del usuario**. La v29.1.6 permanece pública.
 
 
 ## Actualización de producción — 21/11/2026, 20:47 UTC: WEB v29.1.7
