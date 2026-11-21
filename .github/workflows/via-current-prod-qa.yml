@@ -2,7 +2,7 @@ name: Vía Traslados — Clonar producción actual a QA aislada
 on:
   push:
     branches: [via-prod-snapshot-qa-20261120]
-    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs']
+    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
@@ -25,6 +25,7 @@ jobs:
           python3 -m py_compile scripts/via-current-prod-qa.py
           node --check scripts/via-qa-browser-diagnostics.js
           node --check scripts/via-qa-directions-worker.mjs
+          node --check scripts/via-qa-route-contract.mjs
       - name: Download actual production snapshot read-only
         run: |
           set -euo pipefail
@@ -34,6 +35,7 @@ jobs:
           node --check via-current-qa/assets/via-qa-browser-diagnostics.js
           node --check via-current-qa/worker.mjs
           node --check via-current-qa/geo-directions.mjs
+          node scripts/via-qa-route-contract.mjs
       - name: Verify isolation and critical integrity
         run: |
           set -euo pipefail
