@@ -46,11 +46,11 @@ jobs:
           npx playwright install --with-deps webkit >/dev/null
       - name: Verify guest and keyboard open layout in eight cases
         env:
-          VIA_V2918_QA: https://via-traslados-mine-v2918-stage.marcelof-gx.workers.dev
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
         run: node scripts/via-mine-v2918-keyboard-qa.mjs
       - name: Verify signed-in and paginated view remains functional
         env:
-          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2918-stage.marcelof-gx.workers.dev/
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
         run: node scripts/via-mine-v2917-browser.mjs
       - name: Save screenshots and diagnostics
         if: always()
