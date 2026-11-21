@@ -45,7 +45,7 @@ if(wizard){
  const notice=document.createElement('aside');notice.id='via-qa-identity-notice';
  const message=document.createElement('span');
  message.textContent=active
-  ? 'SIMULACIÓN QA · Para el código de prueba usá 123456. No se envían correos ni se crean reservas reales.'
+  ? 'SIMULACIÓN QA · Usá datos ficticios; código de prueba: 123456. Los datos quedan en este navegador. No se envían correos ni se crean reservas reales.'
   : 'QA técnica · La verificación real está deshabilitada para proteger producción.';
  const link=document.createElement('a');
  link.href=active?'?qa_sim=0':'?qa_sim=1';
