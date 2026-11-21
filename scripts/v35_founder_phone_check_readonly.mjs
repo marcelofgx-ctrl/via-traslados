@@ -27,3 +27,28 @@ const res=await query(`SELECT
 const out=res[0];
 console.log('VIA_FOUNDER_READONLY_CHECK '+JSON.stringify(out));
 console.log('NO_PHONE_OR_EMAIL_RETRIEVED_NO_DB_CHANGES');
+
+
+ // Diagnóstico restringido a la cuenta indicada, sin obtener correo, nombre ni credenciales.
+ // El valor de referencia es el mismo celular fundador ya presente en este archivo de auditoría.
+ const rows=await query(`WITH candidates AS (
+   SELECT email, replace(replace(replace(replace(replace(phone,' ',''),'-',''),'+',''),'(',''),')','') AS digits
+   FROM customers
+ ), lookup AS (
+   SELECT email,digits FROM candidates
+   WHERE digits LIKE '%094842756%' OR digits LIKE '%59894842756%'
+ ), exact AS (
+   SELECT email FROM lookup WHERE digits IN ('094842756','59894842756')
+ )
+ SELECT
+   (SELECT COUNT(*) FROM lookup) AS candidates_by_backend_search,
+   (SELECT COUNT(*) FROM exact) AS matching_accounts,
+   (SELECT COUNT(*) FROM candidates WHERE digits='94842756') AS eight_digit_format_accounts,
+   (SELECT COUNT(*) FROM customer_passkeys WHERE email IN (SELECT email FROM exact)) AS registered_passkeys_for_phone,
+   (SELECT COUNT(*) FROM customer_sessions WHERE email IN (SELECT email FROM exact)
+     AND expires_at>unixepoch() AND revoked_at IS NULL) AS active_customer_sessions,
+   (SELECT COUNT(*) FROM customer_passkeys) AS registered_passkeys_total,
+   (SELECT COUNT(*) FROM customers) AS customer_accounts_total`);
+ const data=rows[0]||{};
+ console.log('VIA_PASSKEY_LINK_READONLY '+JSON.stringify(data));
+ console.log('NO_PRIVATE_DATA_RETRIEVED_NO_PASSKEYS_MODIFIED_NO_OTP_SENT');
