@@ -2,7 +2,7 @@ name: Vía Traslados — Clonar producción actual a QA aislada
 on:
   push:
     branches: [via-prod-snapshot-qa-20261120]
-    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs', 'scripts/via-qa-smoke.py', 'scripts/via-qa-routing-worker.mjs']
+    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs', 'scripts/via-qa-smoke.py', 'scripts/via-qa-routing-worker.mjs', 'scripts/via-qa-simulator-contract.mjs']
   workflow_dispatch:
 permissions: {contents: read, statuses: write}
 concurrency:
@@ -27,16 +27,19 @@ jobs:
           node --check scripts/via-qa-directions-worker.mjs
           node --check scripts/via-qa-route-contract.mjs
           node --check scripts/via-qa-routing-worker.mjs
+          node --check scripts/via-qa-simulator-contract.mjs
       - name: Download actual production snapshot read-only
         run: |
           set -euo pipefail
           python3 scripts/via-current-prod-qa.py
           node --check via-current-qa/assets/app.js
+          node --check via-current-qa/assets/config.js
           node --check via-current-qa/assets/store.js
           node --check via-current-qa/assets/via-qa-browser-diagnostics.js
           node --check via-current-qa/worker.mjs
           node --check via-current-qa/geo-directions.mjs
           node scripts/via-qa-route-contract.mjs
+          node scripts/via-qa-simulator-contract.mjs
       - name: Verify isolation and critical integrity
         run: |
           set -euo pipefail
@@ -61,12 +64,15 @@ jobs:
           assert 'via-traslados-api.marcelof-gx.workers.dev' not in (a/'config.js').read_text()
           assert 'via-qa-version' in (a/'index.html').read_text()
           assert 'via-qa-browser-compat' in (a/'index.html').read_text()
-          assert 'QA v29.1.11' in (a/'index.html').read_text()
+          assert 'QA v29.1.12' in (a/'index.html').read_text()
           assert 'position:fixed;top:calc(env(safe-area-inset-top,0px) + 118px)' not in (a/'index.html').read_text()
           assert 'via-qa-controls' in (a/'via-qa-browser-diagnostics.js').read_text()
           assert 'position:relative' in (a/'via-qa-browser-diagnostics.js').read_text()
-          assert 'store.js?v=qa29111' in (a/'index.html').read_text()
-          assert 'via-qa-browser-diagnostics.js?v=29111' in (a/'index.html').read_text()
+          assert 'store.js?v=qa29112' in (a/'index.html').read_text()
+          assert 'config.js?v=qa29112' in (a/'index.html').read_text()
+          assert 'qa_sim' in (a/'config.js').read_text()
+          assert 'SIMULACIÓN QA' in (a/'via-qa-browser-diagnostics.js').read_text()
+          assert 'via-qa-browser-diagnostics.js?v=29112' in (a/'index.html').read_text()
           assert (a/'via-qa-browser-diagnostics.js').stat().st_size>2000
           print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
           PY
