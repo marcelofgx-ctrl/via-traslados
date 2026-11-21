@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [".github/workflows/via-deployment-audit.yml"]
+    paths: [".github/workflows/via-deployment-audit.yml", "scripts/via-production-release-readonly.mjs"]
 permissions:
   contents: read
 jobs:
