@@ -13,14 +13,14 @@ export default {
   const u=new URL(req.url),path=u.pathname,origin=req.headers.get('Origin');
   if(origin && origin!==QA_ORIGIN)return json({error:'Origen QA no autorizado'},403);
   if(!/^\/api\//.test(path))return json({error:'Recurso QA inexistente'},404);
-  if(req.method==='POST'&&(['/api/auth/start','/api/customer/phone/identify','/api/customer/login/start'].includes(path))
-    &&(!env.TURNSTILE_SECRET_KEY||!env.RESEND_API_KEY||!env.RESEND_FROM||String(env.OTP_PEPPER||'').length<32))
-   return json({error:'Verificación real QA pendiente de configurar'},503);
   if(req.method==='POST'&&path==='/api/auth/start'){
    let email='';
    try{email=String((await req.clone().json()).email||'').trim().toLowerCase()}catch{}
    if(!allowlist(env).includes(email))return json({error:'QA restringida a los correos de prueba autorizados'},403);
   }
+  if(req.method==='POST'&&(['/api/auth/start','/api/customer/phone/identify','/api/customer/login/start'].includes(path))
+    &&(!env.TURNSTILE_SECRET_KEY||!env.RESEND_API_KEY||!env.RESEND_FROM||String(env.OTP_PEPPER||'').length<32))
+   return json({error:'Verificación real QA pendiente de configurar'},503);
   // Impedir usos indirectos de la API QA desde el dominio productivo.
   if(path==='/api/health'&&req.method==='GET'){
    const res=await api.fetch(req,env,ctx);
