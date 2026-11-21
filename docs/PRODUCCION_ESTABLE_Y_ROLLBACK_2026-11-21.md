@@ -1,5 +1,15 @@
 # Vía Traslados — Congelamiento de producción y rollback (21/11/2026)
 
+## Corrección 21/11/2026 — rollback V29.1.7 rechazado, V29.1.6 estable
+
+**Estado actual vigente (tiene prioridad frente a las notas históricas siguientes):**
+- El usuario reportó el 21/11 a las 17:52 UY una regresión de acceso de pasajeros: vista abierta con teclado, formulario recortado y botones ocultos tras una gran superficie vacía. Se rechaza el diseño V29.1.7.
+- Se restauró únicamente el Worker WEB `via-traslados-web-prod` a `0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b` (web pública **v29.1.6**) con comprobación de la página realmente servida, ejecución https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44948688379 .
+- El rollback NO modificó la API, D1, passkeys, identidad de pasajeros ni reservas. La auditoría de `main` fue actualizada para exigir nuevamente la versión web V29.1.6; auditoría completa aprobada https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44948747898 .
+- La V29.1.7 permanece documentada como entrega fallida. No republicarla.
+- Un proyecto de corrección visual `via-mine-v2918-guest-fix-20261121` está aislado en QA, nunca asumir su aprobación ni liberación. Priorizar que el formulario completo y botones se vean con teclado Android/iOS, y que el no-scroll del cuerpo no recorte contenidos interactivos. Solicitar comprobación visual antes de volver a producción.
+
+
 ## Actualización de producción — 21/11/2026, 20:47 UTC: WEB v29.1.7
 
 **Estado vigente y prioritario sobre los ejemplos históricos de este documento:**
