@@ -35,6 +35,12 @@ async function validate(browserName,w,h,typing){
    el.textContent='Verificación de seguridad (simulada, sin clave ni correos)';
    el.style.fontSize='10px';captcha.append(el);
   });
+  if(!typing){
+   // The existing 'Ingresar' click intentionally autofocuses the input;
+   // dismiss that focus to validate the keyboard-closed variant independently.
+   await page.locator('#mine-login-phone').evaluate(e=>e.blur());
+   await page.waitForTimeout(110);
+  }
   if(typing){
    await page.locator('#mine-login-phone').focus();
    await page.locator('#mine-login-phone').fill('094842756');
