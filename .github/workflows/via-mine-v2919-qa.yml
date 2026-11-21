@@ -46,6 +46,8 @@ jobs:
         run: |
           npm install --no-audit --no-fund --no-save playwright@1.56.1
           npx playwright install --with-deps webkit >/dev/null
+      - name: Verify approved V logo and Inicio button in eight cases
+        run: node scripts/via-mine-v2919-brand-qa.mjs
       - name: Verify screenshot-specific bug with keyboard in eight viewport cases
         env:
           VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
@@ -54,8 +56,6 @@ jobs:
         env:
           VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
         run: node scripts/via-mine-v2917-browser.mjs
-      - name: Verify approved V logo and Inicio button in eight cases
-        run: node scripts/via-mine-v2919-brand-qa.mjs
       - name: Save screenshots and proven snapshot inventory
         if: always()
         uses: actions/upload-artifact@v4
