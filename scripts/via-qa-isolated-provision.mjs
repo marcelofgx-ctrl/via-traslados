@@ -43,7 +43,7 @@ const match=fromRaw.match(/<([^<>\s]+@[^<>\s]+)>$/);
 const from=match?'Vía Traslados QA <'+match[1]+'>':'';
 fs.writeFileSync('.qa/wrangler-backend.toml',[
  'name = '+quote(QA_WORKER),
- 'main = "backend/worker.js"',
+ 'main = "backend/qa-entry.js"',
  'compatibility_date = "2026-11-10"',
  'workers_dev = true',
  '[[d1_databases]]',
@@ -56,6 +56,7 @@ fs.writeFileSync('.qa/wrangler-backend.toml',[
  'RESEND_FROM = '+quote(from),
  'VIA_QA_ENV = "isolated"',
  'VIA_QA_NAME = '+quote(QA_DB),
+ 'VIA_QA_TEST_EMAILS = '+quote((process.env.VIA_QA_TEST_EMAILS||'').toLowerCase().trim()),
  ''
 ].join('\n'));
 fs.writeFileSync('.qa/qa-d1-id.txt',uuid+'\n');
