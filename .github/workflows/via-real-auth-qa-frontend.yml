@@ -1,5 +1,10 @@
 name: "Vía Traslados — Activar autenticación REAL en QA (con rollback)"
 on:
+  push:
+    branches: [via-real-auth-qa-isolated-20261121]
+    paths:
+      - ".ci/VIA_REAL_AUTH_QA_ACTIVATE"
+      - ".github/workflows/via-real-auth-qa-frontend.yml"
   workflow_dispatch:
     inputs:
       confirmation:
@@ -13,7 +18,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   switch-qa:
-    if: github.ref_name == 'via-real-auth-qa-isolated-20261121' && inputs.confirmation == 'ACTIVAR-QA-REAL'
+    if: >-
+      github.ref_name == 'via-real-auth-qa-isolated-20261121' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.confirmation == 'ACTIVAR-QA-REAL') ||
+       (github.event_name == 'push' && contains(github.event.head_commit.message, '[QA_REAL_AUTH_ACTIVATE]')))
     runs-on: ubuntu-24.04
     timeout-minutes: 28
     steps:
