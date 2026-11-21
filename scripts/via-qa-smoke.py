@@ -70,17 +70,20 @@ def main():
     # Wait for the correct QA version, not merely any older deployed build.
     for attempt in range(8):
         status, body, _ = fetch("/")
-        if status == 200 and "QA v29.1.11" in body:
+        if status == 200 and "QA v29.1.12" in body:
             break
-        print(f"QA_DEPLOY_WAIT attempt={attempt+1} http={status} version_found={('QA v29.1.11' in body)}", flush=True)
+        print(f"QA_DEPLOY_WAIT attempt={attempt+1} http={status} version_found={('QA v29.1.12' in body)}", flush=True)
         time.sleep(2)
-    check("home_version", "/", 200, validate=contains("QA v29.1.11"))
-    check("home_patched_store_link", "/", 200, validate=contains("store.js?v=qa29111"))
+    check("home_version", "/", 200, validate=contains("QA v29.1.12"))
+    check("home_patched_store_link", "/", 200, validate=contains("store.js?v=qa29112"))
     check("bookings_page", "/mis-reservas.html", 200, validate=contains("Mis reservas"))
     check("diagnostic_asset", "/via-qa-browser-diagnostics.js", 200, validate=contains("Diagnóstico QA"))
     check("diagnostics_inline", "/via-qa-browser-diagnostics.js", 200, validate=contains("via-qa-controls"))
-    check("qa_api_config", "/config.js", 200, validate=contains("apiUrl:location.origin"))
-    check("qa_patched_store", "/store.js?v=qa29111", 200, validate=contains("window.ViaAddress?.get?.(key)"))
+    check("home_sim_config_link", "/", 200, validate=contains("config.js?v=qa29112"))
+    check("qa_api_config", "/config.js?v=qa29112", 200, validate=contains("apiUrl:location.origin"))
+    check("qa_sim_opt_in", "/config.js?v=qa29112", 200, validate=contains("qa_sim"))
+    check("qa_sim_notice", "/via-qa-browser-diagnostics.js", 200, validate=contains("SIMULACIÓN QA"))
+    check("qa_patched_store", "/store.js?v=qa29112", 200, validate=contains("window.ViaAddress?.get?.(key)"))
     check("writes_denied", "/api/requests", 503, method="POST", payload={})
     check("private_session_denied", "/api/customer/me", 503)
     check("known_airport_search", "/api/direcciones?mode=places&q=aeropuerto", 200, validate=places)
