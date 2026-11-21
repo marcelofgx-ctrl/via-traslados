@@ -1,0 +1,55 @@
+name: Vía Traslados - V29.1.9 approved premium header web-only production release
+on:
+  push:
+    branches: [via-mine-exact-brand-prod-20261121]
+    paths:
+      - "release/VIA_MINE_V2919_QA_APPROVED"
+permissions:
+  contents: read
+concurrency:
+  group: via-mine-v2919-controlled-prod
+  cancel-in-progress: false
+jobs:
+  publish_web_only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify code and no authentication or booking changes
+        run: |
+          python3 -m py_compile scripts/via-mine-v2919-release.py
+          node --check scripts/via-mine-v2918-fix.js
+          node --check scripts/via-mine-v2917.js
+      - name: Prepare approved visual-only snapshot from live V29.1.6
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v2919-release.py prepare
+      - name: Verify QA and production build without modifying anything
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 scripts/via-mine-v2919-release.py qa
+          npx --yes wrangler@4.160.1 deploy --config mine-v2917-build/wrangler.prod.jsonc --dry-run --keep-vars
+      - name: Publish WEB only with asset hashes, version guard and automatic rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v2919-release.py release
+      - name: Verify OTP health, routes, geocoding, frontend and signed APK
+        run: node tests/prod-core-invariants.mjs
+      - name: Save visual-only release manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v2919-production-manifest-and-rollback-source
+          path: mine-v2917-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
