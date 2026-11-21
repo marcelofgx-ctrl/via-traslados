@@ -1,0 +1,39 @@
+name: Via Traslados — vincular celular pasajero y passkey preexistente (D1 puntual)
+on:
+  push:
+    branches: [via-restore-passkey-phone-prod-20261121]
+    paths:
+      - ".github/workflows/via-restore-passkey-phone-prod-20261121.yml"
+      - "scripts/via-restore-founder-customer-phone-20261121.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-customer-founder-passkey-oneoff-20261121
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxis sin tocar producción
+        run: node --check scripts/via-restore-founder-customer-phone-20261121.mjs
+      - name: Verificar cuenta, generar bookmark, actualizar un teléfono y comprobar passkey
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/via-restore-founder-customer-phone-20261121.mjs
+      - name: Guardar recuperación privada de la asociación anterior
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-customer-passkey-private-rollback-20261121
+          path: via-passkey-phone-rollback-private.json
+          if-no-files-found: warn
+          retention-days: 7
