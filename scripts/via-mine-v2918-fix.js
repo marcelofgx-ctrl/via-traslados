@@ -26,7 +26,7 @@ function focusMode(){
 function update(){mode();focusMode()}
 root.classList.add('via-mine-v2918');
 if(welcome)new MutationObserver(update).observe(welcome,{attributes:true,attributeFilter:['class']});
-for(const field of [input,document.getElementById('mine-login-code'),...signup?.querySelectorAll('input')||[]]){
+for(const field of [input,document.getElementById('mine-login-code'),...(signup?.querySelectorAll('input')||[])]){
  if(!field)continue;
  field.setAttribute('enterkeyhint','done');
  field.addEventListener('keydown',event=>{
