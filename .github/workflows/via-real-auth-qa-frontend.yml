@@ -1,0 +1,99 @@
+name: "Vía Traslados — Activar autenticación REAL en QA (con rollback)"
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Escribí ACTIVAR-QA-REAL cuando las credenciales estén configuradas"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: via-current-prod-qa-only
+  cancel-in-progress: false
+jobs:
+  switch-qa:
+    if: github.ref_name == 'via-real-auth-qa-isolated-20261121' && inputs.confirmation == 'ACTIVAR-QA-REAL'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: "Código íntegro y requisitos reales (NO acepta claves ficticias)"
+        env:
+          VIA_QA_TURNSTILE_SITE_KEY: ${{ vars.VIA_QA_TURNSTILE_SITE_KEY }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = via-real-auth-qa-isolated-20261121
+          node --check scripts/via-qa-routing-worker.mjs
+          python3 -m py_compile scripts/via-real-auth-qa-frontend.py scripts/via-current-prod-qa.py
+          test -n "$VIA_QA_TURNSTILE_SITE_KEY"
+          if [[ ! "$VIA_QA_TURNSTILE_SITE_KEY" =~ ^0x[a-zA-Z0-9]{15,100}$ ]]; then
+            echo "::error::Falta la site key real de Turnstile autorizada para el dominio QA"
+            exit 1
+          fi
+      - name: "Exigir backend QA real, aislado y con OTP habilitado"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 https://via-traslados-api-auth-qa-20261121.marcelof-gx.workers.dev/api/health -o /tmp/via-qa-real-health.json
+          node -e "let j=require('/tmp/via-qa-real-health.json');if(j.qaIsolated!==true||j.otpAvailable!==true||j.identityTestEnabled!==true)process.exit(1);console.log('QA_REAL_AUTH_BACKEND_READY')"
+      - name: "Verificar fuente y crear copia de producción actual SOLO lectura"
+        env:
+          VIA_QA_TURNSTILE_SITE_KEY: ${{ vars.VIA_QA_TURNSTILE_SITE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 scripts/via-real-auth-qa-frontend.py
+          node --check via-real-auth-qa-web/worker.mjs
+          node --check via-real-auth-qa-web/assets/config.js
+          node --check via-real-auth-qa-web/assets/store.js
+          grep -Fq 'QA REAL v30.0.0' via-real-auth-qa-web/assets/index.html
+          grep -Fq 'demo:false' via-real-auth-qa-web/assets/config.js
+          grep -Fq 'QA_BACKEND' via-real-auth-qa-web/worker.mjs
+          grep -Fq 'via-traslados-api-auth-qa-20261121' via-real-auth-qa-web/wrangler.jsonc
+          ! grep -Fq 'service":"via-traslados-api"' via-real-auth-qa-web/wrangler.jsonc
+      - name: "Compilar frontend QA sin modificar ninguna web"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config via-real-auth-qa-web/wrangler.jsonc --dry-run --outdir /tmp/via-real-qa-dryrun
+      - name: "Registrar versión anterior del Worker QA para rollback"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deployments status --name via-traslados-current-prod-qa --json > /tmp/via-qa-before.json
+          test -s /tmp/via-qa-before.json
+      - name: "Publicar ÚNICAMENTE el Worker WEB de QA"
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config via-real-auth-qa-web/wrangler.jsonc --keep-vars
+      - name: "Verificar web y backend reales, rutas y rechazo de reservas anónimas"
+        id: smoke
+        run: |
+          set -euo pipefail
+          BASE=https://via-traslados-current-prod-qa.marcelof-gx.workers.dev
+          curl -fsSL --retry 3 "$BASE/" -o /tmp/via-qa-real-home.html
+          grep -Fq 'QA REAL v30.0.0' /tmp/via-qa-real-home.html
+          curl -fsSL "$BASE/config.js" -o /tmp/via-qa-real-config.js
+          grep -Fq 'demo:false' /tmp/via-qa-real-config.js
+          curl -fsSL "$BASE/api/health" -o /tmp/via-qa-real-proxy-health.json
+          node -e "let j=require('/tmp/via-qa-real-proxy-health.json');if(!j.qaIsolated||!j.otpAvailable||!j.identityTestEnabled)process.exit(1)"
+          TESTCODE=$(curl -sS -o /tmp/via-qa-real-invalid.json -w '%{http_code}'             -X POST -H 'Content-Type: application/json' -d '{"email":"not-allowed@invalid.example"}' "$BASE/api/auth/start")
+          test "$TESTCODE" = 403
+          echo 'QA_REAL_AUTH_FRONTEND_OK: real backend, fake mode off, test allowlist and production isolation'
+      - name: "Rollback automático EXCLUSIVO del Worker QA si falla verificación"
+        if: failure() && steps.deploy.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4.160.1 rollback --name via-traslados-current-prod-qa --message "Rollback automático QA real auth" || true
+          echo "Solo se intentó revertir Worker web QA. Producción y D1 preservadas."
