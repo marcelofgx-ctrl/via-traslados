@@ -45,6 +45,29 @@ assert s['active_version']()==version,'Production changed during snapshot'
 # The QA worker explicitly allows public route-preview and geocoding only.
 (assets/'config.js').write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:location.origin,turnstileSiteKey:''});\n")
 (assets/'via-qa-browser-diagnostics.js').write_bytes(pathlib.Path('scripts/via-qa-browser-diagnostics.js').read_bytes())
+# QA-only: preserve exact map selections for routing; the production store.js stays unchanged.
+qa_store=(assets/'store.js')
+qa_store_original=qa_store.read_text()
+old_route="""async function estimateRoute(origin,destination){
+ if(isDemo())return null; // No inventar kilómetros en demostración.
+ return request('/api/public/route-preview',{method:'POST',body:JSON.stringify({origin,destination})});
+}"""
+new_route="""async function estimateRoute(origin,destination){
+ if(isDemo())return null; // No inventar kilómetros en demostración.
+ // En QA, usar coordenadas seleccionadas y verificadas cuando existan.
+ const endpoint=(key,label)=>{
+  const point=window.ViaAddress?.get?.(key);
+  const lat=Number(point?.lat??point?.latitude),lng=Number(point?.lng??point?.lon??point?.longitude);
+  return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-36&&lat<=-30&&lng>=-59&&lng<=-52
+    ? {lat,lng,address:label} : label;
+ };
+ return request('/api/public/route-preview',{method:'POST',body:JSON.stringify({
+  origin:endpoint('origin',origin),destination:endpoint('destination',destination)
+ })});
+}"""
+assert qa_store_original.count(old_route)==1,'QA route patch anchor not unique'
+qa_store.write_text(qa_store_original.replace(old_route,new_route))
+
 (assets/'sw.js').unlink(missing_ok=True) # avoid installing production service worker on QA
 home=(assets/'index.html').read_text()
 assert home.count('</footer>')==1
