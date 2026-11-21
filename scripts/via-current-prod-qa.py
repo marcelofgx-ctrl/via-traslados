@@ -82,6 +82,7 @@ home=home.replace('</body>','<span id="via-qa-version" aria-label="Versión de p
 for qa_page in assets.rglob('*.html'):
  page=qa_page.read_text()
  updated=re.sub(r'(store[.]js)(?:[?][^\x22\x27]*)?(?=[\x22\x27])',r'\1?v=qa29112',page)
+ updated=re.sub(r'(config[.]js)(?:[?][^\x22\x27]*)?(?=[\x22\x27])',r'\1?v=qa29112',updated)
  if updated!=page:qa_page.write_text(updated)
 
 # Restore the documented IDE Uruguay implementation in QA itself, never proxy production.
