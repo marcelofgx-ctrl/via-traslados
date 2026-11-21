@@ -45,7 +45,7 @@ assert s['active_version']()==version,'Production changed during snapshot'
 # The QA worker explicitly allows public route-preview and geocoding only.
 # Opt-in local simulator: NEVER switches QA to production auth or grants backend access.
 # ?qa_sim=1 enables existing local DEMO flow in this tab; ?qa_sim=0 switches it back off.
-(assets/'config.js').write_text("(function(){const key='via-qa-sim-mode-v1';const p=new URLSearchParams(location.search);if(p.has('qa_sim'))sessionStorage.setItem(key,p.get('qa_sim')==='1'?'1':'0');window.VIA_CONFIG=Object.freeze({demo:sessionStorage.getItem(key)==='1',apiUrl:location.origin,turnstileSiteKey:''});})();\\n")
+(assets/'config.js').write_text("(function(){const key='via-qa-sim-mode-v1';const p=new URLSearchParams(location.search);if(p.has('qa_sim'))sessionStorage.setItem(key,p.get('qa_sim')==='1'?'1':'0');window.VIA_CONFIG=Object.freeze({demo:sessionStorage.getItem(key)==='1',apiUrl:location.origin,turnstileSiteKey:''});})();\n")
 (assets/'via-qa-browser-diagnostics.js').write_bytes(pathlib.Path('scripts/via-qa-browser-diagnostics.js').read_bytes())
 # QA-only: preserve exact map selections for routing; the production store.js stays unchanged.
 qa_store=(assets/'store.js')
