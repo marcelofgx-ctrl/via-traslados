@@ -60,7 +60,7 @@ async function directions(request){
   const u=new URL(mode==='suggest'?'/api/v1/geocode/candidates':mode==='reverse'?'/api/v1/geocode/reverse':'/api/v1/geocode/direcUnica',IDE);
   if(mode==='reverse'){u.searchParams.set('latitud',String(lat));u.searchParams.set('longitud',String(lng));u.searchParams.set('limit','1')}
   else{u.searchParams.set('q',q);u.searchParams.set('limit',mode==='suggest'?'30':'5')}
-  const response=await fetch(u,{signal:ctl.signal,headers:{Accept:'application/json'}});if(!response.ok)throw Error('IDE no disponible');
+  let response=await fetch(u,{signal:ctl.signal,headers:{Accept:'application/json'}});if(mode==='reverse'&&[429,500,502,503,504].includes(response.status)){await new Promise(r=>setTimeout(r,450));response=await fetch(u,{signal:ctl.signal,headers:{Accept:'application/json'}})}if(!response.ok)throw Error('IDE no disponible: HTTP '+response.status);
   const rows=await response.json();if(!Array.isArray(rows))throw Error('Respuesta inválida');
   const results=rows.map(r=>normalized(r,mode,q)).filter(Boolean);
   if(mode==='suggest'){const nq=fold(q),tokens=nq.split(' ').filter(v=>v.length>2);const score=r=>{const name=fold(r.street);return (name===nq?7:0)+(name.startsWith(nq)?5:0)+(name.includes(nq)?3:0)+tokens.filter(t=>name.includes(t)).length*2+(fold(r.department)==='montevideo'?2:fold(r.department)==='canelones'?1.5:0)};results.sort((a,b)=>score(b)-score(a))}
