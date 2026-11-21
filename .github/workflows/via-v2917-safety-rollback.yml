@@ -1,0 +1,25 @@
+name: Vía Traslados - safe rollback web V29.1.7 to V29.1.6
+on:
+  push:
+    branches: [via-v2917-safety-revert-20261121]
+    paths:
+      - ".github/workflows/via-v2917-safety-rollback.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rollback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Revert only rejected web Worker; preserve API and D1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/via-v2917-safety-rollback.mjs
