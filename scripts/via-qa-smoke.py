@@ -94,9 +94,9 @@ def main():
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as out:
-            out.write("### Vía Traslados — Verificación QA\\n\\n")
+            out.write("### Vía Traslados — Verificación QA\n\n")
             out.write(("❌ Falló: " + ", ".join(failures)) if failures else "✅ Pruebas obligatorias superadas")
-            out.write("\\n\\nRutas verificadas con OSRM QA; reservas y API privada bloqueadas. Producción intacta.\\n")
+            out.write("\n\nRutas verificadas con OSRM QA; reservas y API privada bloqueadas. Producción intacta.\n")
     if failures:
         print("QA_SMOKE_FAILED " + ",".join(failures), flush=True)
         return 1
