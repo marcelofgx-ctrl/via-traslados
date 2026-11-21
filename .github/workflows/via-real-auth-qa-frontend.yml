@@ -61,6 +61,9 @@ jobs:
           grep -Fq 'QA REAL v30.0.0' via-real-auth-qa-web/assets/index.html
           grep -Fq 'demo:false' via-real-auth-qa-web/assets/config.js
           grep -Fq 'QA_BACKEND' via-real-auth-qa-web/worker.mjs
+          ! grep -Fq 'window.ViaAddress?.get?.(key)' via-real-auth-qa-web/assets/store.js
+          grep -Fq 'api/public/route-preview' via-real-auth-qa-web/assets/store.js
+          grep -Fq "if(path==='/api/public/route-preview')return env.QA_BACKEND.fetch(req);" via-real-auth-qa-web/worker.mjs
           grep -Fq 'via-traslados-api-auth-qa-20261121' via-real-auth-qa-web/wrangler.jsonc
           ! grep -Fq 'service":"via-traslados-api"' via-real-auth-qa-web/wrangler.jsonc
       - name: "Compilar frontend QA sin modificar ninguna web"
@@ -99,6 +102,13 @@ jobs:
           node -e "let j=require('/tmp/via-qa-real-proxy-health.json');if(!j.qaIsolated||!j.otpAvailable||!j.identityTestEnabled)process.exit(1)"
           TESTCODE=$(curl -sS -o /tmp/via-qa-real-invalid.json -w '%{http_code}'             -X POST -H 'Content-Type: application/json' -d '{"email":"not-allowed@invalid.example"}' "$BASE/api/auth/start")
           test "$TESTCODE" = 403
+          ROUTE_STATUS=$(curl -sS --max-time 40 -o /tmp/via-qa-real-proxied-route.json -w '%{http_code}' \
+            -H 'Origin: https://via-traslados-current-prod-qa.marcelof-gx.workers.dev' \
+            -H 'Content-Type: application/json' -X POST \
+            --data '{"origin":"Roque Saenz Peña 1711, Shangrilá, Canelones","destination":"Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones"}' \
+            "$BASE/api/public/route-preview")
+          test "$ROUTE_STATUS" = 200
+          node -e "let r=require('/tmp/via-qa-real-proxied-route.json');if(!(r.distanceKm>0)||!(r.durationMinutes>0)||!String(r.source||'').toLowerCase().includes('geoapify'))process.exit(1);console.log('QA_GEOAPIFY_FRONTEND_ROUTE_OK',r.distanceKm,'km')"
           echo 'QA_REAL_AUTH_FRONTEND_OK: real backend, fake mode off, test allowlist and production isolation'
       - name: "Rollback automático EXCLUSIVO del Worker QA si falla verificación"
         if: failure() && steps.deploy.outcome == 'success'
