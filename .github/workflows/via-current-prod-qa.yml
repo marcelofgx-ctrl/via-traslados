@@ -39,7 +39,7 @@ jobs:
            assert hashlib.sha256((a/name).read_bytes()).hexdigest()==m['production_sha256'][name],name
           assert "QA aislada" in (p/'worker.mjs').read_text()
           assert "window.ViaAddress?.get?.(key)" in (a/'store.js').read_text()
-          assert "window.ViaAddress?.get?.(key)" not in (a/'store.js').read_text().replace("window.ViaAddress?.get?.(key)","")
+          assert hashlib.sha256((a/'store.js').read_bytes()).hexdigest()!=m['production_sha256']['store.js']
           assert "geo.fetch(req,env)" in (p/'worker.mjs').read_text()
           assert "/api/public/route-preview" in (p/'worker.mjs').read_text()
           assert 'router.project-osrm.org' in (p/'worker.mjs').read_text()
@@ -51,8 +51,8 @@ jobs:
           assert 'via-traslados-api.marcelof-gx.workers.dev' not in (a/'config.js').read_text()
           assert 'via-qa-version' in (a/'index.html').read_text()
           assert 'via-qa-browser-compat' in (a/'index.html').read_text()
-          assert 'QA v29.1.8' in (a/'index.html').read_text()
-          assert 'via-qa-browser-diagnostics.js?v=2918' in (a/'index.html').read_text()
+          assert 'QA v29.1.9' in (a/'index.html').read_text()
+          assert 'via-qa-browser-diagnostics.js?v=2919' in (a/'index.html').read_text()
           assert (a/'via-qa-browser-diagnostics.js').stat().st_size>2000
           print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
           PY
