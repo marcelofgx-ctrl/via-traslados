@@ -19,6 +19,9 @@ css.textContent=`
 #via-qa-diag-body{position:absolute;top:calc(100% + 5px);right:0;z-index:20;width:min(340px,calc(100vw - 24px));box-sizing:border-box;background:#fff;border:1px solid #c5d8d1;border-radius:12px;padding:10px;box-shadow:0 6px 24px #0002;max-height:45dvh;overflow:auto}
 #via-qa-diag-results{white-space:pre-wrap;overflow-wrap:anywhere}.via-qa-diag-actions{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
 #via-qa-diag-body[hidden]{display:none}
+#via-qa-identity-notice{display:none;align-items:flex-start;gap:9px;justify-content:space-between;flex-wrap:wrap;margin:0 0 12px;padding:9px 11px;border:1px solid #d1dfd8;border-radius:11px;background:#f3f8f5;color:#365951;font:500 12px/1.45 system-ui,sans-serif}
+body.in-identity #via-qa-identity-notice{display:flex}
+#via-qa-identity-notice a{color:#066b60;text-decoration:underline;text-underline-offset:3px;font-weight:700;white-space:nowrap}
 `;
 document.head.append(css);
 const controls=document.createElement('div');controls.className='via-qa-controls';controls.id='via-qa-controls';
@@ -34,6 +37,23 @@ function placeControls(){
 }
 placeControls();
 new MutationObserver(placeControls).observe(document.body,{attributes:true,attributeFilter:['class']});
+// Identity is intentionally not connected to production. An opt-in local simulator
+// helps exercise the passenger wizard without sending OTPs or creating real bookings.
+const wizard=document.querySelector('#solicitar');
+if(wizard){
+ const active=window.VIA_CONFIG?.demo===true;
+ const notice=document.createElement('aside');notice.id='via-qa-identity-notice';
+ const message=document.createElement('span');
+ message.textContent=active
+  ? 'SIMULACIÓN QA · Para el código de prueba usá 123456. No se envían correos ni se crean reservas reales.'
+  : 'QA técnica · La verificación real está deshabilitada para proteger producción.';
+ const link=document.createElement('a');
+ link.href=active?'?qa_sim=0':'?qa_sim=1';
+ link.textContent=active?'Salir del simulador':'Probar simulador local';
+ notice.append(message,link);
+ wizard.querySelector('form')?.insertAdjacentElement('beforebegin',notice);
+}
+
 
 const result=box.querySelector('#via-qa-diag-results');
 function update(){state.viewport=Math.round(window.visualViewport?.width||innerWidth)+'×'+Math.round(window.visualViewport?.height||innerHeight)+' / doc '+document.documentElement.scrollHeight;result.textContent=Object.entries(state).map(([k,v])=>k+': '+clean(v)).join('\n')}
