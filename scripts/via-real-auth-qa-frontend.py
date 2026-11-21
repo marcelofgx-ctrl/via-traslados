@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Build a second, truly isolated QA frontend; never modifies the existing QA or production."""
+"""Stage real auth into the existing QA Worker; production remains read-only."""
 import json,os,pathlib,re,runpy,shutil
 src=pathlib.Path('via-current-qa')
 dst=pathlib.Path('via-real-auth-qa-web')
 # Capture only the currently deployed public web assets (read-only).
-runpy.run_path('scripts/via-current-prod-qa.py')
+snapshot=runpy.run_path('scripts/via-current-prod-qa.py')
 if not src.is_dir() or dst.exists():raise SystemExit('QA frontend output collision or missing snapshot')
 shutil.copytree(src,dst)
 assets=dst/'assets'
@@ -13,6 +13,14 @@ if not re.fullmatch(r'0x[a-zA-Z0-9]{15,100}',site_key):
  raise SystemExit('Missing real, QA-hostname-allowed TURNSTILE SITE KEY; NO deploy')
 config="window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:location.origin,turnstileSiteKey:"+json.dumps(site_key)+"});\n"
 (assets/'config.js').write_text(config)
+# Restore the exact production route contract: plain origin/destination strings.
+store=assets/'store.js'
+route_source=store.read_text()
+qa_route=snapshot['new_route']
+prod_route=snapshot['old_route']
+assert route_source.count(qa_route)==1,'QA temporary route adapter changed unexpectedly'
+store.write_text(route_source.replace(qa_route,prod_route))
+
 # QA-only: remove local simulation affordances from diagnostic controls.
 diagnostics=assets/'via-qa-browser-diagnostics.js'
 text=diagnostics.read_text()
@@ -27,6 +35,8 @@ worker=dst/'worker.mjs'
 source=worker.read_text()
 old="if(path.startsWith('/api/'))return json({error:'QA aislada: API privada y de escritura deshabilitada'},503);"
 new="if(path.startsWith('/api/')){if(!env.QA_BACKEND)return json({error:'Backend QA no vinculado'},503);return env.QA_BACKEND.fetch(req);}"
+source=source.replace("if(path==='/api/public/route-preview')return route(req,env);",
+                      "if(path==='/api/public/route-preview')return env.QA_BACKEND.fetch(req);")
 assert source.count(old)==1,'Missing hard API isolation marker'
 worker.write_text(source.replace(old,new))
 configfile=dst/'wrangler.jsonc'
