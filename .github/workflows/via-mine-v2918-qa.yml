@@ -1,0 +1,64 @@
+name: Via Traslados — V29.1.8 guest and keyboard iOS Android QA
+on:
+  push:
+    branches: [via-mine-v2918-guest-fix-20261121]
+    paths:
+      - ".github/workflows/via-mine-v2918-qa.yml"
+      - "scripts/via-mine-v2918-*"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-mine-v2918-guest-QA
+  cancel-in-progress: false
+jobs:
+  visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static syntax validation
+        run: |
+          python3 -m py_compile scripts/via-mine-v2918-qa.py
+          node --check scripts/via-mine-v2918-fix.js
+          node --check scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: Build from verified live V29.1.6, with read-only source inventory
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v2918-qa.py prepare
+      - name: Deploy only the isolated QA Worker with API disabled
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v2917-build/wrangler.v2918.qa.jsonc
+          python3 scripts/via-mine-v2918-qa.py smoke
+      - name: Install browser engines Chrome and iOS WebKit
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit >/dev/null
+      - name: Verify guest and keyboard open layout in eight cases
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2918-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: Verify signed-in and paginated view remains functional
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2918-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v2917-browser.mjs
+      - name: Save screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-mine-v2918-guest-keyboard-qa-proof
+          path: |
+            mine-v2918-proof/
+            mine-v2917-proof/
+          retention-days: 14
+          if-no-files-found: warn
