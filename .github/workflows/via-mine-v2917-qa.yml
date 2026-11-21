@@ -1,0 +1,61 @@
+name: Via Traslados — Mis reservas premium sin scroll QA iOS Android
+on:
+  push:
+    branches: [via-mine-premium-noscr-20261121]
+    paths:
+      - ".github/workflows/via-mine-v2917-qa.yml"
+      - "scripts/via-mine-v2917-*.py"
+      - "scripts/via-mine-v2917-*.css"
+      - "scripts/via-mine-v2917-*.js"
+      - "scripts/via-mine-v2917-*.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-mine-v2917-stage
+  cancel-in-progress: false
+jobs:
+  visual_qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 19
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar código sin secretos
+        run: |
+          python3 -m py_compile scripts/via-mine-v2917-prepare.py
+          node --check scripts/via-mine-v2917.js
+          node --check scripts/via-mine-v2917-browser.mjs
+      - name: Reconstruir Worker V29.1.6 activo e inventariar assets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v2917-prepare.py prepare
+      - name: Publicar solamente un Worker de QA independiente con API bloqueada
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v2917-build/wrangler.qa.jsonc
+          python3 scripts/via-mine-v2917-prepare.py qa
+      - name: Instalar navegadores para Android y WebKit iOS
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit >/dev/null
+      - name: Validar sin scroll, lista paginada e iOS WebAuthn UX sin autenticaciones reales
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v2917-browser.mjs
+      - name: Evidencias de navegadores
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-mine-v2917-premium-android-ios-QA
+          path: mine-v2917-proof/
+          if-no-files-found: warn
+          retention-days: 14
