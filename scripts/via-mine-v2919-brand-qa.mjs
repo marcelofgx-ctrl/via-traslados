@@ -27,6 +27,9 @@ async function check(os,w,h,focused){
  try {
   await page.goto(STAGE+'/mis-reservas.html',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.body.classList.contains('via-mine-v2918'));
+  // New/anonymous visitors start in the selector state; choose Ingresar
+  // before asserting controls, as all previous validated browser cases do.
+  await page.locator('#mine-existing').click();
   await page.locator('#mine-login-card').waitFor({state:'visible'});
   await page.locator('#mine-login-phone').evaluate(el=>el.blur());
   if(focused){await page.locator('#mine-login-phone').focus();await page.locator('#mine-login-phone').fill('094842756');}
