@@ -38,6 +38,17 @@ jobs:
           set -euo pipefail
           curl -fsSL --retry 2 https://via-traslados-api-auth-qa-20261121.marcelof-gx.workers.dev/api/health -o /tmp/via-qa-real-health.json
           node -e "let j=require('/tmp/via-qa-real-health.json');if(j.qaIsolated!==true||j.otpAvailable!==true||j.identityTestEnabled!==true)process.exit(1);console.log('QA_REAL_AUTH_BACKEND_READY')"
+      - name: "Exigir motor Geoapify real sobre D1 QA antes de activar reservas"
+        run: |
+          set -euo pipefail
+          BASE=https://via-traslados-api-auth-qa-20261121.marcelof-gx.workers.dev
+          STATUS=$(curl -sS --max-time 40 -o /tmp/via-qa-real-route.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -H 'Origin: https://via-traslados-current-prod-qa.marcelof-gx.workers.dev' \
+            -X POST --data '{"origin":"Roque Saenz Peña 1711, Shangrilá, Canelones","destination":"Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones"}' \
+            "$BASE/api/public/route-preview")
+          test "$STATUS" = 200
+          node -e "let j=require('/tmp/via-qa-real-route.json');if(!(Number(j.distanceKm)>0)||!(Number(j.durationMinutes)>0))process.exit(1);console.log('QA_GEOAPIFY_ROUTE_OK',j.distanceKm,'km',j.durationMinutes,'min')"
       - name: "Verificar fuente y crear copia de producción actual SOLO lectura"
         env:
           VIA_QA_TURNSTILE_SITE_KEY: ${{ vars.VIA_QA_TURNSTILE_SITE_KEY }}
