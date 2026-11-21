@@ -11,7 +11,7 @@ const dbs=(list.result||[]).filter(x=>x.name==='via-traslados-db');
 assert(dbs.length===1,'Unique production D1 missing');
 const uuid=dbs[0].uuid;
 async function query(sql){
- assert(/^SELECT\s/i.test(sql),'Only SELECT');
+ assert(/^(?:SELECT|WITH)\s/i.test(sql),'Only SELECT or read-only SELECT CTE');
  const r=await fetch(endpoint+'/'+uuid+'/query',{method:'POST',headers,body:JSON.stringify({sql}),signal:AbortSignal.timeout(20000)});
  const j=await r.json().catch(()=>({}));
  assert(r.ok&&j.success===true&&j.result?.[0]?.success===true,'D1 read failed: '+r.status);
