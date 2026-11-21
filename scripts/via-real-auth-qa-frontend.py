@@ -33,7 +33,7 @@ configfile=dst/'wrangler.jsonc'
 conf=json.loads(configfile.read_text())
 assert conf['name']=='via-traslados-current-prod-qa'
 assert conf.get('services') in (None,[])
-conf['name']='via-traslados-web-auth-qa-20261121'
+conf['name']='via-traslados-current-prod-qa'
 conf['services']=[{'binding':'QA_BACKEND','service':'via-traslados-api-auth-qa-20261121'}]
 configfile.write_text(json.dumps(conf,indent=2)+'\n')
 assert 'via-traslados-api"' not in configfile.read_text()
