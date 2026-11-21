@@ -10,7 +10,7 @@ permissions:
   contents: read
 concurrency:
   group: via-mine-v2918-guest-QA
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   visual:
     runs-on: ubuntu-24.04
