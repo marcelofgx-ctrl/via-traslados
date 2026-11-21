@@ -4,7 +4,7 @@ on:
     branches: [via-prod-snapshot-qa-20261120]
     paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs', 'scripts/via-qa-smoke.py', 'scripts/via-qa-routing-worker.mjs']
   workflow_dispatch:
-permissions: {contents: read}
+permissions: {contents: read, statuses: write}
 concurrency:
   group: via-current-prod-qa-only
   cancel-in-progress: false
@@ -70,9 +70,28 @@ jobs:
       - name: Deploy ONLY isolated QA Worker
         run: npx --yes wrangler@4.160.1 deploy --config via-current-qa/wrangler.jsonc
       - name: Verify QA pages, route and denied writes with explicit checks
+        id: smoke
         run: |
           set -euo pipefail
           python3 -u scripts/via-qa-smoke.py
+      - name: Publish QA test result as commit status (allows verification without screenshots)
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$SMOKE_OUTCOME" = "success" ]; then
+            STATE=success
+            DESCRIPTION="QA route and write isolation passed"
+          else
+            STATE=failure
+            DESCRIPTION="QA route or another required smoke check failed"
+          fi
+          gh api -X POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state="$STATE" -f context="via-qa/road-routing" \
+            -f description="$DESCRIPTION" -f target_url="$RUN_URL"
       - name: Store exact source hashes
         if: always()
         uses: actions/upload-artifact@v4
