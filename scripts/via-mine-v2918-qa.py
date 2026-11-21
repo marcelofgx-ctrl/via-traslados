@@ -3,7 +3,7 @@
 import runpy,pathlib,json,subprocess,time
 s=runpy.run_path('scripts/via-mine-v2917-prepare.py')
 ROOT=pathlib.Path('mine-v2917-build');ASSETS=ROOT/'assets'
-NAME='via-traslados-mine-v2918-stage'
+NAME='via-traslados-mine-v2917-stage'
 URL='https://'+NAME+'.marcelof-gx.workers.dev'
 def exact(text,old,new):
  assert text.count(old)==1,(old,text.count(old))
