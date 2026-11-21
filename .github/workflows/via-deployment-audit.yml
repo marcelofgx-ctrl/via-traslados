@@ -75,3 +75,21 @@ jobs:
               out.write('- Service Worker: no guarda respuestas API en caché\n')
               out.write('- Reservas, bases de datos, DNS y otros proyectos: sin cambios\n')
           PY
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Auditar versión efectiva y respaldo D1 sin escrituras
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/via-production-release-readonly.mjs
+      - name: Guardar manifiesto reproducible sin datos privados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-production-release-readonly-manifest
+          path: via-production-release-manifest.json
+          if-no-files-found: warn
+          retention-days: 30
