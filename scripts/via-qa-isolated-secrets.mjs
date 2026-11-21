@@ -24,7 +24,8 @@ await put('OTP_PEPPER',existing.has('OTP_PEPPER')?'':randomBytes(64).toString('h
 for(const [name,key] of [
  ['RESEND_API_KEY','VIA_QA_RESEND_API_KEY'],
  ['TURNSTILE_SECRET_KEY','VIA_QA_TURNSTILE_SECRET_KEY'],
- ['VIA_GEOAPIFY_API_KEY','VIA_QA_GEOAPIFY_API_KEY']
+ ['VIA_GEOAPIFY_API_KEY','VIA_QA_GEOAPIFY_API_KEY'],
+ ['VIA_QA_TEST_EMAILS','VIA_QA_TEST_EMAILS']
 ]){
  if(!existing.has(name))await put(name,(process.env[key]||'').trim());
 }
