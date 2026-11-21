@@ -2,13 +2,13 @@
 // Prohíbe modificar la D1 y Workers de producción. Nunca imprime tokens.
 import fs from 'node:fs';
 import path from 'node:path';
-const ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID || '';
-const TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
+const ACCOUNT = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+const TOKEN = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
 const QA_DB = 'via-traslados-db-auth-qa-20261121';
 const PROD_DB = 'via-traslados-db';
 const QA_WORKER = 'via-traslados-api-auth-qa-20261121';
 const QA_ORIGIN = 'https://via-traslados-current-prod-qa.marcelof-gx.workers.dev';
-if(!/^[a-f0-9]{32}$/i.test(ACCOUNT) || TOKEN.length<20)throw Error('Cloudflare: credenciales CI no configuradas');
+if(!/^[a-f0-9]{32}$/i.test(ACCOUNT) || !TOKEN)throw Error('Cloudflare: credenciales CI no configuradas');
 if(!QA_DB.includes('-qa-')||QA_DB===PROD_DB||!QA_WORKER.includes('-qa-'))throw Error('Guardia QA: nombre prohibido');
 async function call(method,route,body){
  const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+ACCOUNT+route,{
