@@ -61,7 +61,7 @@ def places(body):
 def route(body):
     data = json.loads(body)
     assert not data.get("error"), data.get("error")
-    assert data.get("source") == "OSRM QA" and data.get("qaOnly") is True
+    assert data.get("source") in ("OSRM QA", "Valhalla QA") and data.get("qaOnly") is True
     assert 0 < float(data.get("distanceKm", 0)) < 100
     assert 0 < float(data.get("durationMinutes", 0)) < 240
     print(f"QA_ROUTE_VERIFIED km={data['distanceKm']} minutes={data['durationMinutes']} provider={data['source']}", flush=True)
@@ -70,23 +70,23 @@ def main():
     # Wait for the correct QA version, not merely any older deployed build.
     for attempt in range(8):
         status, body, _ = fetch("/")
-        if status == 200 and "QA v29.1.9" in body:
+        if status == 200 and "QA v29.1.10" in body:
             break
-        print(f"QA_DEPLOY_WAIT attempt={attempt+1} http={status} version_found={('QA v29.1.9' in body)}", flush=True)
+        print(f"QA_DEPLOY_WAIT attempt={attempt+1} http={status} version_found={('QA v29.1.10' in body)}", flush=True)
         time.sleep(2)
-    check("home_version", "/", 200, validate=contains("QA v29.1.9"))
-    check("home_patched_store_link", "/", 200, validate=contains("store.js?v=qa2919"))
+    check("home_version", "/", 200, validate=contains("QA v29.1.10"))
+    check("home_patched_store_link", "/", 200, validate=contains("store.js?v=qa29110"))
     check("bookings_page", "/mis-reservas.html", 200, validate=contains("Mis reservas"))
     check("diagnostic_asset", "/via-qa-browser-diagnostics.js", 200, validate=contains("Diagnóstico QA"))
     check("qa_api_config", "/config.js", 200, validate=contains("apiUrl:location.origin"))
-    check("qa_patched_store", "/store.js?v=qa2919", 200, validate=contains("window.ViaAddress?.get?.(key)"))
+    check("qa_patched_store", "/store.js?v=qa29110", 200, validate=contains("window.ViaAddress?.get?.(key)"))
     check("writes_denied", "/api/requests", 503, method="POST", payload={})
     check("private_session_denied", "/api/customer/me", 503)
     check("known_airport_search", "/api/direcciones?mode=places&q=aeropuerto", 200, validate=places)
     check("invalid_route_denied", "/api/public/route-preview", 400, method="POST", payload={})
     check("actual_road_route", "/api/public/route-preview", 200, method="POST",
         payload={"origin":{"lat":-34.880922,"lng":-56.079391},
-                 "destination":{"lat":-34.83696,"lng":-56.01638}}, validate=route)
+                 "destination":"Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones"}, validate=route)
     # This depends on IDE Uruguay. It cannot prevent independently verified OSRM routing from being reported.
     check("ide_reverse_optional", "/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185", 200,
           validate=lambda b: isinstance(json.loads(b).get("results"), list) or (_ for _ in ()).throw(AssertionError("missing results")),
@@ -96,7 +96,7 @@ def main():
         with open(summary, "a", encoding="utf-8") as out:
             out.write("### Vía Traslados — Verificación QA\n\n")
             out.write(("❌ Falló: " + ", ".join(failures)) if failures else "✅ Pruebas obligatorias superadas")
-            out.write("\n\nRutas verificadas con OSRM QA; reservas y API privada bloqueadas. Producción intacta.\n")
+            out.write("\n\nRutas verificadas con proveedores viales independientes de QA; reservas y API privada bloqueadas. Producción intacta.\n")
     if failures:
         print("QA_SMOKE_FAILED " + ",".join(failures), flush=True)
         return 1
