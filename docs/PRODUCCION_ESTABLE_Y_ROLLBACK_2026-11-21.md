@@ -1,5 +1,29 @@
 # Vía Traslados — Congelamiento de producción y rollback (21/11/2026)
 
+## ESTADO PRODUCTIVO ACTUAL — v29.1.9 (21/11/2026, 18:40 Uruguay)
+
+**Esta sección reemplaza el estado de las entradas históricas que aparecen más abajo.**
+
+| Recurso | Estado verificado |
+| --- | --- |
+| Web pública | https://viatraslados.com · **v29.1.9** |
+| Worker web 100 % tráfico | `via-traslados-web-prod` — `f35ac851-6f1b-403c-b2c7-f7c437693e0f` |
+| Rollback web seguro | **v29.1.6** — `0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b` |
+| API Worker, D1, OTP, cuentas, passkeys | Sin cambios |
+| Reservas y APK conductor V35 | Sin cambios |
+
+- Alcance exacto: se estilizó **solamente** el frontend de `Mis reservas` con el monograma V esmeralda de cinta plegada, wordmark corporativo `vía traslados`, botón `→ Inicio` con cápsula verde petróleo, borde luminoso y degradado sutil, más las correcciones de panel compacto y paginación probadas en QA. No se ha alterado ninguna llamada de red, validación de identidad ni motor geográfico.
+- Se modificaron únicamente los archivos públicos `index.html` (indicador de versión) y `mis-reservas.html` (referencias de presentación). Se agregaron CSS, SVG y JS visuales; **42 recursos de la web efectiva se inventariaron**, y los recursos críticos `app.js`, `store.js`, `passkeys.js`, `config.js`, `geo-v2/core.mjs` y APK V35 conservaron hashes originales.
+- QA aprobada: **23 casos de navegador real** (ocho verificaciones de logo y botón Inicio; ocho de teclado/login Android+iOS; siete de sesión/paginación): https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44952417664
+- Despliegue y comprobaciones efectivas de producción, con invariantes OTP, rutas, geocodificación y APK: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44952676747
+- Evidencia y manifiesto: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44952676747/artifacts/14726008392
+- Fuente exacta: rama `via-mine-exact-brand-prod-20261121`, commit `540f3628d5038fbdc9badae834abccf61d655045`.
+
+**Rollback por problema visual:** restaurar exclusivamente la versión web `0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b` con despliegue 100 % desde Cloudflare Worker `via-traslados-web-prod`, comprobar que la portada vuelva a `v29.1.6` y revisar `mis-reservas.html`. Nunca restaurar D1, tocar API, cuentas, passkeys ni reservas para revertir CSS o logo. Después actualizar el ancla de auditoría automatizada, que ahora espera v29.1.9.
+
+**Límite:** las 23 pruebas de frontend no certifican biometría física en dispositivos reales ni entrega de correo; el usuario debe comprobar su Samsung con su passkey normal. El servidor y cliente de autenticación se conservaron byte a byte.
+
+
 ## Corrección 21/11/2026 — rollback V29.1.7 rechazado, V29.1.6 estable
 
 **Estado actual vigente (tiene prioridad frente a las notas históricas siguientes):**
