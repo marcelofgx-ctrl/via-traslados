@@ -1,0 +1,294 @@
+/* Vía Traslados V29.1.7 | Mis reservas only | selected premium design.
+   Fixed viewport on mobile, paginated bookings; no API/auth/booking styling outside mine. */
+body[data-page="mine"].via-mine-v2917{
+ --mine-ink:#103e35;--mine-petrol:#07584d;--mine-accent:#118b75;
+ --mine-mint:#e6f7ef;--mine-stroke:#d2e7df;--mine-vh:100dvh;
+ background:radial-gradient(ellipse 74% 43% at 97% 2%,rgba(61,193,156,.17),transparent 85%),linear-gradient(155deg,#f6fbf8,#eaf5f1 95%);
+ color:var(--mine-ink);overflow:hidden;overscroll-behavior:none;
+}
+body[data-page="mine"].via-mine-v2917 .app-shell{
+ box-sizing:border-box;height:var(--mine-vh);min-height:0;padding:0 clamp(10px,3vw,18px);
+ display:flex;flex-direction:column;overflow:hidden;max-width:100%;
+ padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)
+}
+body[data-page="mine"].via-mine-v2917 .topbar{
+ box-sizing:border-box;position:relative;flex:0 0 59px;height:59px!important;
+ display:flex;align-items:center;gap:8px;margin:0;padding:0 3px;border:0;
+}
+body[data-page="mine"].via-mine-v2917 .brand.brand-clean{
+ display:inline-flex;gap:8px;align-items:center;min-width:0;text-decoration:none;
+ color:#0c4138;font-size:clamp(17px,4.4vw,23px);font-weight:770;letter-spacing:-.7px;
+}
+body[data-page="mine"].via-mine-v2917 .brand .brand-sub{
+ color:#3b7467;font-weight:475;letter-spacing:-.72px
+}
+body[data-page="mine"].via-mine-v2917 .brand-monogram{
+ box-sizing:border-box;display:grid!important;place-items:center;
+ width:47px!important;height:47px!important;min-width:47px;
+ border-radius:14px!important;
+ background:linear-gradient(145deg,#0c8a70 0%,#006353 48%,#053d37 100%)!important;
+ border:1px solid rgba(174,239,215,.6)!important;
+ box-shadow:inset 0 1px 2px rgba(255,255,255,.36),0 5px 14px rgba(0,78,60,.15)!important;
+ color:#f7fff9!important;font-size:26px!important;font-weight:890!important;
+ line-height:1!important;text-transform:uppercase;letter-spacing:-3px;
+ text-shadow:0 1px 3px rgba(0,35,29,.24);
+}
+body[data-page="mine"].via-mine-v2917 .brand-monogram .brand-dot{display:none!important}
+body[data-page="mine"].via-mine-v2917 .top-link{
+ margin-left:auto;display:inline-flex;align-items:center;justify-content:center;
+ flex:0 0 auto;min-height:38px;min-width:99px;padding:8px 15px;
+ box-sizing:border-box;text-align:center;border-radius:999px;
+ background:linear-gradient(125deg,#158e77 0%,#086858 52%,#064a42 100%);
+ border:1px solid rgba(129,219,194,.7);color:white!important;text-decoration:none!important;
+ box-shadow:inset 0 1px rgba(255,255,255,.32),0 4px 11px rgba(5,93,73,.14);
+ font-size:12px;font-weight:760;letter-spacing:.1px;
+}
+body[data-page="mine"].via-mine-v2917 .top-link:focus-visible{outline:3px solid #7dd5b9;outline-offset:3px}
+body[data-page="mine"].via-mine-v2917 .booking-status-main{
+ box-sizing:border-box;display:flex;flex-direction:column;flex:1 1 auto;
+ min-height:0;max-width:710px;width:100%;margin:0 auto;
+ padding:4px 0 6px!important;overflow:hidden
+}
+body[data-page="mine"].via-mine-v2917 .status-card.via-mine-main{
+ box-sizing:border-box;display:flex;flex-direction:column;flex:1;min-height:0;
+ padding:clamp(12px,2.8vh,18px) clamp(11px,3.4vw,20px) 11px!important;
+ margin:0!important;border-radius:19px!important;
+ border:1px solid rgba(211,231,223,.9)!important;
+ background:linear-gradient(152deg,#fff 1%,#fbfefd 47%,#f6fbf9 100%)!important;
+ box-shadow:0 9px 25px rgba(7,85,67,.065)!important;overflow:hidden;
+}
+body[data-page="mine"].via-mine-v2917 .section-eyebrow{
+ display:inline-flex;align-items:center;gap:9px;color:#206a5b;
+ font-size:10px!important;letter-spacing:1.85px!important;font-weight:800;
+ line-height:1.4;
+}
+body[data-page="mine"].via-mine-v2917 .section-eyebrow::before{
+ content:"";height:15px;width:3px;border-radius:8px;background:#159f7d
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-main h1{
+ color:#103e35;font-size:clamp(22px,5.7vw,29px);margin:5px 0 2px;
+ letter-spacing:-.8px;line-height:1.13
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-subtitle{
+ font-size:clamp(11px,2.9vw,13px)!important;line-height:1.38;
+ margin:0 0 9px!important;color:#6f847c
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-account.known-customer{
+ position:relative;isolation:isolate;flex:0 0 auto;
+ min-height:61px;padding:9px 10px!important;margin:4px 0 9px!important;
+ border:1px solid rgba(127,216,185,.52)!important;border-radius:14px!important;
+ background:linear-gradient(125deg,#0b8b73 0%,#08715f 42%,#06473f 100%)!important;
+ box-shadow:inset 0 1px rgba(255,255,255,.25),0 5px 12px rgba(2,82,62,.11)!important;color:#fff;
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-account::after{
+ content:"";z-index:-1;position:absolute;inset:0;border-radius:inherit;
+ background:radial-gradient(ellipse at 76% -30%,rgba(174,255,224,.22),transparent 60%);pointer-events:none
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-account__avatar{
+ width:35px;height:35px;min-width:35px;border:1px solid rgba(195,250,229,.25);
+ border-radius:11px;background:rgba(202,249,227,.22);color:#fff;
+ box-shadow:inset 0 1px rgba(255,255,255,.17);font-size:18px
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-account__copy strong{
+ color:#fff;font-size:clamp(13px,3.7vw,16px);line-height:1.12;letter-spacing:-.25px;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-account__copy .known-customer-badge{
+ color:#d0eee5;font-size:11px
+}
+body[data-page="mine"].via-mine-v2917 #mine-logout{
+ padding:5px 8px!important;min-height:35px!important;font-size:11px!important;
+ color:#e8fff4!important;font-weight:720!important;white-space:nowrap
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-tabs{
+ flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;
+ border:1px solid #dceae3;border-radius:14px;padding:4px;
+ background:linear-gradient(160deg,#f0f7f3,#e9f3ef);
+ gap:4px;margin:0 0 8px
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-tab{
+ min-height:43px!important;border-radius:11px!important;
+ background:transparent!important;color:#587b6d!important;
+ font-size:clamp(11px,3.3vw,13px)!important;font-weight:800;
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-tab.is-active{
+ background:linear-gradient(120deg,#168f77,#066352 65%,#064b43)!important;
+ border:1px solid rgba(172,230,210,.53)!important;color:white!important;
+ box-shadow:inset 0 1px rgba(255,255,255,.24),0 3px 9px rgba(5,94,73,.13)!important;
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-tab>span{
+ font-size:10px;line-height:1.2;border-radius:8px;min-width:20px;padding:3px 5px;
+ color:#396c5c;background:#dbece4;
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-tab.is-active>span{
+ color:#086750;background:#dbf4e8;
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-list{
+ flex:1 1 auto;min-height:0;display:grid!important;
+ grid-auto-rows:min-content;align-content:start;gap:7px!important;overflow:hidden;
+ padding:1px 1px 2px
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-list a.via-booking-card{
+ position:relative;display:block;min-width:0;
+ padding:9px 10px 8px!important;border-radius:14px!important;
+ background:linear-gradient(150deg,#fff,#fbfffd)!important;
+ border:1px solid #d9e8e0!important;
+ box-shadow:0 3px 9px rgba(24,80,57,.04)!important;
+ color:#234339
+}
+body[data-page="mine"].via-mine-v2917 .via-booking-card__top{gap:6px}
+body[data-page="mine"].via-mine-v2917 .via-status-chip{
+ padding:4px 8px!important;border-radius:999px!important;
+ font-size:clamp(9px,2.9vw,11px)!important
+}
+body[data-page="mine"].via-mine-v2917 .via-status-chip--confirmed{
+ background:linear-gradient(120deg,#e9f9ee,#d6f0e2)!important;
+ border-color:#b9e6ce!important;color:#075c48!important;
+}
+body[data-page="mine"].via-mine-v2917 .via-booking-card__arrow{
+ width:28px;height:28px;border-radius:10px;
+ background:linear-gradient(150deg,#e9f8ee,#dff2e8);
+ color:#10725b;font-size:16px
+}
+body[data-page="mine"].via-mine-v2917 .via-booking-card__route{
+ display:grid;grid-template-columns:minmax(0,1fr) 17px minmax(0,1fr);
+ margin:7px 0!important;gap:6px;align-items:center
+}
+body[data-page="mine"].via-mine-v2917 .via-booking-card__location{
+ min-width:0;font-size:clamp(10px,2.85vw,12px)!important;
+ line-height:1.29!important;font-weight:750!important;
+ display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+ line-clamp:2;overflow:hidden;overflow-wrap:anywhere
+}
+body[data-page="mine"].via-mine-v2917 .via-booking-card__bottom{
+ padding-top:6px;border-top:1px solid #e1eee7;line-height:1.25;font-size:clamp(9px,2.7vw,11px)!important;
+ color:#70877c
+}
+body[data-page="mine"].via-mine-v2917 .via-booking-card__price{
+ padding:5px 8px;border-radius:10px;
+ background:linear-gradient(115deg,#e8f8ec,#d1f0dc);
+ color:#0b604b;font-size:clamp(11px,3.4vw,14px)!important
+}
+body[data-page="mine"].via-mine-v2917 .via-booking-card--history{
+ opacity:1;background:#fafdfa!important;
+}
+body[data-page="mine"].via-mine-v2917 #mine-more{display:none!important}
+body[data-page="mine"].via-mine-v2917 .via-mine-pager{
+ box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;
+ gap:6px;min-height:39px;margin-top:5px;min-width:0
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-pager[hidden]{display:none!important}
+body[data-page="mine"].via-mine-v2917 .via-mine-pager button{
+ min-height:34px;padding:6px 10px;border-radius:10px;
+ color:#166a54;background:linear-gradient(145deg,#f3faf5,#e4f4eb);
+ border:1px solid #d1e9db;font-size:11px;font-weight:770
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-pager button:disabled{
+ opacity:.34;cursor:default
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-pager [data-page-count]{
+ font-size:10px;line-height:1.3;font-weight:680;color:#607a6f;
+ white-space:nowrap;font-variant-numeric:tabular-nums
+}
+body[data-page="mine"].via-mine-v2917 .footer{display:none!important}
+/* Guest and sign-up compact mode: preserve all OTP, Turnstile and WebAuthn controls. */
+body[data-page="mine"].via-mine-v2917 .via-mine-entry-hero{
+ margin:3px 0 5px!important;padding:0!important;
+ border:0!important;background:transparent!important;box-shadow:none!important
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-entry-hero>p{
+ margin:0 0 3px!important;font-size:11px!important;color:#718b7f!important
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-identity-choice{
+ gap:7px;margin:4px 0!important
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-choice{
+ min-height:45px!important;border-radius:11px!important;
+ background:#f8fcfa!important;border:1px solid #d2e7df!important;
+ color:#285d50!important;
+ box-shadow:0 2px 9px rgba(29,97,73,.035);
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-choice.is-selected{
+ background:linear-gradient(120deg,#168c75,#075b4f)!important;
+ border-color:#13856f!important;color:#fff!important;
+ box-shadow:0 4px 11px rgba(7,101,79,.12)
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-card,
+body[data-page="mine"].via-mine-v2917 #mine-signup-card{
+ flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
+ margin:6px 0 0!important;padding:9px!important;
+ border-radius:13px!important;box-shadow:none!important;
+ border:1px solid #e4efe9!important;background:linear-gradient(165deg,#fff,#fcfefd)!important;
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-card h2,
+body[data-page="mine"].via-mine-v2917 #mine-signup-card h2{
+ font-size:clamp(16px,4vw,19px)!important;margin:0 0 2px!important
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-card>p,
+body[data-page="mine"].via-mine-v2917 #mine-signup-card>p{
+ font-size:clamp(11px,2.9vw,12px)!important;margin:0 0 7px!important
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-card .control,
+body[data-page="mine"].via-mine-v2917 #mine-signup-card .control{
+ margin:5px 0
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-card .field-label,
+body[data-page="mine"].via-mine-v2917 #mine-signup-card .field-label{
+ font-size:11px!important
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-card input,
+body[data-page="mine"].via-mine-v2917 #mine-signup-card input{
+ min-height:43px!important;padding:8px 10px!important;border-radius:11px!important;
+ font-size:16px!important;background:#fbfefd!important
+}
+body[data-page="mine"].via-mine-v2917 .mine-login-actions{
+ display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-card button,
+body[data-page="mine"].via-mine-v2917 #mine-signup-card button{
+ min-height:43px!important;border-radius:11px!important;
+ font-size:clamp(10px,3vw,12px)!important
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-passkey{
+ color:#fff!important;background:linear-gradient(120deg,#13927a,#046252)!important;
+ box-shadow:0 4px 12px rgba(2,94,72,.13)
+}
+body[data-page="mine"].via-mine-v2917 #mine-login-send{
+ color:#155b4a!important;background:linear-gradient(150deg,#fff,#e8f6ef)!important;
+ border:1px solid #cfe8d9!important;box-shadow:0 2px 9px rgba(9,88,69,.04)!important
+}
+body[data-page="mine"].via-mine-v2917 #mine-turnstile{
+ margin:3px 0;transform-origin:top left
+}
+body[data-page="mine"].via-mine-v2917 .via-mine-empty{padding:11px 5px;font-size:11px}
+/* iOS: use modern dynamic viewport; safe areas and virtual keyboard are handled
+   by the small controller, without UA-specific authentication forks. */
+body[data-page="mine"].via-mine-v2917[data-mobile-os="ios"] .topbar{
+ padding-left:max(2px,env(safe-area-inset-left));padding-right:max(2px,env(safe-area-inset-right))
+}
+body[data-page="mine"].via-mine-v2917.mine-keyboard-open .topbar{flex-basis:45px;height:45px!important}
+body[data-page="mine"].via-mine-v2917.mine-keyboard-open .section-eyebrow,
+body[data-page="mine"].via-mine-v2917.mine-keyboard-open .via-mine-subtitle,
+body[data-page="mine"].via-mine-v2917.mine-keyboard-open .via-mine-entry-hero{display:none!important}
+body[data-page="mine"].via-mine-v2917.mine-keyboard-open .status-card.via-mine-main{padding-top:7px!important}
+body[data-page="mine"].via-mine-v2917.mine-keyboard-open #mine-login-card>p:first-of-type{display:none!important}
+@media(max-height:690px){
+ body[data-page="mine"].via-mine-v2917 .topbar{flex-basis:48px;height:48px!important}
+ body[data-page="mine"].via-mine-v2917 .brand-monogram{width:38px!important;height:38px!important;min-width:38px;font-size:23px!important;border-radius:11px!important}
+ body[data-page="mine"].via-mine-v2917 .status-card.via-mine-main{padding-top:9px!important}
+ body[data-page="mine"].via-mine-v2917 .via-mine-subtitle{margin-bottom:5px!important}
+ body[data-page="mine"].via-mine-v2917 .via-mine-account.known-customer{min-height:51px;margin-bottom:6px!important}
+ body[data-page="mine"].via-mine-v2917 .via-mine-tab{min-height:37px!important}
+ body[data-page="mine"].via-mine-v2917 .via-booking-card__route{margin:4px 0!important}
+ body[data-page="mine"].via-mine-v2917 .via-mine-list{gap:5px!important}
+}
+@media(max-width:350px){
+ body[data-page="mine"].via-mine-v2917 .brand.brand-clean{font-size:16px}
+ body[data-page="mine"].via-mine-v2917 .top-link{min-width:83px;padding:7px 9px}
+ body[data-page="mine"].via-mine-v2917 .via-booking-card__route{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr)!important;gap:3px}
+ body[data-page="mine"].via-mine-v2917 .via-mine-pager button{padding:6px}
+}
+@media(prefers-reduced-motion:reduce){
+ body[data-page="mine"].via-mine-v2917 a.via-booking-card,
+ body[data-page="mine"].via-mine-v2917 .top-link{transition:none}
+}
