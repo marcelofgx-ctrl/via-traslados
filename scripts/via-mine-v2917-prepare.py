@@ -86,7 +86,7 @@ def prepare():
 def smoke(site):
  for name,marker in [('index.html',b'content="29.1.7"'),
  ('mis-reservas.html',b'mine-premium-v2917.js?v=1'),
- ('mine-premium-v2917.css',b'Vía Traslados V29.1.7'),
+ ('mine-premium-v2917.css','Vía Traslados V29.1.7'.encode()),
  ('mine-premium-v2917.js',b'Vía Traslados V29.1.7')]:
   data,_=get(site+'/'+name)
   assert marker in data,'Bad visual package '+site+' '+name
