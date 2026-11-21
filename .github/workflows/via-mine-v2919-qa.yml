@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/via-mine-v2919-qa.yml"
       - "scripts/via-mine-v2919-*"
+      - "scripts/via-mine-v2918-keyboard-qa.mjs"
   workflow_dispatch:
 permissions:
   contents: read
