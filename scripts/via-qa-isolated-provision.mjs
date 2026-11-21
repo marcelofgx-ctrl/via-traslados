@@ -8,6 +8,7 @@ const QA_DB = 'via-traslados-db-auth-qa-20261121';
 const PROD_DB = 'via-traslados-db';
 const QA_WORKER = 'via-traslados-api-auth-qa-20261121';
 const QA_ORIGIN = 'https://via-traslados-current-prod-qa.marcelof-gx.workers.dev';
+console.log('QA_CF_CREDENTIAL_METADATA',{accountPresent:Boolean(ACCOUNT),accountLength:ACCOUNT.length,accountFormatOK:/^[a-f0-9]{32}$/i.test(ACCOUNT),tokenPresent:Boolean(TOKEN)});
 if(!/^[a-f0-9]{32}$/i.test(ACCOUNT) || !TOKEN)throw Error('Cloudflare: credenciales CI no configuradas');
 if(!QA_DB.includes('-qa-')||QA_DB===PROD_DB||!QA_WORKER.includes('-qa-'))throw Error('Guardia QA: nombre prohibido');
 async function call(method,route,body){
