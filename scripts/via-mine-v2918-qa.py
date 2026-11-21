@@ -37,4 +37,12 @@ def smoke():
  print('VIA_MINE_V2918_STAGE_OK',URL)
 if __name__=='__main__':
  import sys
- {'prepare':prepare,'smoke':smoke}[sys.argv[1]]()
+ action=sys.argv[1]
+ if action=='smoke':
+  for i in range(14):
+   try:smoke();break
+   except Exception as exc:
+    print('STAGE_PROPAGATION_RETRY',i,type(exc).__name__,str(exc)[:80],flush=True)
+    if i==13:raise
+    time.sleep(3)
+ else:prepare()
