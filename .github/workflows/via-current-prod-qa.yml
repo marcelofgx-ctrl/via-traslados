@@ -20,6 +20,11 @@ jobs:
         with: {fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
+      - name: Validate QA code syntax before snapshot
+        run: |
+          python3 -m py_compile scripts/via-current-prod-qa.py
+          node --check scripts/via-qa-browser-diagnostics.js
+          node --check scripts/via-qa-directions-worker.mjs
       - name: Download actual production snapshot read-only
         run: |
           set -euo pipefail
@@ -52,6 +57,7 @@ jobs:
           assert 'via-qa-version' in (a/'index.html').read_text()
           assert 'via-qa-browser-compat' in (a/'index.html').read_text()
           assert 'QA v29.1.9' in (a/'index.html').read_text()
+          assert 'store.js?v=qa2919' in (a/'index.html').read_text()
           assert 'via-qa-browser-diagnostics.js?v=2919' in (a/'index.html').read_text()
           assert (a/'via-qa-browser-diagnostics.js').stat().st_size>2000
           print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
