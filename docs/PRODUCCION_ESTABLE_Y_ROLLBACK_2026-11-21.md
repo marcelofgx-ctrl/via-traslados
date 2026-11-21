@@ -1,5 +1,20 @@
 # Vía Traslados — Congelamiento de producción y rollback (21/11/2026)
 
+## Actualización de producción — 21/11/2026, 20:47 UTC: WEB v29.1.7
+
+**Estado vigente y prioritario sobre los ejemplos históricos de este documento:**
+
+- Web pública `https://viatraslados.com`: versión visible **v29.1.7**, Worker `via-traslados-web-prod` versión **`6be37e24-1b13-40f5-b087-50ff861f7bc4`** al 100 %.
+- Versión anterior segura para rollback puntual web: **`0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b`**, v29.1.6.
+- Alcance publicado: diseño premium únicamente en `Mis reservas`, marca/logo corporativo y botón `Inicio`, no scroll general móvil con paginación de tarjetas, adaptación iOS/WebKit/Android y teclado/safe-area. Se cambiaron sólo `index.html`, `mis-reservas.html`, y se añadieron `mine-premium-v2917.css` y `mine-premium-v2917.js`.
+- **Conservados sin cambios de bytes:** `app.js`, `store.js`, `passkeys.js`, `config.js`, motor `geo-v2/core.mjs`, APK V35 firmada y demás assets. Sin tocar Worker API, D1, reservas, OTP ni firmas.
+- QA real de interfaz con **siete perfiles móviles** Android/Chrome + iPhone/WebKit, sin scroll de página, reservas paginadas, pestañas, login y UX biométrica: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44947856374
+- Publicación protegida, smoke de web real y checks posteriores OTP/CORS/distancias/rutas/APK: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44948065792
+- Fuente exacta en rama `via-mine-premium-noscr-20261121`, commit `b24f28ddbde548b9f1c6238315bc2ef626d5f08d`.
+
+Si la V29.1.7 introduce un fallo de interfaz, **revertir únicamente** `via-traslados-web-prod` a la versión web `0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b` desde Cloudflare, sin restaurar D1 ni tocar la API. Tras revertir, comprobar la vista de reservas y actualizar el ancla de la auditoría automática (que ahora exige v29.1.7). No usar el rollback v29.1.5 descripto más abajo como primera opción: es una referencia histórica anterior.
+
+
 ## Fuente de verdad y alcance
 
 Esta acta documenta los recursos **realmente activos** el 21/11/2026. No presupone que `main` contenga el frontend desplegado. El lanzamiento comercial debe preservar este estado hasta que exista una necesidad justificada de cambio.
