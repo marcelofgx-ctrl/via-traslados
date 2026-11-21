@@ -79,7 +79,7 @@ home=home.replace('</body>','<span id="via-qa-version" aria-label="Versión de p
 # Explicitly refresh the QA-only patched store.js; old browser caches may retain the original file.
 for qa_page in assets.rglob('*.html'):
  page=qa_page.read_text()
- updated=re.sub(r'(store\\.js)(?:\\?[^\\"\\x27]*)?(?=[\\"\\x27])',r'\\1?v=qa2919',page)
+ updated=re.sub(r'(store[.]js)(?:[?][^\x22\x27]*)?(?=[\x22\x27])',r'\1?v=qa2919',page)
  if updated!=page:qa_page.write_text(updated)
 
 # Restore the documented IDE Uruguay implementation in QA itself, never proxy production.
