@@ -31,6 +31,10 @@ async function get(path){
 }
 const web=await version('via-traslados-web-prod');
 const api=await version('via-traslados-api');
+const rollbackVersion='d3561c58-fedf-4273-9b21-e07de026308d';
+const webHistory=(await cf('/workers/scripts/via-traslados-web-prod/deployments'))?.deployments||[];
+assert(webHistory.some(d=>(d.versions||[]).some(v=>v.version_id===rollbackVersion)),
+  'Cloudflare no conserva la versión previa: detener y revisar rollback');
 const expected='0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b';
 assert.equal(web,expected,'Versión web cambió respecto del snapshot del 21/11; detener para reauditar');
 const paths=['','app.js','store.js','config.js','review-compact-v29.css','geo-v2/core.mjs','reserva.html','mis-reservas.html','descargas/via-traslados-conductor-v35.apk'];
@@ -71,7 +75,7 @@ const manifest={audited_utc:new Date().toISOString(),site,display_version:'29.1.
   web_worker:'via-traslados-web-prod',web_worker_version:web,
   api_worker:'via-traslados-api',api_worker_version:api,
   d1_name:'via-traslados-db',d1_uuid:exact[0].uuid,d1_time_travel_available:true,
-  commercial_service_enabled:true,rollback_previous_web_version:'d3561c58-fedf-4273-9b21-e07de026308d',
+  commercial_service_enabled:true,rollback_previous_web_version:rollbackVersion,
   public_sha256:files,production_modified:false};
 await writeFile('via-production-release-manifest.json',JSON.stringify(manifest,null,2)+'\n');
 console.log('PROD_RELEASE_READONLY_OK '+JSON.stringify({display:'v29.1.6',web,api,d1:'verified',timeTravel:'available',apk:'hash preserved',service:'enabled',resources:paths.length}));
