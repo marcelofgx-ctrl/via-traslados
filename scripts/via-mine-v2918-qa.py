@@ -29,11 +29,9 @@ def prepare():
  },indent=2))
  print('VIA_MINE_V2918_QA_PREPARED_NO_PROD_API_OR_D1')
 def smoke():
- from urllib.request import urlopen,Request
  for name,marker in [('','content="29.1.8"'),('mis-reservas.html','mine-guest-v2918.css?v=1'),('mine-guest-v2918.css','Vía Traslados v29.1.8'),('mine-guest-v2918.js','Vía Traslados v29.1.8'),('mine-brand-v2918.svg','Vía Traslados')]:
-  with urlopen(Request(URL+'/'+name,headers={'Cache-Control':'no-cache'}),timeout=20) as r:
-   data=r.read().decode()
-   assert marker in data,(name,marker)
+  data,_=s['http_get'](URL+'/'+name)
+  assert marker in data.decode('utf-8','replace'),(name,marker)
  print('VIA_MINE_V2918_STAGE_OK',URL)
 if __name__=='__main__':
  import sys
