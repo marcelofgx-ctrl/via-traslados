@@ -54,9 +54,9 @@ jobs:
           PY
       - name: "Crear o identificar ÚNICAMENTE D1 QA, nunca D1 producción"
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          VIA_QA_RESEND_FROM: \${{ vars.VIA_RESEND_FROM }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VIA_QA_RESEND_FROM: ${{ vars.VIA_RESEND_FROM }}
         run: |
           set -euo pipefail
           node scripts/via-qa-isolated-provision.mjs
@@ -66,35 +66,35 @@ jobs:
           ! grep -Fx 'name = "via-traslados-api"' .qa/wrangler-backend.toml
       - name: "Compilar Worker QA sin desplegar"
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           npx --yes wrangler@4.160.1 deploy --config .qa/wrangler-backend.toml --dry-run --outdir /tmp/via-auth-qa-dryrun
           test -s /tmp/via-auth-qa-dryrun/qa-entry.js
       - name: "Aplicar esquema SQL únicamente en D1 QA"
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           npx --yes wrangler@4.160.1 d1 execute via-traslados-db-auth-qa-20261121 --remote \
             --config .qa/wrangler-backend.toml --file backend/schema.sql
       - name: "Desplegar únicamente Worker de API QA"
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           npx --yes wrangler@4.160.1 deploy --config .qa/wrangler-backend.toml --keep-vars
       - name: "Configurar secretos EXCLUSIVOS del Worker QA, sin mostrarlos"
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          VIA_QA_RESEND_API_KEY: \${{ secrets.VIA_QA_RESEND_API_KEY }}
-          VIA_QA_TURNSTILE_SECRET_KEY: \${{ secrets.VIA_QA_TURNSTILE_SECRET_KEY }}
-          VIA_QA_GEOAPIFY_API_KEY: \${{ secrets.VIA_QA_GEOAPIFY_API_KEY }}
-          VIA_QA_TEST_EMAILS: \${{ secrets.VIA_QA_TEST_EMAILS }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VIA_QA_RESEND_API_KEY: ${{ secrets.VIA_QA_RESEND_API_KEY }}
+          VIA_QA_TURNSTILE_SECRET_KEY: ${{ secrets.VIA_QA_TURNSTILE_SECRET_KEY }}
+          VIA_QA_GEOAPIFY_API_KEY: ${{ secrets.VIA_QA_GEOAPIFY_API_KEY }}
+          VIA_QA_TEST_EMAILS: ${{ secrets.VIA_QA_TEST_EMAILS }}
         run: |
           set -euo pipefail
           node scripts/via-qa-isolated-secrets.mjs
