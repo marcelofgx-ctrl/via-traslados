@@ -39,6 +39,9 @@ jobs:
           assert "QA aislada" in (p/'worker.mjs').read_text()
           assert "geo.fetch(req,env)" in (p/'worker.mjs').read_text()
           assert "/api/public/route-preview" in (p/'worker.mjs').read_text()
+          assert 'router.project-osrm.org' in (p/'worker.mjs').read_text()
+          assert 'ROUTE_API' not in (p/'worker.mjs').read_text()
+          assert '"services"' not in (p/'wrangler.jsonc').read_text()
           assert "direcciones.ide.uy" in (p/'geo-directions.mjs').read_text()
           assert "viatraslados.com/api/direcciones" not in (p/'worker.mjs').read_text()
           assert 'apiUrl:location.origin' in (a/'config.js').read_text()
@@ -80,6 +83,7 @@ jobs:
           except json.JSONDecodeError as e: raise AssertionError('QA route returned non-JSON') from e
           assert isinstance(d,dict),'QA route response not an object'
           assert not d.get('error'),'QA route service returned error: '+str(d.get('error'))
+          assert d.get('qaOnly') is True and d.get('source')=='OSRM QA','QA route must be isolated from production'
           assert any(k in d for k in ('distanceKm','distance_km','distanceMeters','distance_m','distance','distance_km_road','distance_meters','route')),'QA route response lacks recognized route data: '+str(list(d))
           PY
           echo "::endgroup::"
