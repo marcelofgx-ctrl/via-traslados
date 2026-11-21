@@ -2,7 +2,11 @@
 // Prohíbe modificar la D1 y Workers de producción. Nunca imprime tokens.
 import fs from 'node:fs';
 import path from 'node:path';
-const ACCOUNT = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+const accountRaw=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+const candidate=accountRaw.replace('\\','');
+const singleSlash=accountRaw.length===33&&accountRaw.split('\\').length===2&&/^[a-f0-9]{32}$/i.test(candidate);
+const ACCOUNT=singleSlash?candidate:accountRaw;
+if(singleSlash)console.log('QA_CF_ACCOUNT_NORMALIZED_ONE_STRAY_BACKSLASH');
 const TOKEN = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
 const QA_DB = 'via-traslados-db-auth-qa-20261121';
 const PROD_DB = 'via-traslados-db';
@@ -28,6 +32,7 @@ for(let page=1;page<=20;page++){
 }
 const production=databases.find(d=>d.name===PROD_DB);
 if(!production?.uuid)throw Error('Guardia: D1 de producción no encontrada en inventario, abortando sin cambios');
+if(process.env.GITHUB_ENV)fs.appendFileSync(process.env.GITHUB_ENV,'CLOUDFLARE_ACCOUNT_ID='+ACCOUNT+'\n');
 if(databases.filter(d=>d.name===QA_DB).length>1)throw Error('D1 QA duplicada; abortando');
 let db=databases.find(d=>d.name===QA_DB);
 if(!db){
