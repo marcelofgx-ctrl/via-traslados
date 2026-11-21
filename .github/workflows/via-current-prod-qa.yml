@@ -2,7 +2,7 @@ name: Vía Traslados — Clonar producción actual a QA aislada
 on:
   push:
     branches: [via-prod-snapshot-qa-20261120]
-    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs', 'scripts/via-qa-smoke.py']
+    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs', 'scripts/via-qa-smoke.py', 'scripts/via-qa-routing-worker.mjs']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
@@ -26,6 +26,7 @@ jobs:
           node --check scripts/via-qa-browser-diagnostics.js
           node --check scripts/via-qa-directions-worker.mjs
           node --check scripts/via-qa-route-contract.mjs
+          node --check scripts/via-qa-routing-worker.mjs
       - name: Download actual production snapshot read-only
         run: |
           set -euo pipefail
@@ -50,6 +51,8 @@ jobs:
           assert "geo.fetch(req,env)" in (p/'worker.mjs').read_text()
           assert "/api/public/route-preview" in (p/'worker.mjs').read_text()
           assert 'router.project-osrm.org' in (p/'worker.mjs').read_text()
+          assert 'routing.openstreetmap.de' in (p/'worker.mjs').read_text()
+          assert 'valhalla1.openstreetmap.de' in (p/'worker.mjs').read_text()
           assert 'ROUTE_API' not in (p/'worker.mjs').read_text()
           assert '"services"' not in (p/'wrangler.jsonc').read_text()
           assert "direcciones.ide.uy" in (p/'geo-directions.mjs').read_text()
@@ -58,9 +61,9 @@ jobs:
           assert 'via-traslados-api.marcelof-gx.workers.dev' not in (a/'config.js').read_text()
           assert 'via-qa-version' in (a/'index.html').read_text()
           assert 'via-qa-browser-compat' in (a/'index.html').read_text()
-          assert 'QA v29.1.9' in (a/'index.html').read_text()
-          assert 'store.js?v=qa2919' in (a/'index.html').read_text()
-          assert 'via-qa-browser-diagnostics.js?v=2919' in (a/'index.html').read_text()
+          assert 'QA v29.1.10' in (a/'index.html').read_text()
+          assert 'store.js?v=qa29110' in (a/'index.html').read_text()
+          assert 'via-qa-browser-diagnostics.js?v=29110' in (a/'index.html').read_text()
           assert (a/'via-qa-browser-diagnostics.js').stat().st_size>2000
           print('QA_SNAPSHOT_SAFE',m['production_worker_version'])
           PY
