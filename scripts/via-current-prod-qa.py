@@ -43,7 +43,9 @@ assert s['active_version']()==version,'Production changed during snapshot'
 # Isolate ALL QA API endpoints; never use production credentials or origin.
 # QA must route ALL API requests to its own isolated origin, not to the production API.
 # The QA worker explicitly allows public route-preview and geocoding only.
-(assets/'config.js').write_text("window.VIA_CONFIG=Object.freeze({demo:false,apiUrl:location.origin,turnstileSiteKey:''});\n")
+# Opt-in local simulator: NEVER switches QA to production auth or grants backend access.
+# ?qa_sim=1 enables existing local DEMO flow in this tab; ?qa_sim=0 switches it back off.
+(assets/'config.js').write_text("(function(){const key='via-qa-sim-mode-v1';const p=new URLSearchParams(location.search);if(p.has('qa_sim'))sessionStorage.setItem(key,p.get('qa_sim')==='1'?'1':'0');window.VIA_CONFIG=Object.freeze({demo:sessionStorage.getItem(key)==='1',apiUrl:location.origin,turnstileSiteKey:''});})();\\n")
 (assets/'via-qa-browser-diagnostics.js').write_bytes(pathlib.Path('scripts/via-qa-browser-diagnostics.js').read_bytes())
 # QA-only: preserve exact map selections for routing; the production store.js stays unchanged.
 qa_store=(assets/'store.js')
@@ -53,7 +55,7 @@ old_route="""async function estimateRoute(origin,destination){
  return request('/api/public/route-preview',{method:'POST',body:JSON.stringify({origin,destination})});
 }"""
 new_route="""async function estimateRoute(origin,destination){
- if(isDemo())return null; // No inventar kilómetros en demostración.
+ // QA: incluso en la simulación local, la distancia proviene de un proveedor de rutas real.
  // En QA, usar coordenadas seleccionadas y verificadas cuando existan.
  const endpoint=(key,label)=>{
   const point=window.ViaAddress?.get?.(key);
@@ -73,13 +75,13 @@ home=(assets/'index.html').read_text()
 assert home.count('</footer>')==1
 # Visible near top, not hidden in an off-screen footer. No changes to production HTML.
 home=home.replace('</head>','<style id="via-qa-compat-style">#via-qa-version{display:inline-block;position:static;padding:3px 6px;border-radius:7px;background:rgba(17,72,64,.86);color:white;font:600 10px/1.25 system-ui,sans-serif;pointer-events:none;white-space:nowrap}html{max-width:100%;overflow-x:clip}body{max-width:100%;overflow-x:clip}html,body{min-height:100%;min-height:100dvh}input,textarea{scroll-margin-bottom:35dvh}@supports(height:100dvh){.via-qa-viewport{min-height:100dvh}}</style></head>',1)
-home=home.replace('</body>','<script defer src="/via-qa-browser-diagnostics.js?v=29111"></script></body>',1)
-home=home.replace('</body>','<span id="via-qa-version" aria-label="Versión de pruebas">QA v29.1.11 · '+version[:8]+'</span><script id="via-qa-browser-compat">(()=>{const ua=navigator.userAgent;const family=/Firefox\\/([\\d.]+)/.test(ua)?"Firefox":/SamsungBrowser\\/([\\d.]+)/.test(ua)?"Samsung Internet":/EdgA?\\/([\\d.]+)/.test(ua)?"Edge":/Chrome\\/([\\d.]+)/.test(ua)?"Chrome":"Otro";const match=ua.match(/(?:Firefox|SamsungBrowser|EdgA?|Chrome)\\/([\\d.]+)/);document.documentElement.dataset.viaBrowser=family.toLowerCase().replace(/\\s/g,"-");document.documentElement.dataset.viaBrowserVersion=match?.[1]||"desconocida";const update=()=>document.documentElement.style.setProperty("--via-visible-height",Math.round(window.visualViewport?.height||innerHeight)+"px");update();window.visualViewport?.addEventListener("resize",update,{passive:true});window.addEventListener("orientationchange",update,{passive:true});})();</script></body>',1)
+home=home.replace('</body>','<script defer src="/via-qa-browser-diagnostics.js?v=29112"></script></body>',1)
+home=home.replace('</body>','<span id="via-qa-version" aria-label="Versión de pruebas">QA v29.1.12 · '+version[:8]+'</span><script id="via-qa-browser-compat">(()=>{const ua=navigator.userAgent;const family=/Firefox\\/([\\d.]+)/.test(ua)?"Firefox":/SamsungBrowser\\/([\\d.]+)/.test(ua)?"Samsung Internet":/EdgA?\\/([\\d.]+)/.test(ua)?"Edge":/Chrome\\/([\\d.]+)/.test(ua)?"Chrome":"Otro";const match=ua.match(/(?:Firefox|SamsungBrowser|EdgA?|Chrome)\\/([\\d.]+)/);document.documentElement.dataset.viaBrowser=family.toLowerCase().replace(/\\s/g,"-");document.documentElement.dataset.viaBrowserVersion=match?.[1]||"desconocida";const update=()=>document.documentElement.style.setProperty("--via-visible-height",Math.round(window.visualViewport?.height||innerHeight)+"px");update();window.visualViewport?.addEventListener("resize",update,{passive:true});window.addEventListener("orientationchange",update,{passive:true});})();</script></body>',1)
 (assets/'index.html').write_text(home)
 # Explicitly refresh the QA-only patched store.js; old browser caches may retain the original file.
 for qa_page in assets.rglob('*.html'):
  page=qa_page.read_text()
- updated=re.sub(r'(store[.]js)(?:[?][^\x22\x27]*)?(?=[\x22\x27])',r'\1?v=qa29111',page)
+ updated=re.sub(r'(store[.]js)(?:[?][^\x22\x27]*)?(?=[\x22\x27])',r'\1?v=qa29112',page)
  if updated!=page:qa_page.write_text(updated)
 
 # Restore the documented IDE Uruguay implementation in QA itself, never proxy production.
