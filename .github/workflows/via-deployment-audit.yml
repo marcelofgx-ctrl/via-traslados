@@ -93,3 +93,5 @@ jobs:
           path: via-production-release-manifest.json
           if-no-files-found: warn
           retention-days: 30
+      - name: Comprobar contratos críticos OTP, rutas y APK sin reservar
+        run: node tests/prod-core-invariants.mjs
