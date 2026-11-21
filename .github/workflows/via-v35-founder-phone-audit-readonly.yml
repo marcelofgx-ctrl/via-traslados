@@ -1,8 +1,8 @@
 name: Via Traslados — verificar titularidad admin prod (solo lectura)
 on:
   push:
-    branches: [via-audit-founder-phone-20261118]
-    paths: [".github/workflows/via-v35-founder-phone-audit-readonly.yml"]
+    branches: [via-passkey-link-readonly-20261121]
+    paths: [".github/workflows/via-v35-founder-phone-audit-readonly.yml", "scripts/v35_founder_phone_check_readonly.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
