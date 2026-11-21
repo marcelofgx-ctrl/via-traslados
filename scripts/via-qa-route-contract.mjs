@@ -34,6 +34,8 @@ for(const payload of [
  assert.equal(result.data.distanceKm,13.2);
  assert.equal(result.data.durationMinutes,22);
 }
+const noFields=await call('/api/public/route-preview','POST',{});
+assert.equal(noFields.status,400);
 const missing=await call('/api/public/route-preview','POST',{origin:'',destination:'Aeropuerto Internacional de Carrasco'});
 assert.equal(missing.status,422);
 const privateResult=await call('/api/requests','POST',{});
