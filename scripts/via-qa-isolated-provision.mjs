@@ -43,7 +43,7 @@ const match=fromRaw.match(/<([^<>\s]+@[^<>\s]+)>$/);
 const from=match?'Vía Traslados QA <'+match[1]+'>':'';
 fs.writeFileSync('.qa/wrangler-backend.toml',[
  'name = '+quote(QA_WORKER),
- 'main = "backend/qa-entry.js"',
+ 'main = "../backend/qa-entry.js"',
  'compatibility_date = "2026-11-10"',
  'workers_dev = true',
  '[[d1_databases]]',
