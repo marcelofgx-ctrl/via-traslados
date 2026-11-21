@@ -34,9 +34,11 @@ El API token de Cloudflare actualmente no tiene permisos `Account:Turnstile:Edit
 2. Probar Turnstile auténtico con hostname QA. Enviar OTP solamente al correo permitido, validar código recibido y crear sesión.
 3. Verificar PIN, WebAuthn/passkey y aislamiento entre identidades en QA.
 4. Verificar Geoapify contra D1 QA con kilómetros y minutos reales.
-5. Ejecutar el workflow de frontend en la rama de QA, confirmación `ACTIVAR-QA-REAL`: desactiva demo, vincula `QA_BACKEND`, exige pruebas y mantiene rollback del **Worker QA**.
+5. Con los secretos configurados y verificaciones en verde, activar el frontend desde la rama QA mediante un commit de señal `.ci/VIA_REAL_AUTH_QA_ACTIVATE` con mensaje `[QA_REAL_AUTH_ACTIVATE]`. El job permanece **omitido** en cualquier push normal; para evitar activaciones accidentales conserva las comprobaciones de OTP real, ruta Geoapify, rollback exclusivo QA y aislamiento de D1. GitHub `workflow_dispatch` se usa solamente cuando esté disponible en la rama por la interfaz.
 6. Recorrer el ciclo de reserva real desde pasajero hasta conductor/admin sobre datos QA, contrastar seguridad y UX.
 7. Solo después planificar una promoción protegida a producción, con backup, rollback y sin cambiar el motor geográfico.
+
+**Evidencia del gatillo protegido:** GitHub Actions 44910695351 figura `skipped` en el commit que añadió la regla, confirmando que no se activó el corte de QA.
 
 ## Barreras de seguridad
 - Prohibido desplegar sobre Workers `via-traslados-api` o web productiva.
