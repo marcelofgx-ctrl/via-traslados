@@ -1,0 +1,9 @@
+Vía Traslados — V29.1.9 approved premium header web-only release gate
+Approved visual: the user's last generated mockup with emerald folded V mark and glossy Inicio capsule.
+Base live production: v29.1.6 / 0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b.
+QA success: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44952417664
+Verified: 8 Android/iOS approved-header layouts; 8 Android/iOS keyboard/login safety cases; 7 Android/iOS session and reservation pagination cases.
+Production scope: only web Worker static asset snapshot, original Worker source preserved.
+Original HTML modified: index.html + mis-reservas.html only. New CSS/SVG/JS presentation assets only.
+Rollback: restore Cloudflare web Worker version 0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b.
+Never deploy or migrate D1, API Worker, booking data, customer identities, OTP, WebAuthn, geocoder, APK or unrelated projects.
