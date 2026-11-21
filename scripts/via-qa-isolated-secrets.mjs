@@ -1,7 +1,9 @@
 // Solo agrega secretos a via-traslados-api-auth-qa-20261121, nunca a Workers productivos.
 // Los secretos existentes no se leen ni se rotan. No imprimir ningún valor.
 import {randomBytes} from 'node:crypto';
-const A=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim(),T=(process.env.CLOUDFLARE_API_TOKEN||'').trim();
+const raw=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+const A=raw.length===33&&raw.split('\\').length===2&&/^[a-f0-9]{32}$/i.test(raw.replace('\\',''))?raw.replace('\\',''):raw;
+const T=(process.env.CLOUDFLARE_API_TOKEN||'').trim();
 const WORKER='via-traslados-api-auth-qa-20261121';
 if(!/^[a-f0-9]{32}$/i.test(A)||!T||!WORKER.endsWith('-qa-20261121'))throw Error('Guardia: configuración Cloudflare inválida');
 const endpoint='https://api.cloudflare.com/client/v4/accounts/'+A+'/workers/scripts/'+WORKER+'/secrets';
