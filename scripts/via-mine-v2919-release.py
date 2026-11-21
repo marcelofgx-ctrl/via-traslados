@@ -54,7 +54,7 @@ def smoke(url):
  for name,mark in [
   ('','content="29.1.9"'),('mis-reservas.html','mine-brand-v2919.css?v=1'),
   ('mis-reservas.html','class="via-home-arrow"'),
-  ('mine-brand-v2919.css','folded emerald V mark'),
+  ('mine-brand-v2919.css','Vía Traslados v29.1.9'),
   ('mine-brand-v2919.svg','Vía Traslados'),
   ('mine-guest-v2918.css','Vía Traslados v29.1.8'),
   ('mine-premium-v2917.js','Vía Traslados V29.1.7')]:
