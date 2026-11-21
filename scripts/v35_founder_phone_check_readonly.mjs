@@ -52,3 +52,21 @@ console.log('NO_PHONE_OR_EMAIL_RETRIEVED_NO_DB_CHANGES');
  const data=rows[0]||{};
  console.log('VIA_PASSKEY_LINK_READONLY '+JSON.stringify(data));
  console.log('NO_PRIVATE_DATA_RETRIEVED_NO_PASSKEYS_MODIFIED_NO_OTP_SENT');
+
+
+ // Reconciliación no identificable: ¿hay cuenta de pasajero/passkey con el correo
+ // de la cuenta admin ya verificada? Sólo números, nunca email ni credenciales.
+ const reconciliation=await query(`WITH founder AS (
+   SELECT lower(u.email) AS admin_email
+   FROM staff_users u JOIN staff_contacts s ON s.staff_id=u.id
+   WHERE u.role='admin' AND u.status='approved' AND s.phone='+59894842756'
+ )
+ SELECT
+   (SELECT COUNT(*) FROM founder) AS verified_admin_matches,
+   (SELECT COUNT(*) FROM customers c JOIN founder f ON lower(c.email)=f.admin_email) AS passenger_accounts_same_admin_email,
+   (SELECT COUNT(*) FROM customer_passkeys p JOIN founder f ON lower(p.email)=f.admin_email) AS passkeys_same_admin_email,
+   (SELECT COUNT(*) FROM customer_passkeys p JOIN customers c ON c.email=p.email) AS passkeys_linked_to_existing_passenger,
+   (SELECT COUNT(*) FROM customers c JOIN founder f ON lower(c.email)=f.admin_email
+      WHERE replace(replace(replace(replace(replace(c.phone,' ',''),'-',''),'+',''),'(',''),')','')
+        NOT IN ('094842756','59894842756')) AS passenger_account_same_email_other_phone`);
+ console.log('VIA_PASSKEY_RECONCILIATION_READONLY '+JSON.stringify(reconciliation[0]||{}));
