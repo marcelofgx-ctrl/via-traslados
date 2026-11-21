@@ -2,7 +2,7 @@ name: Vía Traslados — Clonar producción actual a QA aislada
 on:
   push:
     branches: [via-prod-snapshot-qa-20261120]
-    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs']
+    paths: ['.github/workflows/via-current-prod-qa.yml', 'scripts/via-current-prod-qa.py', 'scripts/via-qa-browser-diagnostics.js', 'scripts/via-qa-directions-worker.mjs', 'scripts/via-qa-route-contract.mjs', 'scripts/via-qa-smoke.py']
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
@@ -22,7 +22,7 @@ jobs:
         with: {node-version: '22'}
       - name: Validate QA code syntax before snapshot
         run: |
-          python3 -m py_compile scripts/via-current-prod-qa.py
+          python3 -m py_compile scripts/via-current-prod-qa.py scripts/via-qa-smoke.py
           node --check scripts/via-qa-browser-diagnostics.js
           node --check scripts/via-qa-directions-worker.mjs
           node --check scripts/via-qa-route-contract.mjs
@@ -66,54 +66,10 @@ jobs:
           PY
       - name: Deploy ONLY isolated QA Worker
         run: npx --yes wrangler@4.160.1 deploy --config via-current-qa/wrangler.jsonc
-      - name: Verify QA pages and deny API writes
+      - name: Verify QA pages, route and denied writes with explicit checks
         run: |
           set -euo pipefail
-          URL=https://via-traslados-current-prod-qa.marcelof-gx.workers.dev
-          for n in $(seq 1 20); do
-            if curl -fsSL "$URL/" -o /tmp/via-qa-home.html && grep -q 'via-qa-version' /tmp/via-qa-home.html; then break; fi
-            sleep 5
-          done
-          curl -fsSL "$URL/mis-reservas.html" -o /tmp/via-qa-bookings.html
-          grep -q 'Mis reservas' /tmp/via-qa-bookings.html
-          curl -fsSL "$URL/via-qa-browser-diagnostics.js" -o /tmp/via-qa-diagnostics.js
-          grep -q 'Diagnóstico QA' /tmp/via-qa-diagnostics.js
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/requests" -H 'content-type: application/json' --data '{}')" = 503
-          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/customer/me")" = 503
-          curl -fsSL "$URL/api/direcciones?mode=places&q=aeropuerto" -o /tmp/qa-places.json
-          python3 -c 'import json; d=json.load(open("/tmp/qa-places.json")); assert any("Carrasco" in x.get("label","") for x in d["results"])'
-          # Reverse geocoding depends on the public IDE Uruguay service. Check separately below, not before route.
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/public/route-preview" -H 'content-type: application/json' --data '{}')" = 400
-          curl -fsSL "$URL/config.js" -o /tmp/via-qa-config.js
-          grep -q 'apiUrl:location.origin' /tmp/via-qa-config.js
-          curl -fsSL "$URL/config.js" > /tmp/via-qa-config.js
-          node --check /tmp/via-qa-config.js
-          echo "::group::QA live route preview diagnostics"
-          curl -sS --max-time 25 -o /tmp/qa-route.json -w 'QA_ROUTE_HTTP=%{http_code} QA_ROUTE_SECONDS=%{time_total}\\n' -X POST "$URL/api/public/route-preview" -H 'content-type: application/json' --data '{"origin":{"lat":-34.880922,"lng":-56.079391},"destination":{"lat":-34.8384,"lng":-56.0308}}'
-          python3 - <<'PY'
-          import json,pathlib
-          raw=pathlib.Path('/tmp/qa-route.json').read_text()
-          print('QA_ROUTE_BODY_PREFIX',raw[:900])
-          try: d=json.loads(raw)
-          except json.JSONDecodeError as e: raise AssertionError('QA route returned non-JSON') from e
-          assert isinstance(d,dict),'QA route response not an object'
-          assert not d.get('error'),'QA route service returned error: '+str(d.get('error'))
-          assert d.get('qaOnly') is True and d.get('source')=='OSRM QA','QA route must be isolated from production'
-          assert any(k in d for k in ('distanceKm','distance_km','distanceMeters','distance_m','distance','distance_km_road','distance_meters','route')),'QA route response lacks recognized route data: '+str(list(d))
-          PY
-          echo "::endgroup::"
-          echo "::group::QA reverse geocoding status (external IDE)"
-          GEO_CODE=$(curl -sS --max-time 15 -o /tmp/qa-reverse.json -w '%{http_code}' "$URL/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185" || true)
-          echo "QA_GEO_REVERSE_HTTP=$GEO_CODE"
-          if [ "$GEO_CODE" = "200" ]; then
-            python3 -c 'import json; d=json.load(open("/tmp/qa-reverse.json")); assert isinstance(d.get("results"),list)' 
-            echo "QA_GEO_REVERSE_OK"
-          else
-            echo "::warning::QA reverse geocoding depends on IDE Uruguay, HTTP=$GEO_CODE; route calculation validated separately"
-            echo "QA_GEO_REVERSE_DEGRADED" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "::endgroup::"
-          echo "QA_ROUTE_VERIFIED_NO_PROD_WRITES $URL"
+          python3 -u scripts/via-qa-smoke.py
       - name: Store exact source hashes
         if: always()
         uses: actions/upload-artifact@v4
