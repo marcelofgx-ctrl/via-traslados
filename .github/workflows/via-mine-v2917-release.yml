@@ -1,0 +1,55 @@
+name: Via Traslados — Mis reservas premium V29.1.7 release gated
+on:
+  push:
+    branches: [via-mine-premium-noscr-20261121]
+    paths:
+      - "release/VIA_MINE_V2917_QA_APPROVED"
+permissions:
+  contents: read
+concurrency:
+  group: via-web-prod-v2917-release-gated
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar cambios visuales y base inalterada
+        run: |
+          python3 -m py_compile scripts/via-mine-v2917-prepare.py
+          node --check scripts/via-mine-v2917.js
+          node --check scripts/via-mine-v2917-browser.mjs
+      - name: Reconstruir assets idénticos desde producción efectiva V29.1.6
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v2917-prepare.py prepare
+      - name: Comprobar QA ya validada y dry-run de producción
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 scripts/via-mine-v2917-prepare.py qa
+          npx --yes wrangler@4.160.1 deploy --config mine-v2917-build/wrangler.prod.jsonc --dry-run --keep-vars
+      - name: Publicar solo web Worker y revertir si falla comprobación
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v2917-prepare.py release
+      - name: Validar OTP, API, ruta y APK sin operaciones de clientes
+        run: node tests/prod-core-invariants.mjs
+      - name: Guardar manifiesto de procedencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-mine-v2917-source-and-rollback-manifest
+          path: mine-v2917-build/manifest.json
+          retention-days: 30
+          if-no-files-found: warn
