@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Live, read-only QA smoke tests. No production writes or customer data."""
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -90,6 +91,12 @@ def main():
     check("ide_reverse_optional", "/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185", 200,
           validate=lambda b: isinstance(json.loads(b).get("results"), list) or (_ for _ in ()).throw(AssertionError("missing results")),
           optional=True)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as out:
+            out.write("### Vía Traslados — Verificación QA\\n\\n")
+            out.write(("❌ Falló: " + ", ".join(failures)) if failures else "✅ Pruebas obligatorias superadas")
+            out.write("\\n\\nRutas verificadas con OSRM QA; reservas y API privada bloqueadas. Producción intacta.\\n")
     if failures:
         print("QA_SMOKE_FAILED " + ",".join(failures), flush=True)
         return 1
