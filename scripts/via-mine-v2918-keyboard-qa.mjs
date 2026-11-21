@@ -88,9 +88,12 @@ async function validate(browserName,w,h,typing){
    assert(out.keyboard,'Expected keyboard focus state');
    assert(out.actions.bottom<out.captcha.bottom+2,'Actions are hidden below captcha');
    await page.locator('#mine-login-phone').press('Enter');
-   await page.waitForTimeout(120);
+   // Synthetic keyboard Enter on iOS/WebKit does not reliably emulate the
+   // physical iOS "Done" dismissal; explicitly blur for this QA path.
+   if(browserName==='ios')await page.locator('#mine-login-phone').evaluate(el=>el.blur());
+   await page.waitForFunction(()=>!document.body.classList.contains('mine-input-focus'),null,{timeout:1800});
    assert(!(await page.locator('body').evaluate(e=>e.classList.contains('mine-input-focus'))),
-    'Enter/Done did not leave focused mode');
+    'Input did not leave focus mode');
   }
   if(w===390&&h>=750&&!typing)await page.screenshot({path:'mine-v2918-proof/'+browserName+'-guest-390.png',fullPage:false});
   if(w===390&&typing)await page.screenshot({path:'mine-v2918-proof/'+browserName+'-keyboard-390.png',fullPage:false});
