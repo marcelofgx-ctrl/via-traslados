@@ -25,7 +25,7 @@ async function runTest(engine,device,height,width,loggedIn){
  page.on('pageerror',e=>errors.push(e.message));
  if(loggedIn)await page.addInitScript(s=>localStorage.setItem('via-customer-session-v1',JSON.stringify(s)),session);
  await page.route('**/*',async route=>{
-  const u=new URL(route.request().url);calls.push(u.pathname);
+  const u=new URL(route.request().url());calls.push(u.pathname);
   if(u.pathname==='/api/customer/me')return route.fulfill({status:200,json:{profile:session.profile,passkeys:1,expiresAt:session.expiresAt}});
   if(u.pathname==='/api/customer/bookings')return route.fulfill({status:200,json:data});
   if(u.pathname==='/api/customer/logout')return route.fulfill({status:200,json:{signedOut:true}});
