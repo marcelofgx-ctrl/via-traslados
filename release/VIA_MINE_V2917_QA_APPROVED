@@ -1,0 +1,7 @@
+VIA_MINE_V2917_QA_APPROVED
+QA run: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/44947856374
+Result: SUCCESS; seven mobile viewport cases including native WebKit for iOS.
+Baseline: Cloudflare web Worker 0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b.
+Scope: index metadata and Mis reservas visual CSS + JS only.
+Backend, D1, WebAuthn, app.js, store.js, APK and geocoder unchanged.
+Rollback: restore above Cloudflare web Worker version; leave API/D1 intact.
