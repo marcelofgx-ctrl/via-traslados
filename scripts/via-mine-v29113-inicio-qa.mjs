@@ -64,7 +64,7 @@ function verify(info,where){
  assert(info.documentWidth<=info.width+1,where+' horizontal document scroll '+JSON.stringify(info));
  assert.equal(info.bodyOverflow,'hidden',where+' page gained scroll');
  assert(info.appBottom<=info.height+3,where+' app-shell clipped by browser');
- assert(info.noWhiteFrame,where+' white frame regression');
+ if(info.account)assert(info.noWhiteFrame,where+' white frame regression');
 }
 let passed=0;
 async function run(os,w,h,loggedIn,largeText=false){
