@@ -42,7 +42,7 @@ async function caseRun(os,width,height,loggedIn,keyboard=false){
   await page.goto(STAGE+'/mis-reservas.html',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.body.classList.contains('via-mine-v29110'),null,{timeout:10000});
   if(loggedIn){
-   await page.locator('#mine-greeting').getByText('¡Hola, Silvi de prueba!',{exact:true}).waitFor();
+   await page.locator('#mine-greeting').getByText('¡Hola, Silvi!',{exact:true}).waitFor();
    await page.locator('#mine-count-active').getByText('5',{exact:true}).waitFor();
    await page.locator('#mine-list a.via-booking-card').first().waitFor();
   }else{
