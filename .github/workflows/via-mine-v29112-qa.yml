@@ -1,0 +1,74 @@
+name: Vía Traslados V29.1.12 - gated iOS and Android screenshot cohesion QA
+on:
+  push:
+    branches: [via-mine-v29112-cohesion-20261122]
+    paths:
+      - ".github/workflows/via-mine-v29112-qa.yml"
+      - "scripts/via-mine-v29112-*"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-mine-v29112-cohesion-qa
+  cancel-in-progress: true
+jobs:
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify restricted visual-only sources syntax and live V29.1.11
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 -m py_compile scripts/via-mine-v29112-release.py scripts/via-mine-v29112-audit.py
+          node --check scripts/via-mine-v29112-cohesion.js
+          node --check scripts/via-mine-v29112-browser-qa.mjs
+          python3 scripts/via-mine-v29112-audit.py
+      - name: Rebuild full original Worker assets from REAL V29.1.11 production
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29112-release.py prepare
+      - name: Publish isolated QA Worker with ALL backend API writes disabled
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v29112-build/wrangler.qa.jsonc
+          python3 scripts/via-mine-v29112-release.py qa
+      - name: Install native Chromium and WebKit browser engines
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit >/dev/null
+      - name: 12 responsive visual cohesion suites, reference screenshots, tabs, logout and home button
+        env:
+          VIA_REFERENCE_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v29112-browser-qa.mjs
+      - name: 8 prior regressions in Android and iOS guest keyboard, no-scroll
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: 7 previous signed-in real-pagination and no-scroll regression suites
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v29110-browser.mjs
+      - name: Upload before/after real browser screenshots and release manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29112-cohesion-android-ios-visual-proof
+          path: |
+            via-v29112-visual-proof/
+            mine-v2918-proof/
+            mine-v29110-proof/
+            mine-v29112-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
