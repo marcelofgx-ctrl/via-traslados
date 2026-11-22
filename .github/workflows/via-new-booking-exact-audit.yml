@@ -1,0 +1,20 @@
+name: Via Traslados - exact read-only GPS and fresh booking state excerpts
+on:
+  push:
+    branches: [via-new-booking-origin-readonly-20261122]
+    paths: [".github/workflows/via-new-booking-exact-audit.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/via-new-booking-exact-audit.mjs
