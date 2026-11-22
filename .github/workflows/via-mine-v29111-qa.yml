@@ -1,0 +1,71 @@
+name: Vía Traslados V29.1.11 - screenshot fidelity iOS Android QA
+on:
+  push:
+    branches: [via-mine-v29111-reference-fidelity-20261122]
+    paths:
+      - ".github/workflows/via-mine-v29111-qa.yml"
+      - "scripts/via-mine-v29111-*"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v29111-reference-qa
+  cancel-in-progress: true
+jobs:
+  reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 19
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: |
+          python3 -m py_compile scripts/via-mine-v29111-release.py
+          node --check scripts/via-mine-v29111-reference-qa.mjs
+          node --check scripts/via-mine-v2918-keyboard-qa.mjs
+          node --check scripts/via-mine-v29110-browser.mjs
+      - name: Rebuild V29.1.11 visual-only from current productive V29.1.10 Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29111-release.py prepare
+      - name: Publish isolated QA Worker, block all real customer API writes
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v29111-build/wrangler.qa.jsonc
+          python3 scripts/via-mine-v29111-release.py qa
+      - name: Install Android Chrome and iOS WebKit engines
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit >/dev/null
+      - name: 11 screenshot-reference geometry and legibility checks (iOS and Android)
+        env:
+          VIA_REFERENCE_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v29111-reference-qa.mjs
+      - name: 8 nonregression cases, keyboard open, real buttons visible
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: 7 authenticated bookings, no-scroll pagination and iOS text
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v29110-browser.mjs
+      - name: Screenshots and complete source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29111-screenshot-fidelity-mobile-proof
+          path: |
+            via-v29111-visual-proof/
+            mine-v2918-proof/
+            mine-v29110-proof/
+            mine-v29111-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 21
