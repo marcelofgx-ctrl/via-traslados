@@ -1,0 +1,54 @@
+name: Vía Traslados V29.1.10 - guarded visual-only web production
+on:
+  push:
+    branches: [via-mine-v29110-premium-20261122]
+    paths:
+      - "release/VIA_V29110_QA_APPROVED"
+permissions:
+  contents: read
+concurrency:
+  group: via-web-prod-v29110-controlled
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Source syntax and no sensitive modifications
+        run: |
+          python3 -m py_compile scripts/via-mine-v29110-release.py
+          node --check scripts/via-mine-v29110-theme.js
+      - name: Build V29.1.10 strictly from current V29.1.9 Cloudflare Worker and website
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29110-release.py prepare
+      - name: Verify QA and Cloudflare Worker dry-run before any live changes
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 scripts/via-mine-v29110-release.py qa
+          npx --yes wrangler@4.160.1 deploy --config mine-v29110-build/wrangler.prod.jsonc --dry-run --keep-vars
+      - name: Release WEB assets only, atomically guarded with postchecks and rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29110-release.py release
+      - name: Existing production core invariants, no emails/reservations
+        run: node tests/prod-core-invariants.mjs
+      - name: Preserve rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29110-live-manifest
+          path: mine-v29110-build/manifest.json
+          retention-days: 30
+          if-no-files-found: warn
