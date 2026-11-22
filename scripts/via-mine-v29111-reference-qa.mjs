@@ -9,7 +9,7 @@ const STAGE=process.env.VIA_REFERENCE_QA||'https://via-traslados-mine-v2917-stag
 const UA_ANDROID='Mozilla/5.0 (Linux; Android 16; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36';
 const UA_IOS='Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
 await mkdir('via-v29111-visual-proof',{recursive:true});
-const profile={name:'Silvi de prueba',email:'silvi@example.invalid',phone:'099000000'};
+const profile={name:'Ana de prueba',email:'ana@example.invalid',phone:'099000000'};
 const session={sessionToken:'a'.repeat(64),expiresAt:Math.floor(Date.now()/1000)+3600,profile};
 const statuses=['confirmed','accepted','quoted','requested','en_route','completed','cancelled','completed','cancelled','completed'];
 const entries=statuses.map((status,i)=>({
@@ -42,7 +42,15 @@ async function caseRun(os,width,height,loggedIn,keyboard=false){
   await page.goto(STAGE+'/mis-reservas.html',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.body.classList.contains('via-mine-v29110'),null,{timeout:10000});
   if(loggedIn){
-   await page.locator('#mine-greeting').getByText('¡Hola, Silvi!',{exact:true}).waitFor();
+   await page.waitForTimeout(500);
+   const debug=await page.evaluate(()=>({
+    greeting:document.querySelector('#mine-greeting')?.textContent,
+    welcomeHidden:document.getElementById('mine-welcome')?.classList.contains('hidden'),
+    bodyClasses:document.body.className,
+    list:document.querySelector('#mine-list')?.textContent?.slice(0,80)
+   }));
+   console.log('VIA_V29111_MOCK_SESSION_CHECK '+JSON.stringify(debug));
+   await page.locator('#mine-greeting').getByText('¡Hola, Ana!',{exact:true}).waitFor();
    await page.locator('#mine-count-active').getByText('5',{exact:true}).waitFor();
    await page.locator('#mine-list a.via-booking-card').first().waitFor();
   }else{
@@ -106,7 +114,7 @@ async function caseRun(os,width,height,loggedIn,keyboard=false){
    assert(info.greetingRect.bottom<=info.tabsRect.top,'Greeting overlaps tabs');
    assert(info.card1Rect.bottom<=info.pagerRect.top+3,'Booking card over pagination');
    assert(await page.locator('.via-mine-pager').isVisible(),'Paged no-scroll controls missing');
-   assert.equal(await page.locator('.via-mine-account__avatar').innerText(),'S','Use real initials, never fictitious photo');
+   assert.equal(await page.locator('.via-mine-account__avatar').innerText(),'A','Use real initials, never fictitious photo');
    assert.equal(await page.locator('body button[aria-label="Notificaciones"]').count(),0,'Unimplemented bell should not exist');
   }else{
    assert(info.phoneRect.bottom<=info.height+2,'Phone input under keyboard');
