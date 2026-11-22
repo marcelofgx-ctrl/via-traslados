@@ -2,7 +2,7 @@ name: Vía Traslados - independent PROD D1 postcleanup read-only verify
 on:
   push:
     branches: [via-d1-prod-admin-only-audit-20261122]
-    paths: [".github/workflows/via-d1-admin-only-final.yml"]
+    paths: [".github/workflows/via-d1-admin-only-final.yml", "scripts/via-d1-admin-only-final.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
