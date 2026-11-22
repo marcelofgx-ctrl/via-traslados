@@ -4,12 +4,15 @@
 (()=>{
  'use strict';
  if(document.body?.dataset.page!=='mine')return;
+ document.body.dataset.viaMineV12Boot='loaded';
  function start(){
+  document.body.dataset.viaMineV12Boot='starting';
   const list=document.getElementById('mine-list');
   const pager=document.querySelector('.via-mine-pager');
   // WebKit may execute deferred files before the existing V29.1.7 pager
   // controller has inserted its nav: attach once, on the real DOM event.
   if(!list||!pager){
+   document.body.dataset.viaMineV12Boot='waiting';
    const ready=new MutationObserver(()=>{
     if(document.getElementById('mine-list')&&document.querySelector('.via-mine-pager')){
      ready.disconnect();start()
@@ -18,8 +21,10 @@
    ready.observe(document.body,{childList:true,subtree:true});
    return
   }
+  document.body.dataset.viaMineV12Boot='ready';
   let pending=false,shift=0;
   function measure(){
+   document.body.dataset.viaMineV12Boot='measured';
    pending=false;
    if(pager.hidden||getComputedStyle(pager).display==='none'){
     shift=0;pager.style.removeProperty('--via-v12-pager-y');return
@@ -32,7 +37,8 @@
    const nextShift=Math.max(0,Math.round(naturalPagerTop-last-9));
    if(nextShift!==shift){
     shift=nextShift;
-    pager.style.setProperty('--via-v12-pager-y',(-shift)+'px')
+    pager.style.setProperty('--via-v12-pager-y',(-shift)+'px');
+    document.body.dataset.viaMineV12Boot='shift-'+shift
    }
   }
   function schedule(){
