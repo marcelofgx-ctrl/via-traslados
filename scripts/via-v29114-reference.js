@@ -248,11 +248,16 @@ function startGps(){
       normalize(prevStreet.replace(/\s\d{1,6}[a-z]?$/i,''))===normalize(nextStreet)){
     label=previous.label;heldDoor=true;
    }
+   // Single road identifiers (Ruta 8, Calle 9) are street names, not
+   // evidence of a nearby house door, even though they end in digits.
+   // Treat ambiguous names as unnumbered and request manual/map confirmation.
+   const roadNameNumber=/^(?:ruta(?:\\s+nacional)?|calle|camino|pasaje|avenida|av\\.)\\s+\\d{1,3}[a-z]?$/i
+    .test(String(info?.nearbyPortal||'').trim());
    const chosen={label,lat:pos.lat,lng:pos.lng,accuracy:'gps',source:'gps',
     postalStatus:decision?.postalStatus||'unknown',city:info?.city||'',
     department:info?.department||'',gpsAccuracy:pos.accuracyMeters,
     timestamp:fix.timestamp||Date.now(),referenceDistance:heldDoor?previous.referenceDistance:(info?.distanceMeters??null),
-    numberIsApproximate:heldDoor||!!decision?.numberIsApproximate};
+    numberIsApproximate:(heldDoor||!!decision?.numberIsApproximate)&&!roadNameNumber};
    gpsApplying=true;
    try{
     window.ViaSearchLocation?.update(pos.lat,pos.lng);
