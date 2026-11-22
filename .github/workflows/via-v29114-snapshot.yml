@@ -1,0 +1,35 @@
+name: Via V29.1.14 — snapshot effective production passenger source (no mutations)
+on:
+  push:
+    branches: [via-booking-fresh-gps-v29114-20261122]
+    paths: [".github/workflows/via-v29114-snapshot.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert actual published Cloudflare Worker V29.1.13
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 -c "import runpy;f=runpy.run_path('scripts/via-v291-prepare.py');assert f['active_version']()=='2f2407d8-d665-47c6-9b14-edf7655b00a4', 'Production changed; stop';print('VIA_V29114_BASELINE_PASS')"
+      - name: Capture source of ONLY real public HTML and JavaScript (GET no API)
+        run: node scripts/via-v29114-live-snapshot.mjs
+      - name: Save immutable public source snapshot in isolated work branch
+        run: |
+          git config user.name "via-traslados-ci"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add audit/live-v29113
+          git commit -m "audit: snapshot exact effective V29.1.13 passenger scripts for V29.1.14" || true
+          git push origin HEAD:via-booking-fresh-gps-v29114-20261122
