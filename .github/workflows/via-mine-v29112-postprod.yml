@@ -1,0 +1,27 @@
+name: Vía Traslados V29.1.12 - independent live Worker postproduction read-only
+on:
+  push:
+    branches: [via-mine-v29112-cohesion-20261122]
+    paths:
+      - ".github/workflows/via-mine-v29112-postprod.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Independent GET-only Cloudflare version, rollback, effective styles and original assets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29112-postprod.py
+      - name: Independent OTP, public routing, geocoder, signed APK smoke with no writes
+        run: node tests/prod-core-invariants.mjs
