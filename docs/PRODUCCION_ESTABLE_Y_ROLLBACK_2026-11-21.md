@@ -1,5 +1,28 @@
 # Vía Traslados — Congelamiento de producción y rollback (21/11/2026)
 
+## ESTADO PRODUCTIVO VIGENTE — v29.1.11 (22/11/2026, Uruguay)
+
+**Esta versión sustituye los estados históricos de v29.1.10 y anteriores listados más abajo.**
+
+| Elemento | Estado verificado |
+| --- | --- |
+| Web pública | https://viatraslados.com — **v29.1.11** |
+| Worker web al 100 % | `via-traslados-web-prod` — `f5d43ef0-1a28-4bce-a078-6fb364399e72` |
+| Rollback web inmediato | **v29.1.10** — `ca5d72af-db3e-43ab-8476-727e44271e50` |
+| API, D1, clientes, reservas, OTP, passkeys y APK V35 | Sin modificaciones |
+
+**Corrección exacta de la referencia del usuario:** logo `V` y `vía traslados` en **una misma línea**, botón `← Inicio` compacto **76–84 px** y sin efecto 3D exagerado, eliminación del gran marco blanco alrededor de la vista autenticada (lienzo verde menta abierto), bienvenida con inicial real y líneas topográficas conservadas, tarjetas con elevación y sombras perceptibles, flechas redondas verde esmeralda con icono blanco, pestañas y paginación compactas. Se conserva **no scroll general**, el flujo de teclado Android/Chrome e iOS/WebKit, la autenticación biométrica real, el correo OTP y los datos de cada pasajero. No se incorporan foto de usuario inexistente ni campana ficticia.
+
+Sólo se añadió **un archivo CSS** `mine-v29111-fidelity.css`. Los únicos HTML existentes modificados son `index.html` (número de versión) y `mis-reservas.html` (referencia a CSS). Se inventariaron **52 recursos originales** desde la web productiva v29.1.10 y se comprobaron hashes sin cambios de app, store, passkeys, API, geo y APK.
+
+- QA de referencia y no regresión: **26 pruebas aprobadas**, 11 de fidelidad y geometría Android/Chrome e iOS/WebKit (sin marco, logo horizontal, botón compacto, contraste de flechas), 8 pruebas de ingreso con teclado y botones visibles, y 7 de sesión autenticada, reservas, pestañas y paginación: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45015832050
+- Publicación protegida, comparaciones y checks posterior `PROD_CORE_INVARIANTS_PASS`: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45016075240
+- Manifiesto de release y rollback: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45016075240/artifacts/14751732317
+- Fuente exacta: rama `via-mine-v29111-reference-fidelity-20261122`, commit de release `c4a22b75f734d7de21cbed7d4161f98ba7d4791c`.
+
+**Recuperación si un dispositivo real revela defecto:** revertir **únicamente** Worker web `via-traslados-web-prod` a `ca5d72af-db3e-43ab-8476-727e44271e50` (v29.1.10), comprobar estado público, actualizar ancla de auditoría de lectura. Nunca restaurar base D1 ni alterar API, OTP, identidades o reservas por un defecto CSS. QA WebKit simula Safari/iOS; no equivale a una prueba de dispositivo iPhone físico.
+
+
 ## ESTADO PRODUCTIVO VIGENTE — v29.1.10 (22/11/2026, Uruguay)
 
 **Esta entrada reemplaza todos los estados históricos de versiones anteriores indicados más abajo.**
