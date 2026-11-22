@@ -1,0 +1,23 @@
+name: Vía Traslados V29.1.12 - READ ONLY live baseline audit
+on:
+  push:
+    branches: [via-mine-v29112-cohesion-20261122]
+    paths:
+      - ".github/workflows/via-mine-v29112-audit.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify live Cloudflare version, public HTML/CSS and rollback using GET only
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29112-audit.py
