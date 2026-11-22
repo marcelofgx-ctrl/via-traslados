@@ -207,8 +207,13 @@ function initPassenger(){
   hidden('turnstile-box',true);feedback('');
  }
  $('start-booking').addEventListener('click',()=>{
+  // Cancel previous draft's transient verification state but keep the real
+  // authenticated session, customer profile, PIN/passkeys and account binding.
+  ++identityEpoch;
+  grant='';selectedPhone='';verifiedEmail='';signupPayload=null;
+  registered=false;hasPin=false;needsPinReset=false;enrolled=false;
+  resetCaptcha();
   // Ignore late route estimates from the previous draft and clear cached route key.
-  // Do NOT change the verified passenger session or identity.
   ++routePending;tripLast='';
   routeFeedback('Elegí origen y destino','Mostraremos los kilómetros por carretera.');
   hero.classList.add('hidden');wizard.classList.remove('hidden');changeStep(1);
