@@ -29,5 +29,6 @@ console.log('VIA_RESV_HTML_READONLY_DIAG '+JSON.stringify({
  ...out,equalCanonical:a===b,firstDiffIndex:first,
  prodTagCount:(a.match(/</g)||[]).length,qaTagCount:(b.match(/</g)||[]).length,
  prodTextLength:a.length,qaTextLength:b.length,
+ prodTail:a.slice(Math.max(0,first-28)),qaTail:b.slice(Math.max(0,first-28)),
  analyticsRemoved:{prod:a.length!==out.prod.raw1.length,qa:b.length!==out.qa.raw1.length}
 }));
