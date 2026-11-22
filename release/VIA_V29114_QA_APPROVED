@@ -1,0 +1,14 @@
+VÍA TRASLADOS — APPROVAL OF V29.1.14 PRODUCTION WEB-ONLY RELEASE.
+User authorization: "Adelante" following plan to fix new-trip stale addresses and GPS street/door handling, QA first.
+Source of truth production V29.1.13 Cloudflare web Worker: 2f2407d8-d665-47c6-9b14-edf7655b00a4.
+Production rollback target: same V29.1.13 Worker 2f2407d8-d665-47c6-9b14-edf7655b00a4.
+QA success, 57/57 tests: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45051657505
+- 42 Android Chrome and iOS WebKit browser tests: empty origin/destination resets, new manual selections preserved, BFCache return, location fresh on every explicit tap, street-only vs approximate portal, numbered streets Ruta 8, delayed stale reverse response rejection.
+- 8 keyboard/login mobile no-scroll regressions and 7 active/history/pagination regressions.
+- OTP/CORS, routes, geocoder, signed APK smoke passed without booking writes.
+- No real D1/OTP mail/booking writes. Stage explicitly refuses /api/* except Playwright browser mocks.
+- Native Chrome Android geolocation via test harness; WebKit headless GPS sensor simulated at boundary; UI and JS executed in real WebKit engine.
+Approved ONLY if original production Worker is still EXACTLY current at release time, Cloudflare D1/API unchanged, existing source hashes unchanged, QR/functional assets unchanged.
+Only existing website files changed: app.js (new trip route/identity ephemeral reset), reference.js (GPS/portal & stale draft reset), index.html (version and cache-bust). ALL other preexisting assets preserved byte-for-byte.
+NO API/D1 schema/auth/passkeys/APK changes, no other projects.
+Run stage preflight and Wrangler --dry-run. If postproduction verification fails, restore WEB Worker V29.1.13 only, not API/D1.
