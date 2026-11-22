@@ -266,15 +266,13 @@ function startGps(){
      [{label:'Elegir en el mapa',go:openGpsMap,primary:true},
       {label:'Reintentar GPS',go:startGps}]);
    else {
-    const streetSegment=String(chosen.label||'').split(',')[0].trim();
-    const numberShown=/\s\d{1,6}[a-z]?$/i.test(streetSegment);
-    if(!numberShown)
+    // Do not infer a house number from text: street names such as "Ruta 8"
+    // end in a digit too. Trust the geo-v2 explicit nearby-portal flag only.
+    if(!chosen.numberIsApproximate)
      gpsPanel('Confirmá el número','Encontramos la calle, pero no un número de puerta confirmado. Tocá la dirección para completarlo o ajustá el punto en el mapa.',
       [{label:'Elegir en el mapa',go:openGpsMap,primary:true}]);
-    else if(chosen.numberIsApproximate)
+    else
      gpsPanel('Número orientativo','Este número es una referencia cercana, no una puerta confirmada. Verificá el punto antes de reservar.',
-      [{label:'Ajustar en el mapa',go:openGpsMap}]);
-    else gpsPanel('Ubicación obtenida','Confirmá que el origen indicado sea correcto antes de reservar.',
       [{label:'Ajustar en el mapa',go:openGpsMap}]);
    }
   }catch(err){if(finishGps(run))gpsFailure(err)}
