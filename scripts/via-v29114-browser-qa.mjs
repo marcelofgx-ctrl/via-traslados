@@ -175,6 +175,19 @@ async function instance(os,w,h){
   await page.screenshot({path:OUT+'/'+os+'-'+w+'x'+h+'-approx-number.png',fullPage:false});
   passed++;console.log('VIA_V29114_PASS_'+os+'_'+w+'_GPS_EXPLICIT_REFRESH');
 
+  // Numbered street NAME is not a confirmed house number (e.g. "Ruta 8").
+  reverseRows=[{street:'Ruta 8',lat:pos1.latitude,lng:pos1.longitude,
+    city:'Canelones',department:'Canelones',distanceMeters:12,source:'ide'}];
+  await context.setGeolocation(pos1);
+  if(os==='ios')await page.evaluate(p=>{window.__viaQaSensor={...p}},pos1);
+  await page.locator('#location-shortcut').click();
+  await page.waitForFunction(()=>document.querySelector('#via-gps-feedback')?.textContent.includes('Confirmá el número'),
+    undefined,{timeout:10000});
+  state=await check(page);
+  assert(state.home.text.includes('Ruta 8')&&!state.note.includes('Número orientativo'),
+    'Street name Ruta 8 incorrectly treated as a house number');
+  passed++;console.log('VIA_V29114_PASS_'+os+'_'+w+'_NUMERIC_STREET_NOT_A_DOOR');
+
   // Do not let a late reverse geocode overwrite a manually edited origin.
   delayNextReverse=route=>new Promise(resolve=>{
    setTimeout(()=>{route.fulfill({status:200,json:{results:[{street:'Calle inventada 900',lat:pos1.latitude,
@@ -194,7 +207,7 @@ async function instance(os,w,h){
   await page.screenshot({path:OUT+'/'+os+'-'+w+'x'+h+'-GPS-confirmation.png',fullPage:false});
   assert((await check(page)).bodyWidth<=w+2,'New GPS dialog causes horizontal scroll');
   assert.deepEqual(errors,[],'JavaScript errors '+errors.join('; '));
-  console.log('VIA_V29114_FULL_CYCLE_'+os+'_'+w+'x'+h+'_PASS '+JSON.stringify({checks:6,reverseCalls}));
+  console.log('VIA_V29114_FULL_CYCLE_'+os+'_'+w+'x'+h+'_PASS '+JSON.stringify({checks:7,reverseCalls}));
  }finally{await context.close();await browser.close()}
 }
 for(const [os,w,h] of [
