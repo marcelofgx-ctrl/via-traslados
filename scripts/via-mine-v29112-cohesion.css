@@ -2,7 +2,7 @@
    Mine-only, presentation-only: do not touch identities, auth, bookings or API.
    No full-page frame, no fixed booking count, no page scrolling. */
 body[data-page="mine"].via-mine-v29110 .top-link{
-  width:auto!important;min-width:0!important;flex:0 0 auto!important;
+  width:94px!important;min-width:94px!important;flex:0 0 94px!important;
   height:38px!important;min-height:38px!important;
   padding:6px 12px!important;gap:8px!important;
   border-radius:999px!important;
@@ -91,11 +91,12 @@ body[data-page="mine"].via-mine-v29110.mine-account .via-mine-pager[hidden]{
 @media(max-width:360px){
   body[data-page="mine"].via-mine-v29110 .top-link{
     padding:6px 9px!important;gap:6px!important;
-    width:auto!important;min-width:0!important;flex:0 0 auto!important;
+    width:92px!important;min-width:92px!important;flex:0 0 92px!important;
     height:36px!important;min-height:36px!important;font-size:11.5px!important
   }
 }
 body[data-page="mine"].via-mine-v29110.mine-input-focus .top-link{
+  width:90px!important;min-width:90px!important;flex:0 0 90px!important;
   height:32px!important;min-height:32px!important;
   padding:5px 8px!important
 }
