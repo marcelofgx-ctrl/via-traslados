@@ -7,7 +7,7 @@ const ROOT='https://api.cloudflare.com/client/v4/accounts/'+ACCOUNT+'/d1/databas
 const headers={Authorization:'Bearer '+TOKEN,'Content-Type':'application/json'};
 const request=async(url,options={})=>{
  const r=await fetch(url,{headers,signal:AbortSignal.timeout(35000),...options});
- assert(r.ok,'Cloudflare HTTP '+r.status);
+ if(!r.ok){const detail=(await r.text()).slice(0,500);throw Error('Cloudflare HTTP '+r.status+' detail '+detail)}
  const j=await r.json();assert(j.success===true,'Cloudflare API error '+JSON.stringify(j.errors||[]));
  return j.result;
 };
@@ -30,10 +30,16 @@ const staff=await query('SELECT u.id,u.email,u.role,u.status,c.phone,c.email_ver
 const normalize=v=>String(v||'').replace(/\D/g,'');
 const matches=staff.filter(x=>String(x.email).toLowerCase()===founderMail && normalize(x.phone).endsWith(founderDigits));
 const adminCount=staff.filter(x=>x.role==='admin'&&x.status==='approved').length;
-const counts={};
+console.log('VIA_D1_FOUNDER_PRELIM '+JSON.stringify({
+ founderMatches:matches.length,founderRole:matches[0]?.role||null,
+ founderStatus:matches[0]?.status||null,founderVerified:matches[0]?.email_verified_at!=null,
+ approvedAdmins:adminCount,staffTotal:staff.length
+}));
+const counts={},countFailures={};
 for(const name of tables){
  assert(/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name),'Unexpected table name');
- counts[name]=Number((await query('SELECT COUNT(*) AS total FROM "'+name+'"'))[0]?.total||0);
+ try{counts[name]=Number((await query('SELECT COUNT(*) AS total FROM "'+name+'"'))[0]?.total||0)}
+ catch(error){counts[name]=null;countFailures[name]=String(error.message||error).slice(0,500)}
 }
 const founder=matches.length===1?matches[0]:null;
 const adminSafe=!!founder&&founder.role==='admin'&&founder.status==='approved'&&founder.email_verified_at!=null;
@@ -52,12 +58,13 @@ const report={
  },
  admin_safe_to_preserve:adminSafe,approved_administrators:adminCount,
  staff_total:staff.length,nonfounder_staff:staff.length-(founder?1:0),
- table_count:tables.length,table_row_counts:counts,
+ table_count:tables.length,table_row_counts:counts,table_count_failures:countFailures,
  d1_time_travel_bookmark_status:bookmarkStatus,
  d1_time_travel_bookmark:bookmark,
  intent:'AUDIT_READ_ONLY',deletes_performed:0
 };
 console.log('VIA_D1_ADMIN_ONLY_PREDELETE_AUDIT '+JSON.stringify(report));
+assert(Object.keys(countFailures).length===0,'Some D1 tables cannot be counted: NO DELETE');
 assert(adminSafe,'Founder admin not verified: NO DELETE');
 assert(adminCount===1,'Unexpected approved admins: NO DELETE without explicit policy');
 assert(bookmarkStatus==='present','No D1 time-travel bookmark: cannot proceed to deletion');
