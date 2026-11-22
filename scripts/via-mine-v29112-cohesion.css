@@ -1,0 +1,104 @@
+/* Vía Traslados V29.1.12 — cohesion pass over approved V29.1.11.
+   Mine-only, presentation-only: do not touch identities, auth, bookings or API.
+   No full-page frame, no fixed booking count, no page scrolling. */
+body[data-page="mine"].via-mine-v29110 .top-link{
+  width:auto!important;min-width:0!important;flex:0 0 auto!important;
+  height:38px!important;min-height:38px!important;
+  padding:6px 12px!important;gap:8px!important;
+  border-radius:999px!important;
+  background:linear-gradient(115deg,#0a7362,#07584c 64%,#064d44)!important;
+  border:1px solid rgba(140,218,188,.59)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.17),0 3px 7px rgba(7,80,64,.12)!important;
+  font-size:12.5px!important;font-weight:650!important;letter-spacing:.04px!important;
+  text-shadow:none!important;
+}
+body[data-page="mine"].via-mine-v29110 .top-link::before{
+  display:none!important;content:none!important
+}
+body[data-page="mine"].via-mine-v29110 .top-link .via-home-arrow{
+  display:inline-grid!important;place-items:center!important;
+  flex:0 0 16px!important;width:16px!important;height:17px!important;
+  font-size:0!important;line-height:1!important
+}
+body[data-page="mine"].via-mine-v29110 .top-link .via-home-arrow svg{
+  display:block;width:16px;height:16px;fill:none;
+  stroke:#f5fff9;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round
+}
+body[data-page="mine"].via-mine-v29110 .top-link .via-home-divider{
+  display:block;flex:0 0 1px;width:1px;height:17px;
+  background:rgba(219,255,238,.4);box-shadow:none
+}
+body[data-page="mine"].via-mine-v29110 .top-link .via-home-label{
+  font-weight:650!important;letter-spacing:.04px!important
+}
+/* Common horizontal gutter and a tighter, deliberate vertical rhythm. */
+body[data-page="mine"].via-mine-v29110.mine-account .booking-status-main{
+  padding:4px 1px 2px!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .status-card.via-mine-main{
+  padding:2px clamp(10px,2.9vw,17px) 2px!important;
+  border:0!important;background:transparent!important;box-shadow:none!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .section-eyebrow{
+  margin:0 0 4px!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-main h1{
+  margin:0 0 3px!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-subtitle{
+  margin:0 0 5px!important;line-height:1.3!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-account.known-customer{
+  margin:1px 0 7px!important;
+  box-shadow:0 5px 11px rgba(4,76,60,.14),inset 0 1px 0 rgba(232,255,246,.19)!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-tabs{
+  margin:0 0 7px!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.63),0 1px 3px rgba(28,85,63,.035)!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-list{
+  gap:8px!important;padding:1px 2px 2px!important;
+  overflow:hidden!important;align-content:start!important
+}
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-list a.via-booking-card{
+  border-radius:15px!important;
+  box-shadow:0 4px 9px rgba(20,75,59,.10),0 1px 3px rgba(15,59,46,.04)!important
+}
+/* Pager uses the original native pagination and only a visual y-translation.
+   JavaScript measures actual visible cards; no DOM data or pagination edits. */
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-pager{
+  position:relative;min-height:37px!important;margin-top:4px!important;
+  padding:5px 2px 1px!important;
+  border-top:1px solid rgba(130,187,164,.20);
+  transform:translateY(var(--via-v12-pager-y,0px));
+  will-change:transform
+}
+body[data-page="mine"].via-mine-v29110.mine-account .via-mine-pager[hidden]{
+  display:none!important
+}
+/* Small-height authenticated view: free usable space, preserve original brand. */
+@media(max-height:700px){
+  body[data-page="mine"].via-mine-v29110.mine-account .topbar{
+    flex:0 0 57px!important;height:57px!important;min-height:57px!important
+  }
+  body[data-page="mine"].via-mine-v29110.mine-account .via-mine-tab{
+    min-height:38px!important
+  }
+  body[data-page="mine"].via-mine-v29110.mine-account .via-mine-account.known-customer{
+    min-height:57px!important
+  }
+}
+@media(max-width:360px){
+  body[data-page="mine"].via-mine-v29110 .top-link{
+    padding:6px 9px!important;gap:6px!important;
+    width:auto!important;min-width:0!important;flex:0 0 auto!important;
+    height:36px!important;min-height:36px!important;font-size:11.5px!important
+  }
+}
+body[data-page="mine"].via-mine-v29110.mine-input-focus .top-link{
+  height:32px!important;min-height:32px!important;
+  padding:5px 8px!important
+}
+@media(prefers-reduced-motion:reduce){
+  body[data-page="mine"].via-mine-v29110 .via-mine-pager{will-change:auto}
+}
