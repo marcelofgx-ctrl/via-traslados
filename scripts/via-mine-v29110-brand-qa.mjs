@@ -57,7 +57,7 @@ async function check(os,w,h,focused){
   assert(results.brandText.toLowerCase().includes('vía')&&results.brandText.toLowerCase().includes('traslados'));
   assert(results.linkLabel==='Volver al inicio'&&results.linkHref==='./index.html');
   assert(results.logoSource.includes('mine-brand-v2919.svg'),'Old V mark remained in header');
-  assert(await page.locator('.brand-sub').evaluate(el=>getComputedStyle(el).display)==='block','Brand traslados must be on its own line');
+  assert(await page.locator('.brand.brand-clean .brand-sub').evaluate(el=>getComputedStyle(el).display)==='block','Brand traslados must be on its own line');
   assert(await page.locator('body').evaluate(el=>el.classList.contains('via-mine-v29110')),'New design script not active');
   assert(results.buttonStyle.bg.includes('gradient'),'Inicio must use approved premium gradient');
   assert(parseFloat(results.buttonStyle.borderRadius)>30,'Inicio must be pill shaped');
