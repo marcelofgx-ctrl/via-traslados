@@ -95,7 +95,7 @@ async function caseRun(os,width,height,loggedIn,keyboard=false){
    }
   });
   assert.equal(info.os,os,'Wrong browser OS');
-  assert.equal(info.titleDisplay,'inline-flex','Reference wordmark must be in one line');
+  assert(['flex','inline-flex'].includes(info.titleDisplay),'Reference wordmark flexbox missing'); // Flex items are blockified by CSS computed style.
   assert.equal(info.titleDirection,'row','Words are still stacked instead of horizontal');
   assert(info.titleHeight<33,'Wordmark appears multi-line '+JSON.stringify(info));
   assert(info.subRect.top+6>=info.brandRect.top,'Bad text vertical placement');
