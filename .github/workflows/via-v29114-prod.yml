@@ -1,0 +1,59 @@
+name: Vía Traslados V29.1.14 - guarded passenger web-only production and V29.1.13 rollback
+on:
+  push:
+    branches: [via-booking-fresh-gps-v29114-20261122]
+    paths: ["release/VIA_V29114_QA_APPROVED"]
+permissions:
+  contents: read
+concurrency:
+  group: via-web-prod-v29114-fresh-trip
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require approved Android/iOS QA and original active Cloudflare Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -s release/VIA_V29114_QA_APPROVED
+          python3 -m py_compile scripts/via-v29114-release.py
+          node --check scripts/via-v29114-app.js
+          node --check scripts/via-v29114-reference.js
+          python3 -c "import runpy;f=runpy.run_path('scripts/via-v291-prepare.py');assert f['active_version']()=='2f2407d8-d665-47c6-9b14-edf7655b00a4','Prod changed, do not deploy'"
+      - name: Capture exact live assets, hash compare and preserve original Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29114-release.py prepare
+      - name: Verify isolated QA Worker + Wrangler Cloudflare production dry-run
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 scripts/via-v29114-release.py qa
+          npx --yes wrangler@4.160.1 deploy --config mine-v29114-build/wrangler.prod.jsonc --dry-run --keep-vars
+      - name: Atomic web-only release + source hashes + rollback on verification failure
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29114-release.py release
+      - name: Independent API OTP, georoutes and conductor APK availability (no writes)
+        run: node tests/prod-core-invariants.mjs
+      - name: Keep exact Worker rollback and source asset manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29114-production-manifest-and-rollback
+          path: mine-v29114-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
