@@ -7,7 +7,17 @@
  function start(){
   const list=document.getElementById('mine-list');
   const pager=document.querySelector('.via-mine-pager');
-  if(!list||!pager)return;
+  // WebKit may execute deferred files before the existing V29.1.7 pager
+  // controller has inserted its nav: attach once, on the real DOM event.
+  if(!list||!pager){
+   const ready=new MutationObserver(()=>{
+    if(document.getElementById('mine-list')&&document.querySelector('.via-mine-pager')){
+     ready.disconnect();start()
+    }
+   });
+   ready.observe(document.body,{childList:true,subtree:true});
+   return
+  }
   let pending=false,shift=0;
   function measure(){
    pending=false;
