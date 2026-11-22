@@ -1,0 +1,26 @@
+name: Vía Traslados - independent PROD D1 postcleanup read-only verify
+on:
+  push:
+    branches: [via-d1-prod-admin-only-audit-20261122]
+    paths: [".github/workflows/via-d1-admin-only-final.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Independently verify D1 all booking/customer tables empty and founder administrator intact
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/via-d1-admin-only-final.mjs
+      - name: Verify service API route/geocoder and APK remain live
+        run: node tests/prod-core-invariants.mjs
