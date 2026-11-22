@@ -80,6 +80,7 @@ def prepare():
  assert 'mine-premium-v2917.js?v=1' in mine,'Missing original pagination'
  assert 'via-home-arrow' in mine and 'mine-login-passkey' in mine,'Missing visual header or real passkey control'
  assert 'mine-v29110-theme.css' not in mine,'V29.1.10 already deployed'
+ mine=exact(mine,'<span class="via-home-arrow" aria-hidden="true">→</span>', '<span class="via-home-arrow" aria-hidden="true">←</span>')
  mine=exact(mine,'</head>','<link rel="stylesheet" href="./mine-v29110-theme.css?v=1"></head>')
  mine=exact(mine,'</body>','<script src="./mine-v29110-theme.js?v=1"></script></body>')
  (ASSETS/'mis-reservas.html').write_text(mine)
