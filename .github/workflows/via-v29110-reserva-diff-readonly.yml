@@ -1,0 +1,22 @@
+name: Vía Traslados - reserva HTML differences readonly
+on:
+  push:
+    branches: [via-mine-v29110-premium-20261122]
+    paths:
+      - "scripts/via-v29110-reserva-readonly.mjs"
+      - ".github/workflows/via-v29110-reserva-diff-readonly.yml"
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compare only public reserva.html; no writes or private API
+        run: node scripts/via-v29110-reserva-readonly.mjs
