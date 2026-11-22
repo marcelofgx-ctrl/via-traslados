@@ -3,8 +3,10 @@ on:
   push:
     branches: [via-mine-v29112-cohesion-20261122]
     paths:
-      - ".github/workflows/via-mine-v29112-qa.yml"
-      - "scripts/via-mine-v29112-*"
+      - "scripts/via-mine-v29112-release.py"
+      - "scripts/via-mine-v29112-cohesion.css"
+      - "scripts/via-mine-v29112-cohesion.js"
+      - "scripts/via-mine-v29112-browser-qa.mjs"
   workflow_dispatch:
 permissions:
   contents: read
