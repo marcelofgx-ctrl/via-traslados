@@ -2,7 +2,7 @@ name: Vía Traslados - D1 PROD admin-only PREDELETE READ ONLY
 on:
   push:
     branches: [via-d1-prod-admin-only-audit-20261122]
-    paths: [".github/workflows/via-d1-admin-only-audit.yml"]
+    paths: [".github/workflows/via-d1-admin-only-audit.yml", "scripts/via-d1-admin-only-predelete-audit.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
