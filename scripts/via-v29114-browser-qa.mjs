@@ -44,6 +44,30 @@ async function instance(os,w,h){
  await context.grantPermissions(['geolocation'],{origin:QA});
  await context.setGeolocation(pos1);
  const page=await context.newPage(),errors=[];
+ // Headless WebKit does not always surface Playwright's virtual geolocation.
+ // Only the sensor boundary is simulated; reverse API, browser DOM,
+ // event ordering and all production application logic remain real.
+ if(os==='ios')await page.addInitScript(first=>{
+  window.__viaQaSensor={...first};
+  let next=0;const active=new Set();
+  const sensor={
+   watchPosition(success,fail,settings){
+    const id=++next;active.add(id);
+    Promise.resolve().then(()=>{
+     if(!active.has(id))return;
+     const v=window.__viaQaSensor;
+     success({coords:{latitude:v.latitude,longitude:v.longitude,accuracy:v.accuracy},timestamp:Date.now()});
+    });
+    return id;
+   },
+   clearWatch(id){active.delete(id)},
+   getCurrentPosition(success,fail,settings){
+    const v=window.__viaQaSensor;
+    success({coords:{latitude:v.latitude,longitude:v.longitude,accuracy:v.accuracy},timestamp:Date.now()});
+   }
+  };
+  Object.defineProperty(navigator,'geolocation',{configurable:true,get:()=>sensor});
+ },pos1);
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(s=>localStorage.setItem('via-customer-session-v1',JSON.stringify(s)),session);
  let reverseRows=[{street:'Avenida Italia',lat:pos1.latitude,lng:pos1.longitude,
@@ -138,6 +162,7 @@ async function instance(os,w,h){
   reverseRows=[{street:'Avenida Italia 5781',lat:pos2.latitude,lng:pos2.longitude,
    city:'Montevideo',department:'Montevideo',distanceMeters:12,source:'ide'}];
   await context.setGeolocation(pos2);
+  if(os==='ios')await page.evaluate(p=>{window.__viaQaSensor={...p}},pos2);
   await page.locator('#location-shortcut').click();
   await page.waitForFunction(()=>document.querySelector('#via-gps-feedback')?.textContent.includes('Número orientativo'),
    {timeout:10000}).catch(async()=>{throw Error('New GPS reference not refreshed. '+JSON.stringify(await check(page)))});
