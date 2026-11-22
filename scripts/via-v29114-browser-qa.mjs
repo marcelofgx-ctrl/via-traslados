@@ -131,6 +131,7 @@ async function instance(os,w,h){
   assert(state.home.lat!==''&&state.home.source==='gps','GPS failed to store current coordinates');
   assert(state.note.includes('número')&&state.note.includes('mapa'),'No actionable street/door guidance');
   assert(reverseCalls===1,'First GPS should make one reverse lookup; observed '+reverseCalls);
+  await page.screenshot({path:OUT+'/'+os+'-'+w+'x'+h+'-street-no-number.png',fullPage:false});
   passed++;console.log('VIA_V29114_PASS_'+os+'_'+w+'_GPS_STREET_ONLY');
 
   // A second tap must ask for fresh coordinates, not rely on the old reverse response.
@@ -146,6 +147,7 @@ async function instance(os,w,h){
   assert(state.note.includes('referencia')&&state.note.includes('Verificá'),
    'Approximate number displayed as definitive');
   assert(reverseCalls===2,'Two explicit GPS taps must trigger two fresh reverse requests');
+  await page.screenshot({path:OUT+'/'+os+'-'+w+'x'+h+'-approx-number.png',fullPage:false});
   passed++;console.log('VIA_V29114_PASS_'+os+'_'+w+'_GPS_EXPLICIT_REFRESH');
 
   // Do not let a late reverse geocode overwrite a manually edited origin.
