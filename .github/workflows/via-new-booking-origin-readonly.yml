@@ -1,0 +1,21 @@
+name: Via Traslados - read-only new booking near-me behavior audit
+on:
+  push:
+    branches: [via-new-booking-origin-readonly-20261122]
+    paths: [".github/workflows/via-new-booking-origin-readonly.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Inspect actual published passenger JavaScript and address resolution, GET only
+        run: node scripts/via-new-booking-origin-readonly.mjs
