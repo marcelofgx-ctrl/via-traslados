@@ -11,3 +11,5 @@ Return-to-home arrow is left-facing.
 Rollback: Cloudflare web Worker ONLY to version f35ac851-6f1b-403c-b2c7-f7c437693e0f.
 
 Release retry after automatic rollback 45013501765: normalized HTML-only Cloudflare analytics difference. Original v29.1.9 restored and verified. UI assets and 23 browser QA unchanged.
+
+Retry after 22 Nov GET-only comparison confirmed one additional newline before </body> in reserva.html; canonical integrity check only folds runs of linefeeds before closing body. No page tags or scripts changed. Source analysis: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45013927283
