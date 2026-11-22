@@ -1,0 +1,78 @@
+name: Vía Traslados V29.1.14 - fresh booking GPS Android Chrome and WebKit iOS QA
+on:
+  push:
+    branches: [via-booking-fresh-gps-v29114-20261122]
+    paths:
+      - ".github/workflows/via-v29114-qa.yml"
+      - "scripts/via-v29114-reference.js"
+      - "scripts/via-v29114-app.js"
+      - "scripts/via-v29114-release.py"
+      - "scripts/via-v29114-browser-qa.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v29114-gps-booking-qa
+  cancel-in-progress: true
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact production v29.1.13 and script syntax guard
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 -m py_compile scripts/via-v29114-release.py
+          node --check scripts/via-v29114-reference.js
+          node --check scripts/via-v29114-app.js
+          node --check scripts/via-v29114-browser-qa.mjs
+          python3 -c "import runpy;f=runpy.run_path('scripts/via-v291-prepare.py');assert f['active_version']()=='2f2407d8-d665-47c6-9b14-edf7655b00a4','Production changed';print('VIA_V29114_ORIGIN_GUARD_PASS')"
+      - name: Snapshot real web worker, clone asset hashes and patch only 2 passenger JS files
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29114-release.py prepare
+      - name: Deploy isolated QA Worker with real API disabled and passenger data mocked
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v29114-build/wrangler.qa.jsonc
+          python3 scripts/via-v29114-release.py qa
+      - name: Install Android Chrome and iPhone WebKit browser engines
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit >/dev/null
+      - name: Real browser 36 new draft/portal/BFCache/stale GPS tests and screenshots
+        run: node scripts/via-v29114-browser-qa.mjs
+      - name: Preserve 8 Android/iOS keyboard login no-scroll regressions
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: Preserve 7 authenticated Mis reservas pagination no-scroll regressions
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v29110-browser.mjs
+      - name: Verify production untouched, OTP route and APK healthy
+        run: node tests/prod-core-invariants.mjs
+      - name: Archive real Android/iOS screenshots, original source hashes and release manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29114-fresh-booking-gps-qa-android-ios
+          path: |
+            via-v29114-proof/
+            mine-v2918-proof/
+            mine-v29110-proof/
+            mine-v29114-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
