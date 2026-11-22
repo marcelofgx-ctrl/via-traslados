@@ -1,0 +1,11 @@
+Vía Traslados v29.1.10 — approved visual theme based on user's 22 November screenshot.
+Production web baseline: f35ac851-6f1b-403c-b2c7-f7c437693e0f (v29.1.9).
+QA success: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45013293504
+QA: 8 Android/iOS header tests; 8 keyboard/login tests; 7 authenticated/pagination/initials tests.
+Only changes to current website: index.html visible version marker, mis-reservas.html linked CSS/JS.
+Only new static presentation assets: mine-v29110-theme.css, mine-v29110-theme.js, mine-contours-v29110.svg.
+No changes to API, D1, OTP, passkeys, signed APK, geocoder or booking logic.
+No fake customer photograph or nonfunctional notification bell.
+Customer greeting initials derived from real displayed name. Title remains 'Mis reservas'.
+Return-to-home arrow is left-facing.
+Rollback: Cloudflare web Worker ONLY to version f35ac851-6f1b-403c-b2c7-f7c437693e0f.
