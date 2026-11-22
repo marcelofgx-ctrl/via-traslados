@@ -1,0 +1,21 @@
+name: Vía Traslados V29.1.13 - audit cropped Inicio baseline READ ONLY
+on:
+  push:
+    branches: [via-mine-v29113-inicio-no-clip-20261122]
+    paths: [".github/workflows/via-mine-v29113-audit.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Confirm live v29.1.12 and rollback before edits
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29113-audit.py
