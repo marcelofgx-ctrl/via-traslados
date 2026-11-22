@@ -1,0 +1,54 @@
+name: Vía Traslados V29.1.11 - gated precise web-only production release
+on:
+  push:
+    branches: [via-mine-v29111-reference-fidelity-20261122]
+    paths:
+      - "release/VIA_V29111_QA_APPROVED"
+permissions:
+  contents: read
+concurrency:
+  group: via-web-prod-v29111-approved-fidelity
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static syntax / strict web-only source guard
+        run: |
+          python3 -m py_compile scripts/via-mine-v29111-release.py
+          node --check scripts/via-mine-v29111-reference-qa.mjs
+      - name: Reconstruct only the real current production Worker version V29.1.10
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29111-release.py prepare
+      - name: QA version and production dry-run before any live modification
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 scripts/via-mine-v29111-release.py qa
+          npx --yes wrangler@4.160.1 deploy --config mine-v29111-build/wrangler.prod.jsonc --dry-run --keep-vars
+      - name: Deploy only web Worker static UI and verify/rollback automatically
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29111-release.py release
+      - name: Verify existing production OTP CORS geocoder routes and signed APK
+        run: node tests/prod-core-invariants.mjs
+      - name: Save web-only release manifest and rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29111-fidelity-production-release-manifest
+          path: mine-v29111-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
