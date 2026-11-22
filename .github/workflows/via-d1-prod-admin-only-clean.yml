@@ -1,0 +1,33 @@
+name: Vía Traslados - guarded PROD D1 cleanup retaining founder admin
+on:
+  push:
+    branches: [via-d1-prod-admin-only-audit-20261122]
+    paths: ["release/VIA_D1_ADMIN_ONLY_DELETE_APPROVED"]
+permissions:
+  contents: read
+concurrency:
+  group: via-prod-d1-admin-only-cleardown
+  cancel-in-progress: false
+jobs:
+  delete-test-data:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require explicit marker and JS syntax; identify exact production D1
+        run: |
+          test -s release/VIA_D1_ADMIN_ONLY_DELETE_APPROVED
+          node --check scripts/via-d1-prod-admin-only-clean.mjs
+      - name: Atomic-ish D1 batch delete only passenger/booking test data, keep founder, bookmark recovery
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VIA_ALLOW_D1_PROD_CLEAN: EXPLICITLY_APPROVED_2026_11_22
+        run: node scripts/via-d1-prod-admin-only-clean.mjs
+      - name: Smoke public API without creating bookings or sending OTP mail
+        run: node tests/prod-core-invariants.mjs
