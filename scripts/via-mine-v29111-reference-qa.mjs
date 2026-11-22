@@ -32,10 +32,14 @@ async function caseRun(os,width,height,loggedIn,keyboard=false){
  if(loggedIn)await page.addInitScript(s=>localStorage.setItem('via-customer-session-v1',JSON.stringify(s)),session);
  await page.route('**/*',route=>{
   const u=new URL(route.request().url());
-  if(u.origin!==STAGE)return route.abort();
+  // The real passenger frontend calls a SEPARATE API Worker origin.
+  // Fulfill synthetic customer API before blocking other external hosts,
+  // exactly as the established V29.1.10 QA does.
   if(u.pathname==='/api/customer/me')return route.fulfill({status:200,json:{profile,passkeys:1,expiresAt:session.expiresAt}});
   if(u.pathname==='/api/customer/bookings')return route.fulfill({status:200,json:entries});
+  if(u.pathname==='/api/customer/logout')return route.fulfill({status:200,json:{signedOut:true}});
   if(u.pathname.startsWith('/api/'))return route.fulfill({status:503,json:{error:'QA only'}});
+  if(u.origin!==STAGE)return route.abort();
   return route.continue();
  });
  try {
