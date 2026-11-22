@@ -1,0 +1,70 @@
+name: Vía Traslados V29.1.10 - premium visual QA Android iOS
+on:
+  push:
+    branches: [via-mine-v29110-premium-20261122]
+    paths:
+      - ".github/workflows/via-mine-v29110-qa.yml"
+      - "scripts/via-mine-v29110-*"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-mine-v29110-snapshot-qa
+  cancel-in-progress: true
+jobs:
+  visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static JS and Python checks
+        run: |
+          python3 -m py_compile scripts/via-mine-v29110-release.py
+          node --check scripts/via-mine-v29110-theme.js
+          node --check scripts/via-mine-v29110-browser.mjs
+          node --check scripts/via-mine-v29110-brand-qa.mjs
+          node --check scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: Build from currently active WEB V29.1.9 with strict source-hash inventory
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29110-release.py prepare
+      - name: Deploy isolated QA Worker with authentication API blocked
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v29110-build/wrangler.qa.jsonc
+          python3 scripts/via-mine-v29110-release.py qa
+      - name: Install Chrome and Apple WebKit browser engines
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit >/dev/null
+      - name: 8 brand and CTA layouts, iPhone and Android, including keyboard
+        run: node scripts/via-mine-v29110-brand-qa.mjs
+      - name: 8 legacy login and keyboard accessibility cases
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: 7 authenticated reservations, initials, paging and iOS UX
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v29110-browser.mjs
+      - name: Retain QA evidence, visual screenshots, exact source hashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29110-premium-theme-qa-proof
+          path: |
+            mine-v29110-brand-proof/
+            mine-v2918-proof/
+            mine-v29110-proof/
+            mine-v29110-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 21
