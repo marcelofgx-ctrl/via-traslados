@@ -131,11 +131,11 @@ async function caseRun(os,width,height,loggedIn,keyboard=false){
       cardLeft:rect('.via-booking-card').left,pagerBottom:pager.bottom, pagerTransform:getComputedStyle(document.querySelector('.via-mine-pager')).transform,
       pagerInline:document.querySelector('.via-mine-pager').style.getPropertyValue('--via-v12-pager-y'),
       pagerHidden:document.querySelector('.via-mine-pager').hidden,
-      rootClass:document.body.className,
+      rootClass:document.body.className,v12Boot:document.body.dataset.viaMineV12Boot||'NOT_EXECUTED',
       resourceLoaded:performance.getEntriesByType('resource').some(x=>x.name.includes('mine-v29112-cohesion.js')),
       pageText:document.querySelector('[data-page-count]')?.textContent||''};
     });
-    console.log('VIA_V29112_COHESION_DIAGNOSTIC '+JSON.stringify({os,width,height,...cohesion}));
+    console.log('VIA_V29112_COHESION_DIAGNOSTIC '+JSON.stringify({os,width,height,pageErrors:errors,...cohesion}));
     assert.equal(cohesion.total,6,'Active reservation count changed');
     assert(cohesion.visible>=1&&cohesion.visible<=5,'Adaptive reservation page size failed');
     assert(cohesion.pageText.includes('de 6'),'Real simulated count is not preserved '+JSON.stringify(cohesion));
