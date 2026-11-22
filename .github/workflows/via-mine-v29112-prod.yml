@@ -1,0 +1,60 @@
+name: Vía Traslados V29.1.12 - gated web-only production release and rollback
+on:
+  push:
+    branches: [via-mine-v29112-cohesion-20261122]
+    paths:
+      - "release/VIA_V29112_QA_APPROVED"
+permissions:
+  contents: read
+concurrency:
+  group: via-web-prod-v29112-cohesion-approved
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require QA approval, fresh Cloudflare V29.1.11 and rollback target
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -s release/VIA_V29112_QA_APPROVED
+          python3 -m py_compile scripts/via-mine-v29112-release.py
+          node --check scripts/via-mine-v29112-cohesion.js
+          node --check scripts/via-mine-v29112-browser-qa.mjs
+          python3 scripts/via-mine-v29112-audit.py
+      - name: Snapshot production and require exact web-only hash manifest
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29112-release.py prepare
+      - name: Verify isolated QA and Cloudflare production dry-run
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 scripts/via-mine-v29112-release.py qa
+          npx --yes wrangler@4.160.1 deploy --config mine-v29112-build/wrangler.prod.jsonc --dry-run --keep-vars
+      - name: Atomic production WEB-only deploy, live version check and automatic V29.1.11 rollback on failed smoke
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29112-release.py release
+      - name: Confirm OTP, route preview, geocoding and signed APK availability
+        run: node tests/prod-core-invariants.mjs
+      - name: Save web source manifest and rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29112-production-manifest-and-rollback
+          path: mine-v29112-build/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
