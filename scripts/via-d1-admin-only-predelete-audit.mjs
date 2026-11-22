@@ -24,6 +24,7 @@ const query=async sql=>{
  return r[0].results||[];
 };
 const tables=(await query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")).map(r=>r.name);
+const accessibleTables=tables.filter(name=>!name.startsWith('_cf_')); // Cloudflare internal _cf_KV is SQLITE_AUTH protected, never read or delete.
 for(const n of ['staff_users','staff_contacts','bookings','customers','service_settings'])assert(tables.includes(n),'Required table absent: '+n);
 const founderMail='marcelof.gx@gmail.com',founderDigits='94842756';
 const staff=await query('SELECT u.id,u.email,u.role,u.status,c.phone,c.email_verified_at FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id');
@@ -36,7 +37,7 @@ console.log('VIA_D1_FOUNDER_PRELIM '+JSON.stringify({
  approvedAdmins:adminCount,staffTotal:staff.length
 }));
 const counts={},countFailures={};
-for(const name of tables){
+for(const name of accessibleTables){
  assert(/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name),'Unexpected table name');
  try{counts[name]=Number((await query('SELECT COUNT(*) AS total FROM "'+name+'"'))[0]?.total||0)}
  catch(error){counts[name]=null;countFailures[name]=String(error.message||error).slice(0,500)}
@@ -58,7 +59,7 @@ const report={
  },
  admin_safe_to_preserve:adminSafe,approved_administrators:adminCount,
  staff_total:staff.length,nonfounder_staff:staff.length-(founder?1:0),
- table_count:tables.length,table_row_counts:counts,table_count_failures:countFailures,
+ table_count:tables.length,accessible_table_count:accessibleTables.length,internal_tables_excluded:tables.filter(x=>x.startsWith('_cf_')),table_row_counts:counts,table_count_failures:countFailures,
  d1_time_travel_bookmark_status:bookmarkStatus,
  d1_time_travel_bookmark:bookmark,
  intent:'AUDIT_READ_ONLY',deletes_performed:0
