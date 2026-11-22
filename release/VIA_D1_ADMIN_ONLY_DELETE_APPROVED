@@ -1,0 +1,11 @@
+Vía Traslados — 2026-11-22 production D1 cleanup explicitly requested by user.
+Scope: Cloudflare D1 'via-traslados-db' only; independently verified separate from QA.
+Production D1 UUID guard: dfc6a732-4817-4c49-8f2b-16ecaff3ecc0.
+PREDELETE READ-ONLY audit (SUCCESS): https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45043697453
+Founder account exactly marcelof.gx@gmail.com / 094842756; status approved, role admin, email verified.
+1 staff account (founder only), 17 bookings, 3 passengers. Database bookmark predelete available.
+Action approved: DELETE passenger bookings, history, passenger profiles, customer tokens and passkeys, OTP test attempts, rate limits, historic admin audit and route preview caches.
+PRESERVE ALL staff_users, staff_contacts, staff_sessions, staff_refresh_tokens, staff_email_codes, staff_password_resets and service_settings; also schema/triggers/indexes.
+Before each deletion verify database UUID/name, founder identity/role, current row counts against audited baseline, exact table allowlist and fetch fresh Time Travel recovery bookmark.
+No changes to Workers, API, GitHub main, web passenger V29.1.13, APK, QA D1 or unrelated projects.
+If any preflight differs abort with 0 deletions. Postcheck must verify all deletion tables empty and staff unchanged.
