@@ -120,10 +120,15 @@ def smoke(url):
  for p in ('app.js','store.js','passkeys.js','config.js','reserva.html','geo-v2/core.mjs',
            'descargas/via-traslados-conductor-v35.apk'):
   buf,_=GET(url+'/'+p)
-  # Cloudflare may inject a first-party analytics script into HTML responses.
-  # Compare normalized HTML exactly, never weaken JS/Geo/OTP/APK hashes.
-  if p.endswith('.html'):buf=clean(buf)
-  assert digest(buf)==digest((ASSETS/p).read_bytes()),'Functionality-bearing asset changed '+p
+  expected=(ASSETS/p).read_bytes()
+  if p.endswith('.html'):
+   # Verified read-only 22 Nov: production reserva.html has 15 newlines
+   # before </body>; re-packaged stage has 16. No tags/scripts differ.
+   # Normalize ONLY a run of newline bytes immediately before </body>.
+   # Continue requiring exact equality of the rest of the HTML.
+   buf=re.sub(rb'\n{2,}(?=</body>)',b'\n',clean(buf))
+   expected=re.sub(rb'\n{2,}(?=</body>)',b'\n',expected)
+  assert digest(buf)==digest(expected),'Functionality-bearing asset changed '+p
  print('VIA_V29110_SMOKE_OK '+url,flush=True)
 def qa():
  for i in range(12):
