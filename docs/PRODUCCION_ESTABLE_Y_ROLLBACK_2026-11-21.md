@@ -1,5 +1,29 @@
 # Vía Traslados — Congelamiento de producción y rollback (21/11/2026)
 
+## ESTADO PRODUCTIVO VIGENTE — v29.1.10 (22/11/2026, Uruguay)
+
+**Esta entrada reemplaza todos los estados históricos de versiones anteriores indicados más abajo.**
+
+| Elemento | Estado comprobado |
+| --- | --- |
+| Sitio real | https://viatraslados.com — **v29.1.10** |
+| Worker web al 100 % | `via-traslados-web-prod`, `ca5d72af-db3e-43ab-8476-727e44271e50` |
+| Rollback directo web | **v29.1.9**, `f35ac851-6f1b-403c-b2c7-f7c437693e0f` |
+| API, D1, reservas, OTP, huellas, APK V35 | Sin modificaciones |
+
+Se aplicó visualmente sólo en `Mis reservas` la referencia aprobada por el usuario: logo V verde con palabra `vía` destacada y `traslados` debajo, Inicio compacto con flecha a la izquierda, bienvenida verde con líneas topográficas, inicial del nombre autenticado en lugar de una fotografía inventada, tonos de tarjetas más delicados y controles de paginación sin desplazamiento general. No se añadió campana ficticia ni se alteró el título `Mis reservas`.
+
+Se reconstruyeron **49 recursos existentes desde la web productiva efectiva v29.1.9** y se conservaron íntegramente todos salvo `index.html` (indicador de versión) y `mis-reservas.html` (enlaces visuales/arrow). Se agregaron tres assets: `mine-v29110-theme.css`, `mine-v29110-theme.js` y `mine-contours-v29110.svg`. La app, store, passkeys, geocodificador, configuración, API y APK conservaron hashes.
+
+- QA Android/Chrome e iOS/WebKit: **23 casos aprobados**, incluyendo teclado abierto, identidad visual, saludo derivado de nombre autenticado, pestañas y reservas paginadas: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45013293504
+- Despliegue productivo final exitoso, verificado con recursos públicos y `PROD_CORE_INVARIANTS_PASS`: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45014010616
+- Inventario y respaldo de release: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45014010616/artifacts/14750273652
+- Fuente exacta: rama `via-mine-v29110-premium-20261122`, lanzamiento por commit `4060f417f2eb1e64f641dad3ea9f5ec754c9c29c`.
+- En dos intentos previos falló únicamente la comparación del HTML público de `reserva.html` por un salto de línea extra antes de `</body>` añadido al reempaquetar assets. Ambos intentos **hicieron rollback comprobado** a v29.1.9. Diagnóstico GET-only confirmó contenido y scripts iguales, con diferencia de un carácter de espacio: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45013927283 . La validación final toleró únicamente saltos de línea repetidos antes de `</body>` en HTML; los archivos funcionales conservaron comparación SHA estricta.
+
+**Rollback si el usuario detecta un defecto visual:** revertir exclusivamente el Worker web `via-traslados-web-prod` a `f35ac851-6f1b-403c-b2c7-f7c437693e0f`, sin tocar D1/API, actualizar el ancla del auditor de lectura y comprobar que se muestra v29.1.9. La evidencia QA valida navegador simulado; el acceso biométrico físico y la entrega real de OTP no se certificaron en este release.
+
+
 ## ESTADO PRODUCTIVO ACTUAL — v29.1.9 (21/11/2026, 18:40 Uruguay)
 
 **Esta sección reemplaza el estado de las entradas históricas que aparecen más abajo.**
