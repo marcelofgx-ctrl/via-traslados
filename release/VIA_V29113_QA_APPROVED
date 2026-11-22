@@ -1,0 +1,14 @@
+Vía Traslados — V29.1.13 CSS-only Inicio clipping hotfix approved.
+User expressly requested production fix based on real Android cropped Inicio screenshot, 2026-11-22.
+Audited active V29.1.12 Cloudflare Worker: 1de806f9-a97c-4948-98ab-ccbc94f5e0e1.
+Rollback target MUST be V29.1.12 Worker 1de806f9-a97c-4948-98ab-ccbc94f5e0e1.
+GET-only audit passed: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45034065760
+Isolated Android Chrome / iOS WebKit QA 27/27 PASSED: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45034326178
+- 12/12 mobile visible text rect, button scrollWidth, brand collision, small sizes, large text, guest/account, navigation, original visual asset comparisons
+- 8/8 Android/iOS login keyboard no-scroll regressions
+- 7/7 signed-in pagination/history no-scroll regressions
+Original production Worker source and 55 original assets reconstructed; unchanged functional assets verified by SHA256.
+Only index.html release version, mis-reservas.html stylesheet link, plus ONE new CSS asset.
+NO other HTML edits. NO JS changes. NO API, D1, OTP, authentication, booking, geocoder, APK or other project changes.
+Publish ONLY if V29.1.12 still the current active Worker; compare all source hashes before deploy;
+stage smoke and Wrangler --dry-run must pass. On failure revert ONLY web Worker to V29.1.12.
