@@ -43,7 +43,10 @@
   }
   function schedule(){
    if(pending)return;
-   pending=true;requestAnimationFrame(()=>requestAnimationFrame(measure))
+   pending=true;
+   // WebKit headless / iOS can defer nested animation frames when visual
+   // viewport changes. A microtask runs deterministically in both engines.
+   Promise.resolve().then(measure)
   }
   new MutationObserver(schedule).observe(list,{
    childList:true,subtree:true,attributes:true,attributeFilter:['style']
