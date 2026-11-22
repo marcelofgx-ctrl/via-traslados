@@ -26,7 +26,21 @@ Fecha: 2026-11-22 (Uruguay). Actualización visual de la web de pasajeros ÚNICA
 5. SOLO SI QA pasa: crear `release/VIA_V29112_QA_APPROVED`. El workflow productivo se dispara únicamente por ese marcador.
 6. Publicación guarded con preflight por hashes y prueba postdespliegue de servicios existentes; rollback automático al Worker web original V29.1.11 ante fallo. No modificar el Worker API ni D1 ni APK.
 
-## Estado de publicación
+## Resultado final confirmado — 2026-11-22
 
-**Pendiente de completar y verificar en el workflow de producción.** No considerar V29.1.12 publicada únicamente porque el código exista en GitHub o QA.
+**V29.1.12 PUBLICADA y comprobada por el Worker de Cloudflare.**
+
+- **Worker web efectivo:** `1de806f9-a97c-4948-98ab-ccbc94f5e0e1`.
+- **Producción previa / rollback primario:** V29.1.11 `f5d43ef0-1a28-4bce-a078-6fb364399e72`.
+- **Histórico anterior disponible:** V29.1.10 `ca5d72af-db3e-43ab-8476-727e44271e50`.
+- **QA automatizada**: [GitHub Actions 45032068000](https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45032068000), **27/27 PASS**: 12 pruebas visuales con Chrome Android y WebKit iOS, 8 pruebas de teclado y acceso de invitado, y 7 regresiones de paginación/sesión. Artefacto `via-v29112-cohesion-android-ios-visual-proof`, id `14758127610` (~9 MB), con capturas stage V29.1.12 y referencias productivas V29.1.11 y manifest completo.
+- En móvil **320×640 Android y 375×667 iOS**, con dos reservas visibles sobre seis simuladas, la paginación conserva el contador `1–2 de 6`, a aproximadamente 9 px de la última tarjeta. Sin scroll de página ni cortes en geometrías aprobadas.
+- **Publicación productiva**: [GitHub Actions 45032371585](https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45032371585), **SUCCESS**. Log: `VIA_V29112_PRODUCTION_VERIFIED 1de806f9-a97c-4948-98ab-ccbc94f5e0e1` y `PROD_CORE_INVARIANTS_PASS OTP_CONFIG_CORS_ROUTE_GEO_FRONTEND_APK`. **No se probaron entregas reales de correos ni se crearon reservas reales**.
+- Manifest de producción: artefacto `via-v29112-production-manifest-and-rollback`, id `14758656355`.
+- Se preservaron recursos funcionales y script original del Worker reconstruyendo 53 activos desde producción real. Solo `index.html` (etiqueta versión) y `mis-reservas.html` (referencias e iconografía) cambiaron entre archivos preexistentes; se agregaron `mine-v29112-cohesion.css` y `mine-v29112-cohesion.js`.
+- No se modificaron Worker API, base D1, OTP, sesiones, passkeys, rutas, datos de reservas ni APK.
+
+## Restitución en caso de regresión posterior
+
+El rollback siempre debe afectar **únicamente** a `via-traslados-web-prod`, seleccionando Cloudflare Worker versión `f5d43ef0-1a28-4bce-a078-6fb364399e72` con tráfico 100%. No revertir `via-traslados-api` ni D1. Confirmar nuevamente contenido del HTML y versión del Worker tras cualquier rollback.
 
