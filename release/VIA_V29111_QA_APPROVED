@@ -1,0 +1,11 @@
+Vía Traslados — autorización de release web-only V29.1.11.
+Solicitud expresa del usuario: reproducción visual precisa de la segunda imagen de referencia, Android e iOS.
+Baseline verificada: v29.1.10, Cloudflare Worker ca5d72af-db3e-43ab-8476-727e44271e50.
+QA 26/26 passing: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45015832050
+- 11 fidelity checks on screenshot-reference layouts, real CSS geometry, login and reservations.
+- 8 Chrome Android/iOS WebKit keyboard regression cases.
+- 7 signed-in paginated no-scroll booking cases.
+Only ONE new CSS file, existing changed files index.html release version & mis-reservas.html CSS reference.
+No API, D1, user identity, passkey, OTP, booking, store, app, signed APK or geocoding change.
+Visual exceptions from mocked image: no fake portrait, no unimplemented notification bell; real counts and real initial from session; Inicio arrow left.
+Rollback target: v29.1.10 Cloudflare web version ca5d72af-db3e-43ab-8476-727e44271e50.
