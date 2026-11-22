@@ -81,12 +81,12 @@ def prepare():
  assert 'mine-premium-v2917.js?v=1' in mine,'Missing original pagination'
  assert 'via-home-arrow' in mine and 'mine-login-passkey' in mine,'Missing visual header or real passkey control'
  assert 'mine-v29111-fidelity.css?v=1' in mine,'Approved V29.1.11 CSS absent; stop'
-  assert 'mine-v29112-cohesion.css' not in mine,'V29.1.12 already deployed'
+ assert 'mine-v29112-cohesion.css' not in mine,'V29.1.12 already deployed'
  assert '<span class="via-home-arrow" aria-hidden="true">←</span>' in mine,'Original Inicio markup changed'
  mine=exact(mine,'</head>','<link rel="stylesheet" href="./mine-v29112-cohesion.css?v=1"></head>')
-  mine=exact(mine,'<span class="via-home-arrow" aria-hidden="true">←</span>',
+ mine=exact(mine,'<span class="via-home-arrow" aria-hidden="true">←</span>',
    '<span class="via-home-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.8V20h13V9.8"/><path d="M10 20v-6h4v6"/></svg></span><span class="via-home-divider" aria-hidden="true"></span>')
-  mine=exact(mine,'</body>','<script src="./mine-v29112-cohesion.js?v=1" defer></script></body>')
+ mine=exact(mine,'</body>','<script src="./mine-v29112-cohesion.js?v=1" defer></script></body>')
  # Existing identity/pagination/login JS must remain byte-for-byte unchanged.
  (ASSETS/'mis-reservas.html').write_text(mine)
  for name,source in ADDED.items():
@@ -167,7 +167,7 @@ def release():
  version()
  m=json.loads((OUT/'manifest.json').read_text())
  assert m['source_version']==BASE and m['display_version']==VERSION
-  assert any(v.get('version_id')==BASE for d in cf('/deployments').get('deployments',[]) for v in d.get('versions',[])),'V29.1.11 rollback unavailable'
+ assert any(v.get('version_id')==BASE for d in cf('/deployments').get('deployments',[]) for v in d.get('versions',[])),'V29.1.11 rollback unavailable'
  qa()
  # Byte-for-byte preflight of everything captured from actual live production.
  for name,h in m['source_asset_hashes'].items():
