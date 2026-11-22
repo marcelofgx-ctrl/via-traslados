@@ -164,12 +164,11 @@ async function caseRun(os,width,height,loggedIn,keyboard=false){
     await base.goto(PROD+'/mis-reservas.html',{waitUntil:'domcontentloaded'});
     await base.locator('#mine-greeting').getByText('¡Hola, Ana!',{exact:true}).waitFor();
     await base.screenshot({path:'via-v29112-visual-proof/'+os+'-'+width+'x'+height+'-v29111-baseline.png',fullPage:false});
-    const signature=async p=>p.evaluate(()=>({
-     brand:getComputedStyle(document.querySelector('.brand-monogram')).backgroundImage,
-     welcome:getComputedStyle(document.querySelector('.known-customer')).backgroundImage,
-     card:getComputedStyle(document.querySelector('.via-booking-card')).backgroundImage,
-     arrow:getComputedStyle(document.querySelector('.via-booking-card__arrow')).backgroundImage
-    }));
+    const signature=async p=>p.evaluate(()=>{
+     const bg=selector=>getComputedStyle(document.querySelector(selector)).backgroundImage.replaceAll(location.origin,'');
+     return {brand:bg('.brand-monogram'),welcome:bg('.known-customer'),
+      card:bg('.via-booking-card'),arrow:bg('.via-booking-card__arrow')}
+    });
     const before=await signature(base),after=await signature(page);
     assert.deepEqual(after,before,'Approved logo/greeting/reservation surface styles changed');
     await base.close()
