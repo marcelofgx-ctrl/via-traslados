@@ -44,3 +44,9 @@ Fecha: 2026-11-22 (Uruguay). Actualización visual de la web de pasajeros ÚNICA
 
 El rollback siempre debe afectar **únicamente** a `via-traslados-web-prod`, seleccionando Cloudflare Worker versión `f5d43ef0-1a28-4bce-a078-6fb364399e72` con tráfico 100%. No revertir `via-traslados-api` ni D1. Confirmar nuevamente contenido del HTML y versión del Worker tras cualquier rollback.
 
+
+## Comprobación independiente posterior (solo GET)
+
+- [GitHub Actions 45032530611](https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45032530611): **SUCCESS**, `VIA_V29112_POSTPROD_READ_ONLY_VERIFIED` comprobó de nuevo versión Cloudflare, HTML V29.1.12, CSS/JS efectivamente servidos, logotipo, estilos v29.1.11 conservados, JS de reservas y archivo APK.
+- También pasó `PROD_CORE_INVARIANTS_PASS OTP_CONFIG_CORS_ROUTE_GEO_FRONTEND_APK`. La entrega real de emails OTP no fue ejercitada para evitar envíos a clientes.
+- Los flujos de QA prepublicación están **anclados deliberadamente al Worker v29.1.11**. Si se intenta volver a ejecutar su auditoría inicial después de publicar v29.1.12, abortará por seguridad. Esto no representa una regresión del sitio publicado. El workflow QA quedó limitado a cambios en fuentes visuales, sin dispararse por informes postproducción.
