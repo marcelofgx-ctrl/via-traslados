@@ -1,0 +1,17 @@
+Vía Traslados — autorización automática V29.1.12, web-only Mis reservas.
+Origen VERIFICADO v29.1.11 Cloudflare web Worker f5d43ef0-1a28-4bce-a078-6fb364399e72.
+Rollback primario obligatorio: v29.1.11 f5d43ef0-1a28-4bce-a078-6fb364399e72.
+Rollback histórico disponible: v29.1.10 ca5d72af-db3e-43ab-8476-727e44271e50.
+Auditoría GET-only correcta: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45030216003
+QA 27/27 Chrome/Android + WebKit/iOS OK: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45032068000
+- 12/12 responsive screenshot/reference/pagination/nav/login/identity.
+- 8/8 keyboard and guest-login no-scroll regressions.
+- 7/7 signed-in paginated no-scroll and history regressions.
+Evidence 27 screenshots & live source manifest in QA workflow artifacts.
+Only existing page index.html release version and mis-reservas.html new CSS/icon/JS references;
+53 original productive assets snapshot, all functional assets preserved byte-for-byte.
+No changes to API, D1, auth OTP/passkeys, saved bookings, geocoder, or signed APK.
+DO NOT publish unless base v29.1.11 is STILL current, source hashes match,
+QA isolated Stage succeeds and Cloudflare Wrangler dry-run passes.
+If anything fails after production swap, automatically roll back WEB Worker to v29.1.11.
+User expressly authorized web-only production publication after QA, 2026-11-22.
