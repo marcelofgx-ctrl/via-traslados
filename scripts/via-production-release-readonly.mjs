@@ -31,13 +31,13 @@ async function get(path){
 }
 const web=await version('via-traslados-web-prod');
 const api=await version('via-traslados-api');
-const rollbackVersion='0c8c2f0a-1e0e-41ac-9c61-09ea11cf3d3b';
+const rollbackVersion='f35ac851-6f1b-403c-b2c7-f7c437693e0f';
 const webHistory=(await cf('/workers/scripts/via-traslados-web-prod/deployments'))?.deployments||[];
 assert(webHistory.some(d=>(d.versions||[]).some(v=>v.version_id===rollbackVersion)),
   'Cloudflare no conserva la versión previa: detener y revisar rollback');
-const expected='f35ac851-6f1b-403c-b2c7-f7c437693e0f';
+const expected='ca5d72af-db3e-43ab-8476-727e44271e50';
 assert.equal(web,expected,'Versión web cambió respecto del snapshot del 21/11; detener para reauditar');
-const paths=['','app.js','store.js','config.js','review-compact-v29.css','geo-v2/core.mjs','reserva.html','mis-reservas.html','passkeys.js','mine-premium-v2917.css','mine-premium-v2917.js','mine-guest-v2918.css','mine-guest-v2918.js','mine-brand-v2919.css','mine-brand-v2919.svg','descargas/via-traslados-conductor-v35.apk'];
+const paths=['','app.js','store.js','config.js','review-compact-v29.css','geo-v2/core.mjs','reserva.html','mis-reservas.html','passkeys.js','mine-premium-v2917.css','mine-premium-v2917.js','mine-guest-v2918.css','mine-guest-v2918.js','mine-brand-v2919.css','mine-brand-v2919.svg','mine-v29110-theme.css','mine-v29110-theme.js','mine-contours-v29110.svg','descargas/via-traslados-conductor-v35.apk'];
 const files={};let home;
 for(const path of paths){
   let bytes=await get(path);
@@ -48,16 +48,23 @@ for(const path of paths){
   }
   files[path||'index.html']=sha(bytes);
 }
-assert(home.includes('id="via-release-indicator"')&&home.includes('>v29.1.9</small>'),'Portada sin indicador v29.1.9');
-assert(home.includes('content="29.1.9"'),'Meta de versión no coincide');
+assert(home.includes('id="via-release-indicator"')&&home.includes('>v29.1.10</small>'),'Portada sin indicador v29.1.10');
+assert(home.includes('content="29.1.10"'),'Meta de versión no coincide');
 const mineHtml=(await get('mis-reservas.html')).toString('utf8');
 assert(mineHtml.includes('mine-brand-v2919.css?v=1')&&mineHtml.includes('via-home-arrow'),
-  'Encabezado corporativo V29.1.9 ausente en Mis reservas');
+  'Encabezado corporativo V29.1.10 ausente en Mis reservas');
 assert(mineHtml.includes('mine-guest-v2918.css?v=1')&&mineHtml.includes('mine-premium-v2917.js?v=1'),
   'Se perdió adaptación compacta o paginación');
 const brand=(await get('mine-brand-v2919.css')).toString('utf8');
 const mark=(await get('mine-brand-v2919.svg')).toString('utf8');
 assert(brand.includes('mine-brand-v2919.svg')&&mark.includes('emeraldLeft'),'Logo corporativo no coincide con la release');
+assert(mineHtml.includes('mine-v29110-theme.css?v=1')&&mineHtml.includes('mine-v29110-theme.js?v=1'),
+  'Mis reservas no utiliza V29.1.10');
+const premiumCss=(await get('mine-v29110-theme.css')).toString('utf8');
+const premiumJs=(await get('mine-v29110-theme.js')).toString('utf8');
+const topoSvg=(await get('mine-contours-v29110.svg')).toString('utf8');
+assert(premiumCss.includes('mine-contours-v29110.svg')&&premiumJs.includes('via-mine-v29110')&&topoSvg.includes('#C9F3E1'),
+ 'Faltan texturas, estilos o iniciales de la edición premium');
 const footer=home.slice(home.indexOf('<footer'),home.indexOf('</footer>'));
 assert(footer.includes('via-release-indicator'),'El indicador no está en el pie de portada');
 assert.equal(files['geo-v2/core.mjs'],'17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1','Motor geográfico modificado');
@@ -79,11 +86,11 @@ const privateResp=await fetch(apiRoot+'/api/operator/requests',{headers,signal:A
 assert([401,403].includes(privateResp.status),'Endpoint privado no está protegido: '+privateResp.status);
 assert.equal(await version('via-traslados-web-prod'),web,'Web cambió durante auditoría');
 assert.equal(await version('via-traslados-api'),api,'API cambió durante auditoría');
-const manifest={audited_utc:new Date().toISOString(),site,display_version:'29.1.9',
+const manifest={audited_utc:new Date().toISOString(),site,display_version:'29.1.10',
   web_worker:'via-traslados-web-prod',web_worker_version:web,
   api_worker:'via-traslados-api',api_worker_version:api,
   d1_name:'via-traslados-db',d1_uuid:exact[0].uuid,d1_time_travel_available:true,
   commercial_service_enabled:true,rollback_previous_web_version:rollbackVersion,
   public_sha256:files,production_modified:false};
 await writeFile('via-production-release-manifest.json',JSON.stringify(manifest,null,2)+'\n');
-console.log('PROD_RELEASE_READONLY_OK '+JSON.stringify({display:'v29.1.9',web,api,d1:'verified',timeTravel:'available',apk:'hash preserved',service:'enabled',resources:paths.length}));
+console.log('PROD_RELEASE_READONLY_OK '+JSON.stringify({display:'v29.1.10',web,api,d1:'verified',timeTravel:'available',apk:'hash preserved',service:'enabled',resources:paths.length}));
