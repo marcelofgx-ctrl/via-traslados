@@ -120,6 +120,9 @@ def smoke(url):
  for p in ('app.js','store.js','passkeys.js','config.js','reserva.html','geo-v2/core.mjs',
            'descargas/via-traslados-conductor-v35.apk'):
   buf,_=GET(url+'/'+p)
+  # Cloudflare may inject a first-party analytics script into HTML responses.
+  # Compare normalized HTML exactly, never weaken JS/Geo/OTP/APK hashes.
+  if p.endswith('.html'):buf=clean(buf)
   assert digest(buf)==digest((ASSETS/p).read_bytes()),'Functionality-bearing asset changed '+p
  print('VIA_V29110_SMOKE_OK '+url,flush=True)
 def qa():
