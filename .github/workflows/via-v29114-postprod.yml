@@ -1,0 +1,26 @@
+name: Vía Traslados V29.1.14 - independent live read-only confirmation
+on:
+  push:
+    branches: [via-booking-fresh-gps-v29114-20261122]
+    paths: [".github/workflows/via-v29114-postprod.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Independently verify current Cloudflare Worker, both JavaScript files, Mis reservas visuals, rollback and signed APK
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29114-postprod.py
+      - name: Independent public OTP/CORS, geocoder, routing and APK smoke
+        run: node tests/prod-core-invariants.mjs
