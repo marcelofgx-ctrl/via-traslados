@@ -1,0 +1,46 @@
+{
+  "origin": "https://viatraslados.com/",
+  "from": "production-v29.1.13",
+  "files": {
+    "index.html": {
+      "bytes": 22238,
+      "sha256": "bf6cd434359e266f749fbcdfe40c17255d2515741a140df369cdb62f6dda0e96"
+    },
+    "reference.js": {
+      "bytes": 15875,
+      "sha256": "e585ee99e2214c6fd24e776c1dfa9eb75be41cc63e2040806237835abee6c1a2"
+    },
+    "app.js": {
+      "bytes": 57308,
+      "sha256": "e683d1cb152eec30c6bc25c80291b63e43e5bcd385e031674e90cb1e63a40216"
+    },
+    "address-autocomplete.js": {
+      "bytes": 10789,
+      "sha256": "54f74853a72debba09d9f18eec44fa3dc05f3f366250b5c41672555c28a63a2a"
+    },
+    "geo-v2/core.mjs": {
+      "bytes": 5059,
+      "sha256": "17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1"
+    },
+    "wizard-ux.js": {
+      "bytes": 2862,
+      "sha256": "45e3efb5ed7f4ba3a46ba02f90018ecaa16853a5beb1e0064284a6adf84c6353"
+    },
+    "address-selected-preview.js": {
+      "bytes": 3938,
+      "sha256": "bf0f7aa019eab8f42fe8dc5fe12a2c559f5871ff07266a4c8ea0dc1fb4f234e8"
+    },
+    "store.js": {
+      "bytes": 12788,
+      "sha256": "3dc61982cbf5498402ae7eebdf01a03979d34fca9d81d5d77497d748e3b4e6c8"
+    },
+    "map-point-picker.js": {
+      "bytes": 24257,
+      "sha256": "91bbd9de941569b65b318f82b42186e5b40e6f4baa3efd1efadd22689cffb483"
+    },
+    "config.js": {
+      "bytes": 236,
+      "sha256": "51c35d348defb7f6b804457ffee090642cc609a9c22d57f3521e6a7706247273"
+    }
+  }
+}
