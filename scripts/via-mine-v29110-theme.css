@@ -1,0 +1,223 @@
+/* Vía Traslados V29.1.10 — topographic premium, reference 22/11/2026.
+   Only Mis reservas UI: brand, home CTA, signed-in welcome and reservation cards.
+   NO booking/auth/Geoapify logic, NO artificial avatars, NO inert bell.
+   Retains body no-scroll and existing responsive keyboard/login rules. */
+body[data-page="mine"].via-mine-v29110{
+ --v10-ink:#053e35;
+ --v10-forest:#064f44;
+ --v10-dark:#023e35;
+ --v10-mint:#dbf6e9;
+ background:
+  radial-gradient(ellipse 64% 40% at 99% 0%,rgba(74,205,166,.20),transparent 87%),
+  linear-gradient(165deg,#f4fcf8 0%,#eaf8f2 67%,#f2faf5 100%)!important;
+}
+/* A clean visual identity close to the approved reference, avoiding overinflated CTAs. */
+body[data-page="mine"].via-mine-v29110 .topbar{
+ flex-basis:61px!important;height:61px!important;min-height:61px!important;
+ padding:0 3px!important;gap:7px!important
+}
+body[data-page="mine"].via-mine-v29110 .topbar::before{
+ border-radius:0 0 22px 22px;
+ background:
+ radial-gradient(ellipse 65% 165% at 82% -25%,rgba(73,207,163,.24),transparent 78%),
+ linear-gradient(117deg,rgba(247,254,250,.95),rgba(212,246,234,.87))!important
+}
+body[data-page="mine"].via-mine-v29110 .topbar::after{
+ opacity:.45;transform:skewX(-23deg)!important;right:25%;height:60px
+}
+body[data-page="mine"].via-mine-v29110 .brand.brand-clean{
+ gap:9px!important;align-items:center!important;min-width:0;
+ font-size:clamp(16px,4.6vw,21px)!important;
+ text-decoration:none;letter-spacing:-.5px!important;
+}
+body[data-page="mine"].via-mine-v29110 .brand-monogram{
+ background:url("./mine-brand-v2919.svg") center/contain no-repeat!important;
+ width:52px!important;height:53px!important;min-width:52px!important;
+ flex:0 0 52px!important;
+ filter:drop-shadow(0 2px 2px rgba(0,73,54,.12))!important
+}
+body[data-page="mine"].via-mine-v29110 .brand-monogram::after{
+ opacity:.55!important;right:-6px!important;height:32px!important
+}
+body[data-page="mine"].via-mine-v29110 .brand.brand-clean > span:last-child{
+ display:inline-flex!important;flex-direction:column!important;align-items:flex-start;
+ justify-content:center;gap:0!important;
+ line-height:.93!important;letter-spacing:-.6px!important;
+ font-family:Georgia,"Times New Roman",serif!important;
+ font-weight:800!important;font-style:italic!important;
+ font-size:clamp(23px,6.4vw,30px)!important;color:#00846a!important;
+ overflow:visible!important;white-space:nowrap
+}
+body[data-page="mine"].via-mine-v29110 .brand.brand-clean .brand-sub{
+ display:block!important;margin:2px 0 0!important;line-height:1!important;
+ font:500 clamp(11px,3.3vw,15px)/1.1 system-ui,-apple-system,"Segoe UI",sans-serif!important;
+ letter-spacing:-.45px!important;font-style:normal!important;
+ color:#154a3e!important
+}
+body[data-page="mine"].via-mine-v29110 .top-link{
+ min-width:87px!important;min-height:38px!important;padding:7px 11px!important;
+ gap:6px!important;
+ font-size:clamp(11px,3.4vw,13px)!important;font-weight:730!important;
+ border-radius:999px!important;
+ background:linear-gradient(145deg,#087565,#075144 65%,#034339)!important;
+ border:1px solid rgba(118,205,173,.64)!important;
+ box-shadow:inset 0 1px rgba(222,255,239,.19),
+  0 3px 8px rgba(4,73,57,.13)!important;
+ color:#fff!important;text-shadow:none!important
+}
+body[data-page="mine"].via-mine-v29110 .top-link::before{
+ opacity:.35!important;height:38%!important
+}
+body[data-page="mine"].via-mine-v29110 .top-link .via-home-arrow{
+ font-size:17px!important;font-weight:400!important;
+ color:#eefff8!important;text-shadow:none!important
+}
+body[data-page="mine"].via-mine-v29110 .top-link .via-home-label{
+ text-shadow:none!important
+}
+/* Keep account greeting and pagination compact; no forced card height. */
+body[data-page="mine"].via-mine-v29110 .status-card.via-mine-main{
+ background:linear-gradient(155deg,#fff 0%,#fafffc 74%,#f7fffb 100%)!important;
+ border-color:rgba(205,232,219,.9)!important;
+ box-shadow:0 5px 17px rgba(10,71,54,.05)!important
+}
+body[data-page="mine"].via-mine-v29110 .section-eyebrow{
+ color:#206f5b!important;letter-spacing:2px!important;font-weight:810!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-main h1{
+ color:#063f36!important;letter-spacing:-.75px!important
+}
+/* "Photo" in source design becomes real initials; never impersonate a user. */
+body[data-page="mine"].via-mine-v29110 .via-mine-account.known-customer{
+ background-image:
+  url("./mine-contours-v29110.svg"),
+  linear-gradient(122deg,#108e79 0%,#087460 42%,#064d43 79%,#044139 100%)!important;
+ background-size:cover,cover!important;
+ background-position:center center,center center!important;
+ border:1px solid rgba(136,220,186,.42)!important;
+ border-radius:15px!important;
+ box-shadow:inset 0 1px 0 rgba(223,255,245,.24),0 7px 16px rgba(6,75,60,.16)!important;
+ padding:9px 11px!important;min-height:63px;
+ overflow:hidden!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-account::after{
+ background:radial-gradient(ellipse at 36% -30%,rgba(217,255,237,.17),transparent 66%)!important;
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-account__avatar{
+ display:grid!important;place-items:center;
+ width:43px!important;height:43px!important;min-width:43px!important;
+ box-sizing:border-box;flex:0 0 43px;
+ padding:0!important;
+ color:#e9fff6!important;
+ border-radius:50%!important;
+ border:2px solid rgba(215,255,241,.8)!important;
+ background:linear-gradient(155deg,rgba(230,255,245,.34),rgba(172,242,210,.16))!important;
+ box-shadow:inset 0 1px rgba(255,255,255,.31),0 2px 7px rgba(0,38,32,.16)!important;
+ font-size:15px!important;font-weight:790!important;line-height:1!important;
+ letter-spacing:.25px
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-account__copy{
+ min-width:0!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-account__copy strong{
+ font-size:clamp(14px,3.75vw,17px)!important;
+ line-height:1.22!important;font-weight:760!important;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-account__copy .known-customer-badge{
+ color:#d4f3e5!important;font-size:clamp(10px,2.9vw,12px)!important
+}
+body[data-page="mine"].via-mine-v29110 #mine-logout{
+ display:inline-flex!important;align-items:center;gap:5px!important;
+ flex:0 0 auto;max-width:90px;
+ font-size:11px!important;line-height:1.1!important;
+ min-height:33px!important;padding:7px 10px!important;
+ background:rgba(0,54,46,.22)!important;border:1px solid rgba(205,251,229,.15)!important;
+ border-radius:999px!important;
+ color:#f5fff9!important;text-decoration:none!important
+}
+body[data-page="mine"].via-mine-v29110 #mine-logout::after{
+ content:"↗";font-size:14px;line-height:1;font-weight:450
+}
+body[data-page="mine"].via-mine-v29110 #mine-logout:focus-visible{
+ outline:2px solid #dbffe9;outline-offset:2px
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-tabs{
+ border:1px solid #d9e9e2!important;
+ background:linear-gradient(135deg,#ecf7f1,#f0f7f3 95%)!important;
+ box-shadow:inset 0 1px rgba(255,255,255,.75)!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-tab.is-active{
+ background:linear-gradient(124deg,#07584b,#03443b)!important;
+ border:1px solid rgba(157,224,191,.45)!important;
+ box-shadow:inset 0 1px rgba(232,255,246,.18),0 3px 8px rgba(0,69,52,.10)!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-tab:not(.is-active){
+ color:#697d75!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-list a.via-booking-card{
+ background:
+ radial-gradient(ellipse 65% 80% at 94% 10%,rgba(213,248,228,.32),transparent 95%),
+ linear-gradient(148deg,#fff,#fcfffd)!important;
+ border:1px solid #cee9dc!important;
+ border-radius:16px!important;
+ box-shadow:0 5px 13px rgba(7,69,48,.095)!important;
+}
+body[data-page="mine"].via-mine-v29110 .via-booking-card__arrow{
+ background:linear-gradient(155deg,#d5f6e5,#bfead6)!important;
+ color:#0b6b54!important;border-radius:50%!important;
+ box-shadow:inset 0 1px rgba(255,255,255,.5)!important
+}
+body[data-page="mine"].via-mine-v29110 .via-status-chip--confirmed{
+ background:linear-gradient(120deg,#e3f7ea,#c9eddc)!important;
+ border:1px solid #b8e0cb!important;color:#075942!important
+}
+body[data-page="mine"].via-mine-v29110 .via-booking-card__price{
+ background:linear-gradient(130deg,#e7f8eb,#c9efd9)!important;
+ border-radius:11px!important;
+ color:#065844!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-pager button:not(:disabled){
+ background:linear-gradient(125deg,#f2faf6,#d7f2e5)!important;
+ border:1px solid #bfdfcf!important;
+ color:#0c5947!important;
+ box-shadow:inset 0 1px rgba(255,255,255,.72)!important
+}
+body[data-page="mine"].via-mine-v29110 .via-mine-pager button:disabled{
+ opacity:.44!important
+}
+/* Small devices and keyboard-in-view keep every control reachable. */
+body[data-page="mine"].via-mine-v29110.mine-input-focus .topbar{
+ flex-basis:44px!important;height:44px!important;min-height:44px!important
+}
+body[data-page="mine"].via-mine-v29110.mine-input-focus .brand-monogram{
+ width:38px!important;height:38px!important;min-width:38px!important;flex-basis:38px!important
+}
+body[data-page="mine"].via-mine-v29110.mine-input-focus .brand.brand-clean > span:last-child{
+ font-size:21px!important
+}
+body[data-page="mine"].via-mine-v29110.mine-input-focus .brand.brand-clean .brand-sub{
+ font-size:11px!important
+}
+body[data-page="mine"].via-mine-v29110.mine-input-focus .top-link{
+ min-height:33px!important;min-width:79px!important;padding:6px 9px!important
+}
+@media(max-width:360px){
+ body[data-page="mine"].via-mine-v29110 .topbar{flex-basis:54px!important;height:54px!important;min-height:54px!important}
+ body[data-page="mine"].via-mine-v29110 .brand-monogram{
+  width:42px!important;height:43px!important;min-width:42px!important;flex-basis:42px!important
+ }
+ body[data-page="mine"].via-mine-v29110 .brand.brand-clean{gap:8px!important}
+ body[data-page="mine"].via-mine-v29110 .brand.brand-clean > span:last-child{font-size:22px!important}
+ body[data-page="mine"].via-mine-v29110 .brand.brand-clean .brand-sub{font-size:11px!important}
+ body[data-page="mine"].via-mine-v29110 .top-link{
+  min-width:77px!important;padding:6px 9px!important;font-size:11px!important
+ }
+}
+@media(max-width:330px){
+ body[data-page="mine"].via-mine-v29110 .brand-monogram::after{display:none!important}
+ body[data-page="mine"].via-mine-v29110 .brand.brand-clean > span:last-child{font-size:20px!important}
+}
+@media(prefers-reduced-motion:reduce){
+ body[data-page="mine"].via-mine-v29110 .top-link{transition:none!important}
+}
