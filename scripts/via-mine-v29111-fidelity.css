@@ -57,9 +57,9 @@ body[data-page="mine"].via-mine-v29110 .brand.brand-clean .brand-sub{
 /* Small premium Inicio: no huge dark 3D badge competing with the brand. */
 body[data-page="mine"].via-mine-v29110 .top-link{
  display:inline-flex!important;align-items:center!important;justify-content:center!important;
- flex:0 0 auto!important;min-width:0!important;width:auto!important;
+ flex:0 0 84px!important;min-width:84px!important;width:84px!important;
  min-height:36px!important;height:36px!important;box-sizing:border-box;
- margin-left:auto!important;padding:7px 12px!important;gap:6px!important;
+ margin-left:auto!important;padding:6px 8px!important;gap:4px!important;
  border-radius:999px!important;overflow:hidden!important;
  background:linear-gradient(132deg,#0c7865 0%,#075449 61%,#05473e 100%)!important;
  border:1px solid rgba(111,203,167,.68)!important;color:#f9fff9!important;
@@ -229,7 +229,7 @@ body[data-page="mine"].via-mine-v29110.mine-input-focus .brand.brand-clean > spa
  font-size:clamp(13px,3.9vw,17px)!important;
 }
 body[data-page="mine"].via-mine-v29110.mine-input-focus .top-link{
- height:32px!important;min-height:32px!important;padding:6px 8px!important;
+ height:32px!important;min-height:32px!important;min-width:78px!important;width:78px!important;flex:0 0 78px!important;padding:5px 6px!important;
  font-size:11px!important
 }
 @media(max-width:360px){
@@ -244,7 +244,7 @@ body[data-page="mine"].via-mine-v29110.mine-input-focus .top-link{
   font-size:clamp(14px,4.5vw,17px)!important;gap:2px!important
  }
  body[data-page="mine"].via-mine-v29110 .top-link{
-  padding:7px 9px!important;font-size:11px!important;height:34px!important;min-height:34px!important
+  min-width:82px!important;width:82px!important;flex:0 0 82px!important;padding:6px 7px!important;font-size:11px!important;height:34px!important;min-height:34px!important
  }
  body[data-page="mine"].via-mine-v29110.mine-input-focus .topbar{
   flex:0 0 43px!important;height:43px!important;min-height:43px!important
@@ -256,7 +256,7 @@ body[data-page="mine"].via-mine-v29110.mine-input-focus .top-link{
 @media(max-width:330px){
  body[data-page="mine"].via-mine-v29110 .brand-monogram::after{display:none!important}
  body[data-page="mine"].via-mine-v29110 .brand.brand-clean>span:last-child{font-size:13px!important}
- body[data-page="mine"].via-mine-v29110 .top-link{padding:6px 7px!important;gap:4px!important}
+ body[data-page="mine"].via-mine-v29110 .top-link{min-width:76px!important;width:76px!important;flex-basis:76px!important;padding:6px 5px!important;gap:3px!important}
 }
 @media(prefers-reduced-motion:reduce){
  body[data-page="mine"].via-mine-v29110 a.via-booking-card,
