@@ -1,0 +1,73 @@
+name: Vía Traslados V29.1.13 - Inicio not clipped Chrome Android WebKit iOS QA
+on:
+  push:
+    branches: [via-mine-v29113-inicio-no-clip-20261122]
+    paths:
+      - ".github/workflows/via-mine-v29113-qa.yml"
+      - "scripts/via-mine-v29113-inicio.css"
+      - "scripts/via-mine-v29113-release.py"
+      - "scripts/via-mine-v29113-inicio-qa.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-web-v29113-inicio-qa
+  cancel-in-progress: true
+jobs:
+  chrome-webkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify CSS-only scope, source syntax, real current v29.1.12 and rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 -m py_compile scripts/via-mine-v29113-audit.py scripts/via-mine-v29113-release.py
+          node --check scripts/via-mine-v29113-inicio-qa.mjs
+          python3 scripts/via-mine-v29113-audit.py
+      - name: Reconstruct production Worker and original static assets without functional modifications
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-mine-v29113-release.py prepare
+      - name: Deploy isolated visual QA only, disable non-mocked customer APIs
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v29113-build/wrangler.qa.jsonc
+          python3 scripts/via-mine-v29113-release.py qa
+      - name: Install native Chromium and WebKit
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit >/dev/null
+      - name: Prove entire Inicio label visible, no glyph clipping at every width and larger text
+        run: node scripts/via-mine-v29113-inicio-qa.mjs
+      - name: Retain eight Android/iOS keyboard and sign-in no-scroll regressions
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: Retain seven signed-in pagination / history / no-scroll regressions
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v29110-browser.mjs
+      - name: Archive real browser before/after screenshots plus byte-verified manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29113-inicio-no-clipping-android-ios-evidence
+          path: |
+            via-v29113-inicio-proof/
+            mine-v2918-proof/
+            mine-v29110-proof/
+            mine-v29113-build/manifest.json
+          retention-days: 30
+          if-no-files-found: warn
