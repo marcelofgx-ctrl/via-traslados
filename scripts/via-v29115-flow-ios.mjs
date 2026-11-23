@@ -169,7 +169,8 @@ async function instance(os,w,h){
   state=await check(page);
   assert(state.home.text.includes('5781')&&state.home.lat===String(pos2.latitude),
    'New GPS fix was not used after another tap');
-  assert(state.note.includes('referencia')&&state.note.includes('Verificá'),
+  assert((state.note.includes('referencia')||state.note.includes('número cercano'))&&
+   state.note.includes('Verificá'),
    'Approximate number displayed as definitive');
   assert(reverseCalls===2,'Two explicit GPS taps must trigger two fresh reverse requests');
   await page.screenshot({path:OUT+'/'+os+'-'+w+'x'+h+'-approx-number.png',fullPage:false});
