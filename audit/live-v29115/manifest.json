@@ -1,0 +1,46 @@
+{
+  "source": "v29.1.15",
+  "origin": "https://viatraslados.com/",
+  "files": {
+    "index.html": {
+      "sha256": "d67d10f46c3448d8deccf5d2872444564344840470a8d13416e3d27ad054ac6d",
+      "bytes": 22299
+    },
+    "map-point-picker.js": {
+      "sha256": "8e0cb7fde619ad56357c2a646133128e1bfac2f54119fa4e068e54e622447679",
+      "bytes": 25534
+    },
+    "reference.js": {
+      "sha256": "5f8f73eb0d997a4497338fc9ba8178011d90de822b5b42635f1336ab14162167",
+      "bytes": 18511
+    },
+    "app.js": {
+      "sha256": "e141f425aabb26db7dac1ecd556cf7d8bc9d249e311a1e1519ca116862df2ece",
+      "bytes": 57937
+    },
+    "via-v29115-map-ui.css": {
+      "sha256": "8b9e760afbb0344031ac401faf8b6dc14092d5367947d652b128f8e7f895e5e6",
+      "bytes": 2146
+    },
+    "map-point-picker.css": {
+      "sha256": "0ca902393a030cfcb1bdf9cb613b49809c98fbeadc7bfd6a3afcc039012765ca",
+      "bytes": 7431
+    },
+    "reference.css": {
+      "sha256": "8c64317861ea3b6f778fa82f2981a002b957baed62c360e3c97e0b18c97da64f",
+      "bytes": 20089
+    },
+    "geo-v2/core.mjs": {
+      "sha256": "17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1",
+      "bytes": 5059
+    },
+    "address-autocomplete.js": {
+      "sha256": "54f74853a72debba09d9f18eec44fa3dc05f3f366250b5c41672555c28a63a2a",
+      "bytes": 10789
+    },
+    "address-selected-preview.js": {
+      "sha256": "bf0f7aa019eab8f42fe8dc5fe12a2c559f5871ff07266a4c8ea0dc1fb4f234e8",
+      "bytes": 3938
+    }
+  }
+}

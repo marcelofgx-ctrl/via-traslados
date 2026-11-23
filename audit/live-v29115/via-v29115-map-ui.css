@@ -1,0 +1,65 @@
+/* Vía Traslados v29.1.15 — compact GPS confirmation, non-clipped mobile date.
+   Strictly home passenger UI; no map coordinates, APIs or approved booking screens changed. */
+body[data-page="passenger"] .reference-booking #via-gps-feedback{
+ box-sizing:border-box!important;
+ padding:9px 11px!important;
+ margin:7px 0 0!important;
+ border-radius:12px!important;
+ font-size:12px!important;
+ line-height:1.35!important;
+ display:flex!important;
+ align-items:flex-start!important;
+ flex-direction:column!important;
+ gap:5px!important;
+}
+body[data-page="passenger"] .reference-booking #via-gps-feedback[hidden]{
+ display:none!important;
+}
+body[data-page="passenger"] .reference-booking #via-gps-feedback strong{
+ display:block!important;
+ font-size:12px!important;
+ line-height:1.3!important;
+ margin:0!important;
+}
+body[data-page="passenger"] .reference-booking #via-gps-feedback p{
+ margin:0!important;
+ font-size:11.5px!important;
+ line-height:1.38!important;
+}
+body[data-page="passenger"] .reference-booking #via-gps-feedback .via-gps-actions{
+ display:flex!important;
+ gap:6px!important;
+ flex-wrap:wrap!important;
+ margin:2px 0 0!important;
+}
+body[data-page="passenger"] .reference-booking #via-gps-feedback .via-gps-actions button{
+ min-height:32px!important;
+ padding:5px 10px!important;
+ font-size:11.5px!important;
+}
+@media(max-width:650px){
+ body[data-page="passenger"]:not(.in-booking) .reference-options .reference-option{
+  gap:4px!important;
+  padding-inline:6px!important;
+ }
+ body[data-page="passenger"]:not(.in-booking) .reference-options .reference-option svg{
+  width:19px!important;
+  height:19px!important;
+ }
+ body[data-page="passenger"]:not(.in-booking) #home-date{
+  box-sizing:border-box!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:100%!important;
+  font-size:clamp(10px,2.7vw,12px)!important;
+  letter-spacing:-.2px!important;
+  font-variant-numeric:tabular-nums!important;
+  padding:0!important;
+ }
+ body[data-page="passenger"]:not(.in-booking) #home-date::-webkit-calendar-picker-indicator{
+  width:12px!important;
+  height:12px!important;
+  margin:0!important;
+  padding:0!important;
+ }
+}
