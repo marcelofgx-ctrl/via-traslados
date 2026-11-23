@@ -1,0 +1,26 @@
+name: Vía Traslados V29.1.16 — independent postproduction proof READ ONLY
+on:
+  push:
+    branches: [via-ui-date-map-v29116-20261123]
+    paths: [".github/workflows/via-v29116-postprod.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact Cloudflare Worker, preserved geo/booking source SHA256, date/map UI assets and rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29116-postprod.py
+      - name: Recheck public OTP/CORS, geo distances and signed APK without real bookings or emails
+        run: node tests/prod-core-invariants.mjs
