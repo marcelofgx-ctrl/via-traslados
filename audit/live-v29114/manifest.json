@@ -1,0 +1,50 @@
+{
+  "origin": "https://viatraslados.com/",
+  "source": "prod-v29.1.14",
+  "files": {
+    "index.html": {
+      "bytes": 22240,
+      "sha256": "46a1322b2fd588af9252fa7fb82077cd73f9c517a8e2f39533ea9aea599f964b"
+    },
+    "reference.js": {
+      "bytes": 18247,
+      "sha256": "11b5c8e278a30e74b33032c5967eb6eaa1ee7ccce61a5156362ab5cc752216ff"
+    },
+    "app.js": {
+      "bytes": 57937,
+      "sha256": "e141f425aabb26db7dac1ecd556cf7d8bc9d249e311a1e1519ca116862df2ece"
+    },
+    "map-point-picker.js": {
+      "bytes": 24257,
+      "sha256": "91bbd9de941569b65b318f82b42186e5b40e6f4baa3efd1efadd22689cffb483"
+    },
+    "map-point-picker.css": {
+      "bytes": 7431,
+      "sha256": "0ca902393a030cfcb1bdf9cb613b49809c98fbeadc7bfd6a3afcc039012765ca"
+    },
+    "review-compact-v29.css": {
+      "bytes": 5652,
+      "sha256": "62cbf23a738341364ce5dd22965d75affb2fc3c9a84baed9728bf68574f45180"
+    },
+    "geo-v2-stable-layout.css": {
+      "bytes": 1923,
+      "sha256": "17d55298077bcfb49adb6b02a3c86a5dda552696aa236e60d7c9f34b7e8f2479"
+    },
+    "reference.css": {
+      "bytes": 20089,
+      "sha256": "8c64317861ea3b6f778fa82f2981a002b957baed62c360e3c97e0b18c97da64f"
+    },
+    "geo-v2/core.mjs": {
+      "bytes": 5059,
+      "sha256": "17a9ef5d2396d595e6d0847b0b32da80244f75084ced89cad485ff22377509c1"
+    },
+    "address-selected-preview.js": {
+      "bytes": 3938,
+      "sha256": "bf0f7aa019eab8f42fe8dc5fe12a2c559f5871ff07266a4c8ea0dc1fb4f234e8"
+    },
+    "address-autocomplete.js": {
+      "bytes": 10789,
+      "sha256": "54f74853a72debba09d9f18eec44fa3dc05f3f366250b5c41672555c28a63a2a"
+    }
+  }
+}
