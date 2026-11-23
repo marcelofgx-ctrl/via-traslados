@@ -1,0 +1,84 @@
+name: Via V29.1.15 — map street/door/watchdog Chrome Android and WebKit iOS QA
+on:
+  push:
+    branches: [via-address-picker-v29115-20261123]
+    paths:
+      - ".github/workflows/via-v29115-qa.yml"
+      - "scripts/via-v29115-map-point-picker.js"
+      - "scripts/via-v29115-reference.js"
+      - "scripts/via-v29115-map-ui.css"
+      - "scripts/via-v29115-map-qa.mjs"
+      - "scripts/via-v29115-flow-regressions.mjs"
+      - "scripts/via-v29115-release.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v29115-mobile-map-qa
+  cancel-in-progress: true
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 29
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate source syntax and active production V29.1.14 only
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 -m py_compile scripts/via-v29115-release.py
+          node --check scripts/via-v29115-reference.js
+          node --check scripts/via-v29115-map-point-picker.js
+          node --check scripts/via-v29115-map-qa.mjs
+          node --check scripts/via-v29115-flow-regressions.mjs
+          python3 -c "import runpy;f=runpy.run_path('scripts/via-v291-prepare.py');assert f['active_version']()=='d3f863be-575c-40eb-902b-96818085bb66','Production Worker changed';print('VIA_V29115_BASELINE_OK')"
+      - name: Rebuild exact current web Worker and 56 source assets, only map and GPS changes
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29115-release.py prepare
+      - name: Publish completely isolated QA stage, with API disabled
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config mine-v29115-build/wrangler.qa.jsonc
+          python3 scripts/via-v29115-release.py qa
+      - name: Install Android Chrome, iOS WebKit and original Leaflet map engine
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1 leaflet@1.9.4
+          npx playwright install --with-deps webkit >/dev/null
+      - name: 18 mobile real-map GPS street/door/timeout tests with simulated API/sensor
+        run: node scripts/via-v29115-map-qa.mjs
+      - name: Preserve 42 Android/iOS fresh booking, identity and GPS regressions
+        run: node scripts/via-v29115-flow-regressions.mjs
+      - name: Preserve eight guest keyboard, OTP no-scroll regressions
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: Preserve seven signed-in Mis reservas pagination/no-scroll regressions
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v29110-browser.mjs
+      - name: Confirm prod API OTP, georoutes and APK still healthy (no writes)
+        run: node tests/prod-core-invariants.mjs
+      - name: Retain original source hashes, before/after Android/iOS screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29115-map-gps-prod-preflight-mobile
+          path: |
+            via-v29115-map-proof/
+            via-v29115-flow-proof/
+            mine-v2918-proof/
+            mine-v29110-proof/
+            mine-v29115-build/manifest.json
+          retention-days: 30
+          if-no-files-found: warn
