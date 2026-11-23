@@ -1,0 +1,60 @@
+name: Vía Traslados V30 — integration contract QA BEFORE PROD
+on:
+  push:
+    branches: [via-v30-mvp-operativo-20261123]
+    paths:
+      - ".github/workflows/via-v30-contract-qa.yml"
+      - "backend/**"
+      - "tests/v30-location.test.mjs"
+      - "scripts/v30-web-app.js"
+      - "scripts/v30-web-store.js"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Test all established roles, OTP, identity, dispatch, quotas and V30 point routing
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/location-v30.js
+          node --check backend/route-estimate.js
+          node --check scripts/v30-web-app.js
+          node --check scripts/v30-web-store.js
+      - name: Test V30 D1 additive migration on realistic isolated SQLite
+        run: |
+          python3 - <<'PY'
+          import sqlite3,pathlib
+          db=sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys=ON')
+          db.executescript(pathlib.Path('backend/schema.sql').read_text())
+          db.executescript(pathlib.Path('backend/migrations/004_booking_locations_v30.sql').read_text())
+          db.executescript(pathlib.Path('backend/migrations/004_booking_locations_v30.sql').read_text())
+          fields=[x[1] for x in db.execute('PRAGMA table_info(booking_locations)')]
+          assert len(fields)==11,fields
+          assert all(t in fields for t in ['origin_lat','origin_lng','destination_lat','destination_lng'])
+          assert {x[1] for x in db.execute('PRAGMA table_info(bookings)')} >= {'origin','destination','status','email'}
+          print('VIA_V30_MIGRATION_NONDESTRUCTIVE_QA_PASS')
+          PY
+      - name: Cloudflare API Worker V30 builds without live credentials or release
+        run: |
+          cat > wrangler-v30-qa-dryrun.toml <<'EOF'
+          name = "via-traslados-api-qa-v30"
+          main = "backend/worker.js"
+          compatibility_date = "2026-11-04"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "via-traslados-qa-db"
+          database_id = "00000000-0000-4000-8000-000000000000"
+          EOF
+          npx --yes wrangler@4.160.1 deploy --config wrangler-v30-qa-dryrun.toml --dry-run --outdir /tmp/via-v30-api-worker
+          test -s /tmp/via-v30-api-worker/worker.js
+          echo 'VIA_V30_BACKEND_BUNDLE_QA_PASS'
