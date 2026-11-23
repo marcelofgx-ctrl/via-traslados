@@ -158,7 +158,7 @@ function referenceFromResults(point,rows){
  const roadNumber=/^(?:ruta(?:\s+nacional)?|calle|camino|pasaje|avenida|av\.)\s+\d{1,3}[a-z]?$/i
   .test(String(ref.nearbyPortal||'').trim());
  const approximate=!!result.numberIsApproximate&&!roadNumber;
- const streetHeadline=roadNumber?'Cerca de '+ref.street:result.title;
+ const streetHeadline=roadNumber?'Cerca de '+ref.nearbyPortal:result.title;
  const short=[streetHeadline,ref.city,ref.department].filter(Boolean).join(', ');
  return {point:{lat:point.lat,lng:point.lng},label:short,
   headline:streetHeadline,city:ref.city||'',department:ref.department||'',
