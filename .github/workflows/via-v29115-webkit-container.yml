@@ -2,7 +2,7 @@ name: Via V29.1.15 — independent WebKit iOS map QA on preinstalled Playwright 
 on:
   push:
     branches: [via-address-picker-v29115-20261123]
-    paths: [".github/workflows/via-v29115-webkit-container.yml"]
+    paths: [".github/workflows/via-v29115-webkit-container.yml", "scripts/via-v29115-flow-ios.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
