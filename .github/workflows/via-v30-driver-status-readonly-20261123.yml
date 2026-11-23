@@ -1,0 +1,40 @@
+name: "Vía V30 — comprobación puntual de conductor (solo lectura)"
+on:
+  push:
+    branches: [via-v30-mvp-operativo-20261123]
+    paths: [".github/workflows/via-v30-driver-status-readonly-20261123.yml"]
+permissions:
+  contents: read
+jobs:
+  check-driver:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Consultar exclusivamente estado de conductores en D1 producción
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'NODE'
+          const acct = process.env.CLOUDFLARE_ACCOUNT_ID || '';
+          const token = process.env.CLOUDFLARE_API_TOKEN || '';
+          if (!/^[0-9a-f]{32}$/i.test(acct) || !token) throw Error('Credenciales de consulta faltantes');
+          const auth = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
+          const root = 'https://api.cloudflare.com/client/v4/accounts/' + acct;
+          const list = await fetch(root + '/d1/database?name=via-traslados-db',{headers:auth,signal:AbortSignal.timeout(20000)});
+          if (!list.ok) throw Error('D1 listado respondió HTTP '+list.status);
+          const listJson=await list.json();
+          const dbs=(listJson.result||[]).filter(x=>x.name==='via-traslados-db');
+          if(listJson.success!==true||dbs.length!==1) throw Error('No se pudo identificar D1 productiva unívoca');
+          const sql="SELECT u.display_name AS n,u.role AS role,u.status AS status, CASE WHEN c.email_verified_at IS NOT NULL THEN 1 ELSE 0 END AS verified, CASE WHEN c.phone IS NOT NULL AND c.phone<>'' THEN 1 ELSE 0 END AS has_phone FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id WHERE lower(u.display_name) LIKE '%silv%' LIMIT 30";
+          if(!sql.startsWith('SELECT '))throw Error('Solo lectura');
+          const req=await fetch(root+'/d1/database/'+dbs[0].uuid+'/query',{method:'POST',headers:auth,body:JSON.stringify({sql}),signal:AbortSignal.timeout(20000)});
+          if(!req.ok)throw Error('D1 consulta HTTP '+req.status);
+          const query=await req.json();
+          if(query.success!==true||query.result?.[0]?.success!==true) throw Error('D1 SELECT falló');
+          const norm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
+          const candidates=(query.result[0].results||[]).filter(x=>norm(x.n).includes('silv')&&norm(x.n).includes('ubin'));
+          const out={database:'via-traslados-db',matchingAccounts:candidates.length,accounts:candidates.map(x=>({role:x.role,status:x.status,emailVerified:Boolean(x.verified),phoneRegistered:Boolean(x.has_phone),ready:x.role==='driver'&&x.status==='approved'&&Boolean(x.verified)}))};
+          console.log('VIA_CONDUCTOR_READONLY_STATUS '+JSON.stringify(out));
+          console.log('SOLO_LECTURA_OK: ninguna contraseña, email, teléfono, nombre completo ni hash expuestos; ninguna escritura');
+          NODE
