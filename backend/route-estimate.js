@@ -1,6 +1,7 @@
 // Vía Traslados: cálculo de distancias comerciales con Geoapify Free + IDE Uruguay.
 // Ninguna clave sale de Cloudflare, la APK solo recibe km, minutos y atribución.
 import {identity} from './staff.js';
+import {locationPoint} from './location-v30.js';
 
 const now=()=>Math.floor(Date.now()/1000);
 const json=(obj,status=200)=>new Response(JSON.stringify(obj),{
@@ -141,8 +142,16 @@ export async function precalculateBookingRoute(env,booking,scope='system'){
   return{status:429,data:{error:'Presupuesto diario de rutas agotado.'}};
  if(!trim(booking.origin)||!trim(booking.destination))
   return{status:422,data:{error:'Direcciones insuficientes para calcular la ruta.'}};
+ // V30: saved pin coordinates override any postal guess from display labels.
+ // Old bookings with no pins retain the original strict-text fallback.
+ const loc=await env.DB.prepare('SELECT origin_lat,origin_lng,destination_lat,destination_lng FROM booking_locations WHERE booking_id=?').bind(id).first();
+ const savedOrigin=loc?.origin_lat!=null&&loc?.origin_lng!=null?
+  locationPoint({lat:loc.origin_lat,lng:loc.origin_lng}):null;
+ const savedDestination=loc?.destination_lat!=null&&loc?.destination_lng!=null?
+  locationPoint({lat:loc.destination_lat,lng:loc.destination_lng}):null;
  const [origin,destination]=await Promise.all([
-  locate(trim(booking.origin),key),locate(trim(booking.destination),key)
+  savedOrigin||locationPoint(booking.originLocation)||locate(trim(booking.origin),key),
+  savedDestination||locationPoint(booking.destinationLocation)||locate(trim(booking.destination),key)
  ]);
  if(!origin||!destination)
   return{status:422,data:{error:'No se pudo localizar origen o destino con suficiente precisión.'}};
@@ -170,13 +179,19 @@ async function publicPreview(req,env,respond){
  if(!source.startsWith('https://'))return respond({error:'Origen no autorizado'},403);
  const ip=req.headers.get('CF-Connecting-IP')||'unknown';
  if(!await limit(env,'preview-ip:'+ip,8,3600))return respond({error:'Alcanzaste el límite de consultas de rutas. Probá más tarde.'},429);
- const hash=await previewKey(env,origin,destination);
+ const op=locationPoint(body?.originLocation),dp=locationPoint(body?.destinationLocation);
+ // Coordinates become part of the cache key; a shifted pin MUST get a new route.
+ const hash=await previewKey(env,
+  origin+'|'+(op?neatCoords(op):'legacy-text'),
+  destination+'|'+(dp?neatCoords(dp):'legacy-text'));
  const cached=await env.DB.prepare('SELECT distance_m,duration_s,updated_at FROM route_preview_cache WHERE route_hash=? AND updated_at>unixepoch()-21600').bind(hash).first();
  if(cached)return respond(toOutput(cached,true));
  const key=env.VIA_GEOAPIFY_API_KEY;
  if(typeof key!=='string'||key.length<10)return respond({error:'Distancia temporalmente no disponible'},503);
  if(!await limit(env,'free-budget',250,86400))return respond({error:'Servicio de rutas temporalmente sin disponibilidad'},429);
- const [o,d]=await Promise.all([locate(origin,key),locate(destination,key)]);
+ const [o,d]=await Promise.all([op||locate(origin,key),dp||locate(destination,key)]);
+ // Do not present a near-zero distance as a useful road route.
+ if(o&&d&&haversine(o,d)<50)return respond({error:'Elegí puntos de origen y destino diferentes.'},422);
  if(!o||!d)return respond({error:'No pudimos calcular una ruta confiable. Revisá que las direcciones sean exactas.'},422);
  const route=await drivingRoute(o,d,key);
  if(route.error)return respond({error:route.error},route.status);
