@@ -37,7 +37,8 @@ for(const [os,w,h] of [['android',320,640],['android',360,740],['android',390,84
    const out=document.querySelector('#via-home-date-display'),input=document.querySelector('#home-date');
    const label=out.closest('.reference-option'),style=getComputedStyle(out),box=out.getBoundingClientRect();
    const c=document.createElement('canvas'),ctx=c.getContext('2d');ctx.font=style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
-   const textWidth=ctx.measureText(out.textContent).width;
+   const spacing=Number.parseFloat(style.letterSpacing)||0;
+   const textWidth=ctx.measureText(out.textContent).width+spacing*Math.max(0,out.textContent.length-1);
    const native=input.getBoundingClientRect();
    const hit=document.elementFromPoint(native.left+native.width/2,native.top+native.height/2);
    return {date:out.textContent,iso:input.value,dataIso:out.dataset.iso,textWidth,
