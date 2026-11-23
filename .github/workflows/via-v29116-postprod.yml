@@ -2,7 +2,7 @@ name: Vía Traslados V29.1.16 — independent postproduction proof READ ONLY
 on:
   push:
     branches: [via-ui-date-map-v29116-20261123]
-    paths: [".github/workflows/via-v29116-postprod.yml"]
+    paths: [".github/workflows/via-v29116-postprod.yml", "scripts/via-v29116-postprod.py"]
   workflow_dispatch:
 permissions:
   contents: read
