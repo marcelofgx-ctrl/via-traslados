@@ -1,0 +1,50 @@
+name: "Vía V30 — auditoría solo lectura de visibilidad de pedidos"
+on:
+  push:
+    branches: [via-v30-mvp-operativo-20261123]
+    paths: [".github/workflows/via-v30-request-visibility-readonly-20261123.yml"]
+permissions:
+  contents: read
+jobs:
+  visibility-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Comparar permisos de despacho y pedidos en D1 PROD (sin escrituras)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID||'';
+          const token=process.env.CLOUDFLARE_API_TOKEN||'';
+          if(!/^[0-9a-f]{32}$/i.test(account)||!token) throw Error('Faltan credenciales');
+          const root='https://api.cloudflare.com/client/v4/accounts/'+account;
+          const hdr={'Authorization':'Bearer '+token,'Content-Type':'application/json'};
+          const listResponse=await fetch(root+'/d1/database?name=via-traslados-db',{headers:hdr,signal:AbortSignal.timeout(20000)});
+          if(!listResponse.ok)throw Error('D1 lista HTTP '+listResponse.status);
+          const list=await listResponse.json();
+          const dbs=(list.result||[]).filter(x=>x.name==='via-traslados-db');
+          if(list.success!==true||dbs.length!==1)throw Error('D1 producción no única');
+          async function select(sql,params=[]){
+            if(!/^SELECT\s/i.test(sql)||/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|REPLACE|PRAGMA|ATTACH|VACUUM)\b/i.test(sql))throw Error('SQL no solo lectura');
+            const r=await fetch(root+'/d1/database/'+dbs[0].uuid+'/query',{method:'POST',headers:hdr,body:JSON.stringify({sql,params}),signal:AbortSignal.timeout(20000)});
+            if(!r.ok)throw Error('D1 SELECT HTTP '+r.status);
+            const j=await r.json();
+            if(j.success!==true||j.result?.[0]?.success!==true)throw Error('D1 consulta SELECT no exitosa');
+            return j.result[0].results||[];
+          }
+          const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
+          const candidateRows=await select("SELECT u.id,u.display_name AS name,u.role,u.status,CASE WHEN c.email_verified_at IS NOT NULL THEN 1 ELSE 0 END AS verified,p.mode,p.can_quote_all,p.can_release,p.commission_bps,CASE WHEN v.staff_id IS NULL THEN 0 ELSE 1 END AS vehicle FROM staff_users u LEFT JOIN staff_contacts c ON c.staff_id=u.id LEFT JOIN driver_commercial_profiles p ON p.staff_id=u.id LEFT JOIN driver_vehicle_profiles v ON v.staff_id=u.id WHERE lower(u.display_name) LIKE '%silv%' LIMIT 30");
+          const candidates=candidateRows.filter(x=>norm(x.name).includes('silv')&&norm(x.name).includes('ubin'));
+          const current=await select("SELECT status,COUNT(*) AS n FROM bookings GROUP BY status ORDER BY status");
+          const requests=await select("SELECT COUNT(*) AS total,SUM(CASE WHEN a.driver_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned,SUM(CASE WHEN r.booking_id IS NOT NULL THEN 1 ELSE 0 END) AS released,SUM(CASE WHEN a.driver_id IS NULL AND r.booking_id IS NULL THEN 1 ELSE 0 END) AS unassignedNotReleased,SUM(CASE WHEN b.trip_date>=date('now') THEN 1 ELSE 0 END) AS futureTrip,SUM(CASE WHEN b.created_at>=datetime('now','-7 days') THEN 1 ELSE 0 END) AS createdLast7days FROM bookings b LEFT JOIN driver_assignments a ON a.booking_id=b.id LEFT JOIN booking_dispatch_releases r ON r.booking_id=b.id WHERE b.status='requested'");
+          const info=[];
+          for(const p of candidates){
+            const visible=await select("SELECT COUNT(*) AS n FROM bookings b LEFT JOIN driver_assignments a ON a.booking_id=b.id LEFT JOIN booking_dispatch_releases r ON r.booking_id=b.id WHERE a.driver_id=? OR (b.status='requested' AND a.driver_id IS NULL AND (?=1 OR ?=1 OR r.booking_id IS NOT NULL))",[p.id,Number(p.can_quote_all)===1?1:0,Number(p.can_release)===1?1:0]);
+            const quoteable=await select("SELECT COUNT(*) AS n FROM bookings b LEFT JOIN driver_assignments a ON a.booking_id=b.id LEFT JOIN booking_dispatch_releases r ON r.booking_id=b.id WHERE b.status='requested' AND (a.driver_id=? OR (a.driver_id IS NULL AND (?=1 OR r.booking_id IS NOT NULL)))",[p.id,Number(p.can_quote_all)===1?1:0]);
+            info.push({role:p.role,accountStatus:p.status,emailVerified:Boolean(p.verified),commercialProfileExists:p.mode!==null,mode:p.mode||'contractor(default)',canQuoteAll:Number(p.can_quote_all)===1,canRelease:Number(p.can_release)===1,vehicleProfileExists:Boolean(p.vehicle),visibleBookings:Number(visible[0]?.n||0),quoteableNewBookings:Number(quoteable[0]?.n||0)});
+          }
+          console.log('VIA_PROD_VISIBILITY_AUDIT '+JSON.stringify({database:'via-traslados-db',matchingDriverAccounts:candidates.length,accounts:info,bookingsByStatus:current,requestedBreakdown:requests[0]||{}}));
+          console.log('VIA_READONLY_OK: sin nombres, emails, telefonos, reservas individuales, contrasenas ni escrituras');
+          NODE
