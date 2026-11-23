@@ -1,0 +1,10 @@
+V30 API production approval — 2026-11-23
+User explicitly authorized shipping consolidated V30 in production now to launch Vía Traslados with Álvaro.
+Contract suite success: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45190020589
+Real isolated QA API+QA D1 E2E success: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45191185138
+Web Android/iOS real browser QA success: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45192330164
+Current production API Worker must equal 9f0db4cc-29b8-4d79-8ce8-8fb0588bd079 and current production web remains f46757df-8ff2-4653-bec3-e15b8394a99a.
+D1 migration ONLY CREATE TABLE IF NOT EXISTS booking_locations, no existing rows touched.
+Restore API Worker baseline on any regression. D1 Time Travel bookmark captured before SQL; no automatic wholesale database restore.
+Source changes ONLY backend/worker.js, backend/route-estimate.js, backend/location-v30.js, additive migration.
+No APK changes; old web and old booking contracts remain accepted. Postdeploy test must prove GPS-pin route preview returns actual km using production Geoapify provider. No real customer bookings or OTP emails in CI.
