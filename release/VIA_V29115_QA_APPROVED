@@ -1,0 +1,10 @@
+Vía Traslados — authorize web-only production release v29.1.15, 2026-11-23.
+User approved changes with "Ok" after screenshot review. Preserve all existing functions and approved Mis reservas visual.
+Approved real mobile QA: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45157380151 SUCCESS.
+75/75 PASS: 18 full original Leaflet picker/coordinate/door/timeout Android+WebKit tests; 42 fresh booking GPS/identity regressions; 8 keyboard/login regressions; 7 authenticated Mis reservas/pagination regressions. Zero production API/D1 writes during QA. OTP/CORS/geo routes and APK smoke passed, actual email delivery not tested.
+Additional successful iPhone WebKit container confirmation 27/27: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45157417688 .
+Original audited production Cloudflare Worker v29.1.14: d3f863be-575c-40eb-902b-96818085bb66.
+Rollback MUST restore exactly d3f863be-575c-40eb-902b-96818085bb66 to web Worker via-traslados-web-prod only.
+Build from current live 56 original static assets and original Worker source; guard exact source hashes.
+Only modify existing index.html (version/cache-bust), reference.js (safe GPS street/portal state), map-point-picker.js (remove QA banner, bounded reverse feedback, accurate point), plus one new isolated CSS asset via-v29115-map-ui.css. Existing API/Workers D1/passkeys/OTP/booking data/admin/driver APK intact; no other projects.
+Must dry-run Cloudflare Wrangler and verify isolated QA before deploy. Verify live HTML, JS, stylesheet, original functional assets and APK after publish. If any issue, rollback web Worker only, never D1 or API.
