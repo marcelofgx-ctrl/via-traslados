@@ -1,0 +1,23 @@
+QA_RUN_ID=45162769026
+QA_SOURCE_SHA=9649bec79decfae85630ea218834131643c2192d
+QA_TOTAL_PASSED=83
+EXPECTED_PRODUCTION_WEB_VERSION=e7830749-95f0-4a0e-8781-0e2ae6a19466
+ROLLBACK_WEB_VERSION=e7830749-95f0-4a0e-8781-0e2ae6a19466
+
+VIA TRASLADOS WEB UI V29.1.16 — EXPLICITLY APPROVED FOR SAFEGUARDED DEPLOY.
+User authorized minimal date and map presentation changes and permanent future visual code guardrails.
+Source and complete mobile QA: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45162769026
+83/83 PASS:
+8 Android Chrome/WebKit iOS fully visible native date year cases.
+18 Android Chrome/WebKit iOS real Leaflet map and reverse geocoder cases including exact coordinates.
+42 previous fresh booking and GPS identity regression cases.
+8 keyboard/login and 7 authenticated Mis reservas cases.
+API/CORS/OTP route/geocoding/APK GET-only invariants PASS; actual email delivery not tested.
+Approved existing asset changes ONLY index.html and map-point-picker.js;
+new assets via-v29116-date-ui.js and via-v29116-visual.css.
+Exact source diff confirms only map view text rendering changed; app.js, reference.js,
+geo-v2/core.mjs, store.js, passkeys.js, D1, API and driver APK byte-for-byte preserved.
+No production passenger bookings, OTP messages or D1 writes are authorized by QA.
+Publish ONLY if current Cloudflare web Worker still matches expected and production hashes
+are unchanged. Require GitHub QA success same tested commit, Wrangler dry run, stage smoke,
+readback verification and WEB ONLY rollback to V29.1.15 on failure.
