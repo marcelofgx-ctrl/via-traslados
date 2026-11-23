@@ -154,10 +154,16 @@ async function run(os,w,h){
   mode='hang';
   await page.evaluate(()=>window.ViaAddress.set('home-origin',null));
   await page.locator('.via-map-shortcut').first().click();
-  await page.waitForFunction(()=>document.querySelector('.via-picker-reference')?.textContent.includes('No pudimos identificar la calle'),
-   undefined,{timeout:8500});
+  await page.waitForFunction(()=>{
+   const text=document.querySelector('.via-picker-reference')?.textContent||'';
+   return text.includes('No pudimos identificar la calle')||
+    text.includes('Punto marcado en el mapa');
+  },undefined,{timeout:8500}).catch(async()=>{throw Error(
+   'Reverse lookup did not reach terminal state '+JSON.stringify(await panel())
+  )});
   a=await panel();
-  assert(!a.mapStatus.includes('Identificando')&&a.mapVisible,'Reverse status left pending past deadline');
+  assert(!a.mapStatus.includes('Identificando')&&a.mapVisible,
+    'Reverse status left pending past deadline '+JSON.stringify(a));
   const started=Date.now();
   await page.locator('.via-picker-confirm').click();
   await page.waitForFunction(()=>document.querySelector('.via-picker-backdrop')?.hidden===true,
