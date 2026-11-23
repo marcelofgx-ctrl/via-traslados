@@ -1,0 +1,59 @@
+name: Via V29.1.15 — guarded web-only map/GPS release, rollback to V29.1.14
+on:
+  push:
+    branches: [via-address-picker-v29115-20261123]
+    paths: ["release/VIA_V29115_QA_APPROVED"]
+permissions:
+  contents: read
+concurrency:
+  group: via-v29115-prod-web
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require QA approved marker, source syntax, exact V29.1.14 Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -s release/VIA_V29115_QA_APPROVED
+          python3 -m py_compile scripts/via-v29115-release.py
+          node --check scripts/via-v29115-map-point-picker.js
+          node --check scripts/via-v29115-reference.js
+          python3 -c "import runpy;f=runpy.run_path('scripts/via-v291-prepare.py');assert f['active_version']()=='d3f863be-575c-40eb-902b-96818085bb66','Production changed; abort'"
+      - name: Fetch and hash guard current live Worker, original scripts/assets, preserve web rollback
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29115-release.py prepare
+      - name: Confirm QA and production config Cloudflare dry-run
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 scripts/via-v29115-release.py qa
+          npx --yes wrangler@4.160.1 deploy --config mine-v29115-build/wrangler.prod.jsonc --dry-run --keep-vars
+      - name: Deploy web Worker only with guarded rollback, verify live page and functional assets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/via-v29115-release.py release
+      - name: Final GET-only production OTP, georoutes, signed conductor APK smoke
+        run: node tests/prod-core-invariants.mjs
+      - name: Archive live source hashes and exact V29.1.14 rollback target
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v29115-production-manifest-rollback
+          path: mine-v29115-build/manifest.json
+          retention-days: 30
+          if-no-files-found: warn
