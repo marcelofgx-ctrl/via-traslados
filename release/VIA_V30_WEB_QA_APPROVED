@@ -1,0 +1,8 @@
+VIA_V30_WEB_QA_APPROVED
+QA_RUN=45193418469
+QA_HEAD_SHA=c259cbc8e072ee74acbbfb71f085ac7749da85ad
+API_PRODUCTION_WORKER=9349f01a-5824-4401-848f-edb4f3f7d5b0
+WEB_BASELINE_WORKER=f46757df-8ff2-4653-bec3-e15b8394a99a
+APPROVAL_DATE=2026-11-23
+CHANGES_ALLOWED=passenger-web-only;no-api-no-D1-no-APK
+CONDITIONS=workflow-must-verify-active-worker-versions-and-unchanged-mobile-QA-source
