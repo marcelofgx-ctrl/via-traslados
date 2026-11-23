@@ -135,7 +135,10 @@ export default {async fetch(req,env,ctx){
      op?.source||null,dp?.source||null,op?.postalStatus||'unknown',dp?.postalStatus||'unknown',
      op?.numberIsApproximate?1:0,dp?.numberIsApproximate?1:0);
    const event=env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,null,'requested','passenger');
-   await env.DB.batch([main,points,event]);
+   if(typeof env.DB.batch==='function')await env.DB.batch([main,points,event]);
+   else { // Compatibility with the existing in-memory test D1 driver.
+    await main.run();await points.run();await event.run();
+   }
    scheduleMissingRoutes(env,ctx,[{id,origin:booking.origin,destination:booking.destination,
     originLocation:op,destinationLocation:dp,status:'requested'}],1);
    return send({id,access_token:token,status:'requested'},201)
