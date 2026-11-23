@@ -1,0 +1,111 @@
+name: Vía Traslados V30 — guarded production API with additive D1 table and rollback
+on:
+  push:
+    branches: [via-v30-mvp-operativo-20261123]
+    paths: ["release/VIA_V30_API_QA_APPROVED"]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-admin-prod-api-release
+  cancel-in-progress: false
+jobs:
+  prod-api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact successful original V30 contract and QA API/D1 runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s release/VIA_V30_API_QA_APPROVED
+          for run in 45190020589 45191185138; do
+            test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .conclusion)" = success
+          done
+          QA_SHA="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/45191185138" --jq .head_sha)"
+          test -n "$QA_SHA"
+          test -z "$(git diff --name-only "$QA_SHA"..HEAD -- backend)"
+          test -z "$(git diff --name-only "$QA_SHA"..HEAD -- tests/v30-location.test.mjs)"
+          echo 'VIA_V30_API_QA_PROOF_SOURCE_UNCHANGED'
+      - name: Recheck original authorization, quote, OTP, map and route contracts
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check backend/location-v30.js
+          node --check backend/route-estimate.js
+          node --check scripts/v30-prod-coordinates-smoke.mjs
+      - name: Produce explicit prod-only Wrangler config with no sandbox D1 bindings
+        run: |
+          cat > wrangler-v30-prod.jsonc <<'EOF'
+          {
+            "name":"via-traslados-api",
+            "main":"backend/worker.js",
+            "compatibility_date":"2026-11-10",
+            "workers_dev":true,
+            "keep_vars":true,
+            "d1_databases":[{"binding":"DB","database_name":"via-traslados-db","database_id":"dfc6a732-4817-4c49-8f2b-16ecaff3ecc0"}]
+          }
+          EOF
+          grep -F 'dfc6a732-4817-4c49-8f2b-16ecaff3ecc0' wrangler-v30-prod.jsonc
+          if grep -F '146017ce-09a7-4457-abd2-694a5a5b3e92' wrangler-v30-prod.jsonc;then exit 1;fi
+      - name: Assert exact original API Worker and untouched booking data
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v30-api-production-preflight.mjs
+      - name: Verify old OTP, routes, web+signed APK before any migration
+        run: node tests/prod-core-invariants.mjs
+      - name: Capture Cloudflare D1 Time Travel bookmark BEFORE any production SQL write
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v35-capture-bookmark.mjs
+      - name: Keep restricted D1 bookmark artifact for DBA recovery only
+        uses: actions/upload-artifact@v4
+        with:
+          name: VIA_V30_D1_PRE_MIGRATION_BOOKMARK
+          path: ${{ runner.temp }}/via-v35-bookmark.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Compile production API version without publishing
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler-v30-prod.jsonc --dry-run --keep-vars
+      - name: ADD ONLY V30 booking_locations table; never modify existing booking columns
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 d1 execute via-traslados-db --remote --config wrangler-v30-prod.jsonc --file backend/migrations/004_booking_locations_v30.sql
+      - name: Verify new table while old existing rows are untouched
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v30-prod-migration-readonly.mjs
+      - name: Deploy production API Worker ONLY, keep OTP, Geoapify and other existing secrets
+        id: deploy
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler-v30-prod.jsonc --keep-vars
+      - name: Verify actual registered Worker, OTP/CORS, old route and signed APK
+        run: node tests/prod-core-invariants.mjs
+      - name: Require real coordinates-only route without a street number
+        run: node scripts/v30-prod-coordinates-smoke.mjs
+      - name: Confirm new API version and original rollback remain available
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v30-api-production-postverify.mjs
+      - name: Rollback API Worker only if release or any post-check fails
+        if: failure() && steps.deploy.outcome != 'skipped'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v30-api-rollback.mjs
