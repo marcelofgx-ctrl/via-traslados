@@ -7,6 +7,7 @@ on:
       - "scripts/v30-web-app.js"
       - "scripts/v30-web-store.js"
       - "scripts/v30-web-release.py"
+      - "scripts/via-v291-prepare.py"
       - "scripts/v30-web-route-qa.mjs"
       - "scripts/v30-web-flow-regressions.mjs"
   workflow_dispatch:
