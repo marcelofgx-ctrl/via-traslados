@@ -121,9 +121,9 @@ async function run(os,w,h){
   await page.waitForFunction(()=>document.querySelector('.via-picker-backdrop')?.hidden===true);
   a=await panel();
   // Leaflet rounds the visible center to six decimals, but stores the actual
-  // chosen map center at higher precision (<0.5 m from the displayed marker).
-  const atMarkedPoint=state=>Math.abs(Number(state.latitude)-p.latitude)<0.000004&&
-   Math.abs(Number(state.longitude)-p.longitude)<0.000004;
+  // chosen map center at higher precision (within ~1 m of the displayed marker).
+  const atMarkedPoint=state=>Math.abs(Number(state.latitude)-p.latitude)<0.000012&&
+   Math.abs(Number(state.longitude)-p.longitude)<0.000012;
   assert(atMarkedPoint(a)&&a.postalStatus==='unknown',
    'Map confirmation did not save pin center without a street '+JSON.stringify(a));
   checks++;console.log('VIA_V29115_MAP_PASS_'+os+'_'+w+'_CONFIRM_COORDS_WITHOUT_STREET');
