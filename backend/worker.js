@@ -1,4 +1,5 @@
 import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,emailOtpAvailable} from './auth.js';
+import {locationPoint} from './location-v30.js';
 import {staffRoutes,identity,webEnabled} from './staff.js';
 import {staffPhoneRoutes} from './staff-phone.js';
 import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js';
@@ -17,7 +18,8 @@ const equal=(a,b)=>{if(typeof a!=='string'||typeof b!=='string'||a.length!==b.le
 export const validTransition=(from,to)=>Boolean(STEPS[from]?.includes(to));
 export function validateBooking(p){
  if(!p||typeof p!=='object'||Array.isArray(p))throw Error('Datos incorrectos');
- const q={name:clean(p.name,100),phone:clean(p.phone,30),email:clean(p.email,200),origin:clean(p.origin,200),destination:clean(p.destination,200),date:clean(p.date,10),time:clean(p.time,5),notes:clean(p.notes,500),passengers:Number(p.passengers),bags:Number(p.bags)};
+ const q={name:clean(p.name,100),phone:clean(p.phone,30),email:clean(p.email,200),origin:clean(p.origin,200),destination:clean(p.destination,200),date:clean(p.date,10),time:clean(p.time,5),notes:clean(p.notes,500),passengers:Number(p.passengers),bags:Number(p.bags),
+  originLocation:locationPoint(p.originLocation),destinationLocation:locationPoint(p.destinationLocation)};
  if(q.name.length<2||q.origin.length<4||q.destination.length<4||!/^\+?[\d\s()\-]{7,30}$/.test(q.phone))throw Error('Completá nombre, celular, origen y destino');
  q.email=normalizeEmail(q.email);
  if(q.origin.toLowerCase()===q.destination.toLowerCase())throw Error('Origen y destino deben ser distintos');
@@ -124,9 +126,18 @@ export default {async fetch(req,env,ctx){
       return err('Necesitás verificar tu correo antes de solicitar un traslado.',401);
    await env.DB.prepare("INSERT INTO customers (email,name,phone) VALUES (?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,phone=excluded.phone,updated_at=datetime('now')").bind(booking.email,booking.name,booking.phone).run();
    const id='VIA-'+crypto.randomUUID().slice(0,12).toUpperCase(),token=random(),tokenHash=await hash(token);
-   await env.DB.prepare('INSERT INTO bookings (id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,booking.name,booking.phone,booking.email,booking.origin,booking.destination,booking.date,booking.time,booking.passengers,booking.bags,booking.notes,tokenHash,'requested').run();
-   await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,null,'requested','passenger').run();
-   scheduleMissingRoutes(env,ctx,[{id,origin:booking.origin,destination:booking.destination,status:'requested'}],1);
+   // Atomic booking + immutable chosen points + initial event. A failed insert
+   // cannot leave a reservation missing its original map coordinates.
+   const main=env.DB.prepare('INSERT INTO bookings (id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,booking.name,booking.phone,booking.email,booking.origin,booking.destination,booking.date,booking.time,booking.passengers,booking.bags,booking.notes,tokenHash,'requested');
+   const op=booking.originLocation,dp=booking.destinationLocation;
+   const points=env.DB.prepare('INSERT INTO booking_locations (booking_id,origin_lat,origin_lng,destination_lat,destination_lng,origin_source,destination_source,origin_postal_status,destination_postal_status,origin_number_approximate,destination_number_approximate) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(id,op?.lat??null,op?.lon??null,dp?.lat??null,dp?.lon??null,
+     op?.source||null,dp?.source||null,op?.postalStatus||'unknown',dp?.postalStatus||'unknown',
+     op?.numberIsApproximate?1:0,dp?.numberIsApproximate?1:0);
+   const event=env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,null,'requested','passenger');
+   await env.DB.batch([main,points,event]);
+   scheduleMissingRoutes(env,ctx,[{id,origin:booking.origin,destination:booking.destination,
+    originLocation:op,destinationLocation:dp,status:'requested'}],1);
    return send({id,access_token:token,status:'requested'},201)
   }
   const item=path.match(/^\/api\/requests\/([A-Z0-9-]+)(?:\/(accept|cancel))?$/);
