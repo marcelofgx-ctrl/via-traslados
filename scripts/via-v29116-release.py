@@ -89,17 +89,17 @@ def prepare():
  mine=(ASSETS/'mis-reservas.html').read_text()
  assert 'mine-v29113-inicio.css?v=1' in mine,'Approved Mis reservas changed'
  prior=pathlib.Path('audit/live-v29115/map-point-picker.js').read_text()
- old=("  reference.textContent=result.headline+' · '+(result.numberIsApproximate?\\n"
+ old=("  reference.textContent=result.headline+' · '+(result.numberIsApproximate?\n"
       "   'N.º orientativo':'Número por confirmar')+' · a unos '+metersAway+' m';")
- new=("  // Presentation-only: keep the precise location and reverse-geocode result\\n"
-      "  // untouched; split its existing human-readable label into two stable rows.\\n"
-      "  const streetLine=document.createElement('span');\\n"
-      "  streetLine.className='via-reference-street';\\n"
-      "  streetLine.textContent=result.headline;\\n"
-      "  const detailLine=document.createElement('small');\\n"
-      "  detailLine.className='via-reference-detail';\\n"
-      "  detailLine.textContent=(result.numberIsApproximate?\\n"
-      "   'N.º orientativo':'Número por confirmar')+' · A unos '+metersAway+' m';\\n"
+ new=("  // Presentation-only: keep the precise location and reverse-geocode result\n"
+      "  // untouched; split its existing human-readable label into two stable rows.\n"
+      "  const streetLine=document.createElement('span');\n"
+      "  streetLine.className='via-reference-street';\n"
+      "  streetLine.textContent=result.headline;\n"
+      "  const detailLine=document.createElement('small');\n"
+      "  detailLine.className='via-reference-detail';\n"
+      "  detailLine.textContent=(result.numberIsApproximate?\n"
+      "   'N.º orientativo':'Número por confirmar')+' · A unos '+metersAway+' m';\n"
       "  reference.replaceChildren(streetLine,detailLine);")
  assert prior.count(old)==1,'Map presentation-only source guard not unique'
  expected="/* Vía Traslados V29.1.16 — visual-only map reference typography; reverse lookup unchanged. */\\n"+prior.replace(old,new)
