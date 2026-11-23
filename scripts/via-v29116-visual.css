@@ -115,3 +115,13 @@ body[data-page="passenger"] #via-home-date-display{display:none;}
   right:-5px!important;
  }
 }
+/* Give the visible date access to otherwise unused card padding. This does
+   not widen the form, native input or any of the three equal option columns. */
+@media(max-width:650px){
+ body[data-page="passenger"]:not(.in-booking) .reference-options #via-home-date-display{
+  max-width:calc(100% + 16px)!important;
+ }
+ body[data-page="passenger"]:not(.in-booking) .reference-options .reference-option:first-child > span::after{
+  right:-13px!important;
+ }
+}
