@@ -121,7 +121,7 @@ async function run(os,w,h){
   await page.waitForFunction(()=>document.querySelector('.via-picker-backdrop')?.hidden===true);
   a=await panel();
   assert(a.latitude===String(p.latitude)&&a.longitude===String(p.longitude)&&a.postalStatus==='unknown',
-   'Map confirmation did not save valid point without a street');
+   'Map confirmation did not save valid point without a street '+JSON.stringify(a));
   checks++;console.log('VIA_V29115_MAP_PASS_'+os+'_'+w+'_CONFIRM_COORDS_WITHOUT_STREET');
 
   // Reverse geocoder returns only a street. No invented door number.
@@ -161,7 +161,7 @@ async function run(os,w,h){
   assert(Date.now()-started<2400,'Confirmation still blocked by failed geocoder');
   a=await panel();
   assert(a.latitude===String(p.latitude)&&a.longitude===String(p.longitude)&&a.postalStatus==='unknown',
-   'Timed-out reverse should still preserve exact coordinates');
+   'Timed-out reverse should still preserve exact coordinates '+JSON.stringify(a));
   checks++;console.log('VIA_V29115_MAP_PASS_'+os+'_'+w+'_REVERSE_WATCHDOG_AND_IMMEDIATE_CONFIRM');
   await page.screenshot({path:OUT+'/'+os+'-'+w+'x'+h+'-after-timeout-confirm.png',fullPage:false});
   assert.deepEqual(errors.filter(x=>!x.includes('Leaflet')&&!x.includes('maplibregl')),[],
