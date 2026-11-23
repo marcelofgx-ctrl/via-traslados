@@ -102,7 +102,7 @@ def prepare():
       "   'N.º orientativo':'Número por confirmar')+' · A unos '+metersAway+' m';\n"
       "  reference.replaceChildren(streetLine,detailLine);")
  assert prior.count(old)==1,'Map presentation-only source guard not unique'
- expected="/* Vía Traslados V29.1.16 — visual-only map reference typography; reverse lookup unchanged. */\\n"+prior.replace(old,new)
+ expected="/* Vía Traslados V29.1.16 — visual-only map reference typography; reverse lookup unchanged. */\n"+prior.replace(old,new)
  candidate=pathlib.Path('scripts/via-v29116-map-point-picker.js').read_text()
  assert candidate==expected,'Map motor differs beyond approved presentation-only change'
  (ASSETS/'map-point-picker.js').write_text(candidate)
