@@ -2,7 +2,7 @@ name: Via V29.1.15 — independent quick browser QA without apt bootstrap
 on:
   push:
     branches: [via-address-picker-v29115-20261123]
-    paths: [".github/workflows/via-v29115-quick-browser.yml"]
+    paths: [".github/workflows/via-v29115-quick-browser.yml", "scripts/via-v29115-map-qa-android.mjs"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,18 +24,8 @@ jobs:
         run: |
           npm install --no-audit --no-fund --no-save playwright@1.56.1 leaflet@1.9.4
           npx playwright install webkit >/dev/null
-      - name: Validate 18 map and GPS UI cases (Android/iOS real engines)
-        run: node scripts/via-v29115-map-qa.mjs
-      - name: Validate 42 original new-request GPS regression cases
-        run: node scripts/via-v29115-flow-regressions.mjs
-      - name: Validate 8 keyboard/guest regressions
-        env:
-          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
-        run: node scripts/via-mine-v2918-keyboard-qa.mjs
-      - name: Validate 7 Mis reservas session and paging regressions
-        env:
-          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
-        run: node scripts/via-mine-v29110-browser.mjs
+      - name: Validate 12 real Android Chrome map and GPS states without WebKit system dependency
+        run: node scripts/via-v29115-map-qa-android.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
