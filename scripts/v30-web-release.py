@@ -152,7 +152,7 @@ def release():
     smoke(WEB)
     assert version()!=BASE,'Old web Worker still active'
     assert api_version()==expected_api,'API Worker changed after web deploy'
-    ok=subprocess.run(['node','tests/prod-core-invariants.mjs'],capture_output=True,text=True,timeout=100)
+    ok=subprocess.run(['node','scripts/v30-prod-core-invariants.mjs'],capture_output=True,text=True,timeout=100)
     assert ok.returncode==0,'Core smoke failed '+ok.stderr[-400:]
     print('VIA_V30_WEB_PRODUCTION_VERIFIED '+version(),flush=True);return
    except Exception as e:
