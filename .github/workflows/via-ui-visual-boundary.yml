@@ -1,0 +1,25 @@
+name: Vía Traslados - visual-only code boundary (read only)
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  visual-boundary:
+    name: Visual boundary safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch base for accurate source-to-PR comparison
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin "$GITHUB_BASE_REF"
+      - name: Refuse map, booking, API, D1, OTP or auth changes inside visual-only PR
+        run: node scripts/via-ui-visual-boundary.mjs
