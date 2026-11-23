@@ -27,7 +27,7 @@ jobs:
           npm test
           npm run check
           node --check scripts/v30-qa-real-e2e.mjs
-      - name: Produce QA-only Wrangler config: NEVER production D1 ID
+      - name: "Produce QA-only Wrangler config - NEVER production D1 ID"
         run: |
           cat > wrangler-v30-qa.jsonc <<'EOF'
           {
