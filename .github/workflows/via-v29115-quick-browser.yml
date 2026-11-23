@@ -1,0 +1,47 @@
+name: Via V29.1.15 — independent quick browser QA without apt bootstrap
+on:
+  push:
+    branches: [via-address-picker-v29115-20261123]
+    paths: [".github/workflows/via-v29115-quick-browser.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Confirm isolated stage serves approved V29.1.15 files
+        run: |
+          node -e "Promise.all(['index.html','reference.js','map-point-picker.js'].map(async p=>{let r=await fetch('https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/'+p);if(!r.ok)throw Error(p+' missing');let s=await r.text();if(!s.includes('29.1.15'))throw Error(p+' wrong version');console.log('QA_STAGE_SOURCE_PASS',p)})).catch(e=>{console.error(e);process.exit(1)})"
+      - name: Install original Leaflet, Android Chrome driver and WebKit binaries without apt packages
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1 leaflet@1.9.4
+          npx playwright install webkit >/dev/null
+      - name: Validate 18 map and GPS UI cases (Android/iOS real engines)
+        run: node scripts/via-v29115-map-qa.mjs
+      - name: Validate 42 original new-request GPS regression cases
+        run: node scripts/via-v29115-flow-regressions.mjs
+      - name: Validate 8 keyboard/guest regressions
+        env:
+          VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
+        run: node scripts/via-mine-v2918-keyboard-qa.mjs
+      - name: Validate 7 Mis reservas session and paging regressions
+        env:
+          VIA_MINE_PREMIUM_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/
+        run: node scripts/via-mine-v29110-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v29115-independent-browser-proof
+          path: |
+            via-v29115-map-proof/
+            via-v29115-proof/
+          retention-days: 30
+          if-no-files-found: warn
