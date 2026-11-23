@@ -1,0 +1,78 @@
+name: Vía Traslados V30 — REAL isolated API and D1 QA E2E
+on:
+  push:
+    branches: [via-v30-mvp-operativo-20261123]
+    paths:
+      - ".github/workflows/via-v30-api-qa-real.yml"
+      - "backend/**"
+      - "scripts/v30-qa-real-e2e.mjs"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-isolated-api-qa
+  cancel-in-progress: true
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 19
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify strict environments and test all existing contracts
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          node --check scripts/v30-qa-real-e2e.mjs
+      - name: Produce QA-only Wrangler config: NEVER production D1 ID
+        run: |
+          cat > wrangler-v30-qa.jsonc <<'EOF'
+          {
+            "name":"via-traslados-api-qa",
+            "main":"backend/worker.js",
+            "compatibility_date":"2026-11-10",
+            "workers_dev":true,
+            "keep_vars":true,
+            "d1_databases":[{"binding":"DB","database_name":"via-traslados-qa-db","database_id":"146017ce-09a7-4457-abd2-694a5a5b3e92"}],
+            "vars":{
+              "PUBLIC_ORIGIN":"https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev",
+              "OPERATOR_ORIGIN":"https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev"
+            }
+          }
+          EOF
+          grep -F '146017ce-09a7-4457-abd2-694a5a5b3e92' wrangler-v30-qa.jsonc
+          if grep -F 'dfc6a732-4817-4c49-8f2b-16ecaff3ecc0' wrangler-v30-qa.jsonc;then exit 1;fi
+      - name: Verify D1 QA accessible and schema available before additive migration
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-qa-db --remote --config wrangler-v30-qa.jsonc --command="SELECT name FROM sqlite_master WHERE type='table' AND name='bookings';"
+      - name: Add only booking_locations table to QA D1 (idempotent)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 d1 execute via-traslados-qa-db --remote --config wrangler-v30-qa.jsonc --file backend/migrations/004_booking_locations_v30.sql
+      - name: Bundle and dry-run real QA API Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler-v30-qa.jsonc --dry-run --keep-vars
+      - name: Publish ONLY QA API Worker; keep previous secrets and vars
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler-v30-qa.jsonc --keep-vars
+      - name: API/D1 real QA booking lifecycle with synthetic verification and cleanup
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v30-qa-real-e2e.mjs
+      - name: Check production Worker and data remain completely unchanged
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v30-cloudflare-inventory.mjs
