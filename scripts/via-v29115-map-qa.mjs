@@ -120,8 +120,12 @@ async function run(os,w,h){
   await page.locator('.via-picker-confirm').click();
   await page.waitForFunction(()=>document.querySelector('.via-picker-backdrop')?.hidden===true);
   a=await panel();
-  assert(a.latitude===String(p.latitude)&&a.longitude===String(p.longitude)&&a.postalStatus==='unknown',
-   'Map confirmation did not save valid point without a street '+JSON.stringify(a));
+  // Leaflet rounds the visible center to six decimals, but stores the actual
+  // chosen map center at higher precision (<0.5 m from the displayed marker).
+  const atMarkedPoint=state=>Math.abs(Number(state.latitude)-p.latitude)<0.000004&&
+   Math.abs(Number(state.longitude)-p.longitude)<0.000004;
+  assert(atMarkedPoint(a)&&a.postalStatus==='unknown',
+   'Map confirmation did not save pin center without a street '+JSON.stringify(a));
   checks++;console.log('VIA_V29115_MAP_PASS_'+os+'_'+w+'_CONFIRM_COORDS_WITHOUT_STREET');
 
   // Reverse geocoder returns only a street. No invented door number.
@@ -160,8 +164,8 @@ async function run(os,w,h){
     undefined,{timeout:2500});
   assert(Date.now()-started<2400,'Confirmation still blocked by failed geocoder');
   a=await panel();
-  assert(a.latitude===String(p.latitude)&&a.longitude===String(p.longitude)&&a.postalStatus==='unknown',
-   'Timed-out reverse should still preserve exact coordinates '+JSON.stringify(a));
+  assert(atMarkedPoint(a)&&a.postalStatus==='unknown',
+   'Timed-out reverse should still preserve pin-centered coordinates '+JSON.stringify(a));
   checks++;console.log('VIA_V29115_MAP_PASS_'+os+'_'+w+'_REVERSE_WATCHDOG_AND_IMMEDIATE_CONFIRM');
   await page.screenshot({path:OUT+'/'+os+'-'+w+'x'+h+'-after-timeout-confirm.png',fullPage:false});
   assert.deepEqual(errors.filter(x=>!x.includes('Leaflet')&&!x.includes('maplibregl')),[],
