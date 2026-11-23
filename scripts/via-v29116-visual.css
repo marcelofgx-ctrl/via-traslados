@@ -104,3 +104,14 @@ body[data-page="passenger"] #via-home-date-display{display:none;}
   outline-offset:2px!important;
  }
 }
+
+@media(max-width:360px){
+ body[data-page="passenger"]:not(.in-booking) .reference-options #via-home-date-display{
+  max-width:100%!important;
+  font-size:9px!important;
+  letter-spacing:-.38px!important;
+ }
+ body[data-page="passenger"]:not(.in-booking) .reference-options .reference-option:first-child > span::after{
+  right:-5px!important;
+ }
+}
