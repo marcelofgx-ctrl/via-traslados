@@ -10,6 +10,7 @@ on:
       - "scripts/via-v29116-map-point-picker.js"
       - "scripts/via-v29116-date-qa.mjs"
       - "scripts/via-v29116-map-qa.mjs"
+      - "scripts/via-v29116-flow-regressions.mjs"
   workflow_dispatch:
 permissions:
   contents: read
@@ -60,7 +61,7 @@ jobs:
       - name: Eighteen real browser map reverse lookup/coordinate/door and two-line formatting tests
         run: node scripts/via-v29116-map-qa.mjs
       - name: Retain 42 new booking and GPS identity regressions
-        run: node scripts/via-v29115-flow-regressions.mjs
+        run: node scripts/via-v29116-flow-regressions.mjs
       - name: Retain eight guest sign-in/keyboard regressions
         env:
           VIA_V2918_QA: https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev
