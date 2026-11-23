@@ -13,7 +13,7 @@ ORIGIN='https://viatraslados.com/'
 markers={
  'index.html':['content="29.1.16"','map-point-picker.js?v=28','via-v29116-date-ui.js?v=1','via-v29116-visual.css?v=1'],
  'map-point-picker.js':['V29.1.16','via-reference-street','via-reference-detail','reverseWatchdog','reverseSettled'],
- 'via-v29116-date-ui.js':['V29.1.16','via-home-date-display','pageshow'],
+ 'via-v29116-date-ui.js':['v29.1.16','via-home-date-display','pageshow'],
  'via-v29116-visual.css':['V29.1.16','via-reference-detail','via-home-date-display'],
  'mis-reservas.html':['mine-v29113-inicio.css?v=1','mine-v29112-cohesion.css?v=1']
 }
