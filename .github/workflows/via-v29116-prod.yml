@@ -5,6 +5,7 @@ on:
     paths: ["release/VIA_V29116_QA_APPROVED"]
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: via-web-prod-v29116-ui
   cancel-in-progress: false
@@ -26,10 +27,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           test -s release/VIA_V29116_QA_APPROVED
+          node --check scripts/via-v29116-qa-proof.mjs
           python3 -m py_compile scripts/via-v29116-release.py
           node --check scripts/via-v29116-date-ui.js
           node --check scripts/via-v29116-map-point-picker.js
           python3 -c "import runpy;f=runpy.run_path('scripts/via-v291-prepare.py');assert f['active_version']()=='e7830749-95f0-4a0e-8781-0e2ae6a19466','Unexpected prod Worker; no release'"
+      - name: Require successful exact-source 83-case QA proof from GitHub Actions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/via-v29116-qa-proof.mjs
       - name: Rebuild web-only assets and compare exact source and functional hashes
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
