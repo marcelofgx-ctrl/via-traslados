@@ -276,13 +276,13 @@ function startGps(){
     const streetFound=decision?.postalStatus==='suggested'&&
      typeof info?.street==='string'&&!!info.street.trim();
     if(!streetFound)
-     gpsPanel('Confirmá el punto','El GPS ubicó tu posición, pero no pudimos identificar la calle ni la puerta. Elegí la entrada en el mapa o escribí tu dirección.',
+     gpsPanel('Confirmá el punto','El GPS ubicó el punto, pero no identificó la calle. Marcá la entrada en el mapa o escribí tu dirección.',
       [{label:'Elegir en el mapa',go:openGpsMap,primary:true}]);
     else if(!chosen.numberIsApproximate)
-     gpsPanel('Número por confirmar','Tenemos una calle cercana, pero no un número de puerta confirmado. Verificá la dirección o ajustá el punto.',
+     gpsPanel('Número por confirmar','Detectamos una calle cercana. Confirmá el número o ajustá el punto en el mapa.',
       [{label:'Elegir en el mapa',go:openGpsMap,primary:true}]);
     else
-     gpsPanel('Número orientativo','Hay una puerta cercana, pero el número no identifica necesariamente tu entrada. Revisá el mapa.',
+     gpsPanel('Número orientativo','Es un número cercano, no necesariamente tu puerta. Verificá el punto.',
       [{label:'Ajustar en el mapa',go:openGpsMap}]);
    }
   }catch(err){if(finishGps(run))gpsFailure(err)}
