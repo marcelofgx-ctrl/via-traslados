@@ -119,6 +119,7 @@ body[data-page="passenger"] #via-home-date-display{display:none;}
    not widen the form, native input or any of the three equal option columns. */
 @media(max-width:650px){
  body[data-page="passenger"]:not(.in-booking) .reference-options #via-home-date-display{
+  width:max-content!important;
   max-width:calc(100% + 16px)!important;
  }
  body[data-page="passenger"]:not(.in-booking) .reference-options .reference-option:first-child > span::after{
