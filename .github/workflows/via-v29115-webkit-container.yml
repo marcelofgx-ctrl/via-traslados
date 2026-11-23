@@ -1,0 +1,39 @@
+name: Via V29.1.15 — independent WebKit iOS map QA on preinstalled Playwright image
+on:
+  push:
+    branches: [via-address-picker-v29115-20261123]
+    paths: [".github/workflows/via-v29115-webkit-container.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios-real-webkit:
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --ipc=host
+    timeout-minutes: 19
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify stage exactly V29.1.15 and no production writes
+        run: |
+          node -v
+          node -e "Promise.all(['index.html','reference.js','map-point-picker.js'].map(async p=>{let r=await fetch('https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev/'+p);if(!r.ok)throw Error(p+' missing');let s=await r.text();if(!s.includes('29.1.15'))throw Error(p+' wrong version');console.log('WEBKIT_QA_VERSION_PASS',p)})).catch(e=>{console.error(e);process.exit(1)})"
+      - name: Use image's original WebKit and install only test JS packages
+        run: npm install --no-audit --no-fund --no-save playwright@1.56.1 leaflet@1.9.4
+      - name: Six real iOS WebKit map cases — street, portal, timeout, exact pick
+        run: node scripts/via-v29115-map-qa-ios.mjs
+      - name: Twenty-one real iOS WebKit previous new request and GPS regressions
+        run: node scripts/via-v29115-flow-ios.mjs
+      - name: Retain actual WebKit screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v29115-webkit-iphone-proof
+          path: |
+            via-v29115-map-proof/
+            via-v29115-proof/
+          retention-days: 30
+          if-no-files-found: warn
