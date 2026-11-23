@@ -1,0 +1,35 @@
+name: Via V29.1.15 — snapshot effective V29.1.14 public map/GPS files READ ONLY
+on:
+  push:
+    branches: [via-address-picker-v29115-20261123]
+    paths: [".github/workflows/via-v29115-snapshot.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  read-only-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert exact V29.1.14 active Cloudflare Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 -c "import runpy;f=runpy.run_path('scripts/via-v291-prepare.py');assert f['active_version']()=='d3f863be-575c-40eb-902b-96818085bb66','Production changed';print('VIA_V29115_LIVE_BASELINE_PASS')"
+      - name: Snapshot public map scripts and CSS without API/DB writes
+        run: node scripts/via-v29115-snapshot.mjs
+      - name: Commit immutable public snapshot to working branch
+        run: |
+          git config user.name via-traslados-ci
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add audit/live-v29114
+          git commit -m "audit: exact public V29.1.14 map/address code and styles for v29.1.15" || true
+          git push origin HEAD:via-address-picker-v29115-20261123
