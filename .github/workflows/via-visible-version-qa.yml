@@ -28,4 +28,4 @@ jobs:
           grep -q 'TRASLADOS PRIVADOS <span' /tmp/via-home-with-version.html
           grep -q '· v30.0' /tmp/via-home-with-version.html
           echo VIA_HEADER_VERSION_QA_PASS_NO_DEPLOY
-      - run: echo "QA ONLY: NO DEPLOY, NO API/D1, NO BACKEND, NO APK"
+      - run: echo "QA ONLY NO DEPLOY NO API D1 NO BACKEND NO APK"
