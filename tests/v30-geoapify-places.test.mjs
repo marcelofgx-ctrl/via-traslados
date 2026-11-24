@@ -122,3 +122,18 @@ test('no replica longitud ni ETag tras ampliar la respuesta JSON',async()=>{
   assert.equal(r.headers.has('Content-Length'),false);
   assert((await r.json()).results.some(x=>x.source==='Geoapify Places'));
 });
+
+test("McDonalds escrito sin apóstrofo consulta la marca oficial sin alterar IDE",async()=>{
+  let queried;
+  const res=await extendPlaceSearch(request('Mcdonalds'),legacy(),enabled,async link=>{
+    queried=new URL(link);
+    return new Response(JSON.stringify({features:[{
+      properties:{name:"McDonald's",country_code:'uy',city:'Montevideo'},
+      geometry:{coordinates:[-56.19,-34.9]}
+    }]}),{status:200});
+  });
+  assert.equal(queried.searchParams.get('name'),"McDonald's");
+  const body=await res.json();
+  assert(body.results.some(x=>x.source==='Geoapify Places'));
+  assert(body.results.some(x=>x.street==='Aeropuerto Internacional de Carrasco'));
+});
