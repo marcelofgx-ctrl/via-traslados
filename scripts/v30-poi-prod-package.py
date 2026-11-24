@@ -23,6 +23,16 @@ def worker_version(name):
  vs=data['result']['deployments'][0]['versions']
  if len(vs)!=1 or float(vs[0]['percentage'])!=100:raise AssertionError('Tráfico productivo dividido '+name)
  return vs[0]['version_id']
+def latest_uploaded_version(name):
+ """La descarga GET /scripts/name sigue la última versión SUBIDA, no necesariamente la activa."""
+ a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+ u='https://api.cloudflare.com/client/v4/accounts/'+a+'/workers/scripts/'+name+'/versions?per_page=1'
+ req=urllib.request.Request(u,headers={'Authorization':'Bearer '+t,'Accept':'application/json'})
+ with urllib.request.urlopen(req,timeout=20) as r:data=json.load(r)
+ if not data.get('success') or not isinstance(data.get('result'),list) or not data['result']:
+  raise AssertionError('No se pudo determinar última versión subida de '+name)
+ return data['result'][0].get('id')
+
 def api_source():
  a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
  u='https://api.cloudflare.com/client/v4/accounts/'+a+'/workers/scripts/via-traslados-api'
@@ -70,6 +80,12 @@ def fetch_asset(name):
 def verify_versions():
  assert worker_version('via-traslados-web-prod')==BASE_WEB,'Web distinta: NO publicar'
  assert worker_version('via-traslados-api')==BASE_API,'API distinta: NO publicar'
+ # Protección de rollback: el último script subido puede diferir del Worker desplegado.
+ # En ese caso la descarga sin versionar NO sirve como fuente de producción.
+ assert latest_uploaded_version('via-traslados-api')==BASE_API,(
+  'API activa recuperada por rollback, pero última subida es distinta: NO empaquetar fuente ambigua')
+ assert latest_uploaded_version('via-traslados-web-prod')==BASE_WEB,(
+  'Web activa difiere de última subida: NO empaquetar fuente ambigua')
 def generate():
  verify_versions()
  OUT.mkdir(parents=True,exist_ok=True);ASSETS.mkdir(parents=True,exist_ok=True)
