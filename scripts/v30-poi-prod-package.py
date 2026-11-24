@@ -29,9 +29,10 @@ def latest_uploaded_version(name):
  u='https://api.cloudflare.com/client/v4/accounts/'+a+'/workers/scripts/'+name+'/versions?per_page=1'
  req=urllib.request.Request(u,headers={'Authorization':'Bearer '+t,'Accept':'application/json'})
  with urllib.request.urlopen(req,timeout=20) as r:data=json.load(r)
- if not data.get('success') or not isinstance(data.get('result'),list) or not data['result']:
+ items=data.get('result',{}).get('items') if isinstance(data.get('result'),dict) else data.get('result')
+ if not data.get('success') or not isinstance(items,list) or not items or not items[0].get('id'):
   raise AssertionError('No se pudo determinar última versión subida de '+name)
- return data['result'][0].get('id')
+ return items[0]['id']
 
 def api_source():
  a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
