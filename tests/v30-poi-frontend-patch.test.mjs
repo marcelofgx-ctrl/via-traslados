@@ -11,7 +11,8 @@ function search(input){const q=input.value.trim();
   const results=(looksLikePlace&&!looksLikeAddress)?[...poiResults,...streetResults]:[...streetResults,...poiResults];
   const unique=new Map();
 }
-function select(){ setMeta(input,place); } // mode=places
+const setMeta=(input,place)=>{}; // mode=places
+function select(){ setMeta(input,place); }
 `;
 test('no parchea un archivo desconocido ni se aplica dos veces',()=>{
   assert.throws(()=>patchAutocompleteSource('irreconocible'),/distinto/);
