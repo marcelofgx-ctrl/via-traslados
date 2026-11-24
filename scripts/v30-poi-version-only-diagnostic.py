@@ -61,6 +61,10 @@ def build():
     'liveMarkerCount':old.count('__viaActiveApiWorker'),
   }
   print('VIA_POI_CANDIDATE_SOURCE_SIGNATURE '+json.dumps(metrics),flush=True)
+  for marker in ['rect:-58.6,-35.25,-53.1,-30.05','async function viaPoiRemote','body.features.map(viaPoiNormalize)','searchParams.set("name"']:
+    idx=old.find(marker)
+    snippet=old[max(0,idx-110):idx+len(marker)+140] if idx>=0 else None
+    print('VIA_POI_STATIC_CODE_SHAPE '+json.dumps({'marker':marker,'snippet':snippet}),flush=True)
   # IMPORTANT: diagnostic only; permit Geoapify to rank by user's proximity.
   # Server-side normalization still rejects other countries and invalid coordinates.
   new=change_once(new,
