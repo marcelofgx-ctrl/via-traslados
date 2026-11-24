@@ -24,6 +24,18 @@ jobs:
         run: |
           node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs
           python3 -m py_compile scripts/v30-poi-preflight.py
+      - name: Chequear secreto Geoapify disponible en GitHub sin revelar valor
+        env:
+          VIA_SECRET: ${{ secrets.VIA_GEOAPIFY_API_KEY }}
+          GEO_SECRET: ${{ secrets.GEOAPIFY_API_KEY }}
+        run: |
+          if [ -n "$VIA_SECRET" ]; then
+            echo "VIA_GITHUB_GEOAPIFY_SECRET_NAME VIA_GEOAPIFY_API_KEY_PRESENT"
+          elif [ -n "$GEO_SECRET" ]; then
+            echo "VIA_GITHUB_GEOAPIFY_SECRET_NAME GEOAPIFY_API_KEY_PRESENT"
+          else
+            echo "VIA_GITHUB_GEOAPIFY_SECRET_NAME NOT_PRESENT"
+          fi
       - name: Comprobar Worker real V30 en Cloudflare SOLO GET
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
