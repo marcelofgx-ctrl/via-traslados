@@ -53,3 +53,18 @@ Si un mensaje necesita editar código de mapa para cambiar una frase, **se permi
 Los tests y este contrato deben acompañar el proyecto. Los cambios futuros deben partir de la versión web productiva efectiva y reutilizar los tests de fecha, GPS, mapa, autenticación, reservas y compatibilidad móvil. **El estado verde de QA debe ser un requisito de publicación**, no solo una recomendación.
 
 No hay modo de garantizar que ningún navegador, proveedor de mapas o servicio externo falle jamás; esta defensa acota y detecta regresiones propias antes de producción, conserva pruebas rastreables y posibilita recuperación inmediata.
+
+## 7. Identificador de versión — requisito permanente
+
+**Obligatorio en todas las siguientes publicaciones de la web de pasajeros.**
+La pantalla principal debe mostrar siempre un distintivo de versión **pequeño, discreto y visible sin desplazarse**. No puede quedar únicamente en el footer si el diseño no permite ver ese pie de página.
+
+- Posición preferente: dentro del subtítulo del logotipo del encabezado principal, con un texto tipo `· v30.0`; tipografía 9–10 px, opacidad secundaria, sin colores llamativos ni tarjetas.
+- El texto debe derivarse automáticamente de `<meta name="via-release-version" content="...">`, no quedar codificado con una versión antigua.
+- Debe mantenerse legible en Android Chrome y Safari iOS, 320–430 px, sin tapar iconos, botones, teclado, mapa, formularios ni generar scroll.
+- En futuras releases, actualizar el `meta` y verificar que el número mostrado coincide; si no, bloquear la publicación.
+- Mantener **un solo** `id="via-release-indicator"` en el HTML y comprobar que está dentro del `<header>` y no únicamente dentro del `<footer>`.
+- Un cambio de etiqueta nunca autoriza cambios en API, D1, reservas, mapa, autenticación o APK.
+- La etiqueta ya existía en el footer de V30.0, pero quedaba fuera de la vista principal; el requerimiento es visibilidad efectiva, no solo presencia en el DOM.
+
+El parche de referencia y sus pruebas están en `scripts/via-home-visible-version.mjs` y `tests/via-home-visible-version.test.mjs` (rama de implementación `via-version-visible-v30-20261124`).
