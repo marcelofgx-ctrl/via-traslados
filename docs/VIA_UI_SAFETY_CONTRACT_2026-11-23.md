@@ -68,3 +68,16 @@ La pantalla principal debe mostrar siempre un distintivo de versión **pequeño,
 - La etiqueta ya existía en el footer de V30.0, pero quedaba fuera de la vista principal; el requerimiento es visibilidad efectiva, no solo presencia en el DOM.
 
 El parche de referencia y sus pruebas están en `scripts/via-home-visible-version.mjs` y `tests/via-home-visible-version.test.mjs` (rama de implementación `via-version-visible-v30-20261124`).
+
+## 8. Entrega y pruebas explicadas al usuario — directiva obligatoria
+
+**Cada modificación, prueba, publicación y rollback debe comunicarse con un informe operativo claro, no solo con registros de CI.** Al terminar la respuesta se debe incluir siempre un **enlace real y directo a lo que se probará**.
+
+- Separar inequívocamente `PROD`, `QA desplegado` y `solo pruebas de código`. Si no hubo deploy, decir «No publicado»; una corrida de GitHub verde no equivale a que la web nueva esté operativa.
+- Antes del enlace, explicar qué cambió, versión/entorno, qué funciona y qué no, instrucciones concretas para reproducir el caso desde Android/iOS, resultado esperado, pruebas automatizadas y reales, efectos en reservas/API/D1, rollback comprobado, pendientes y cualquier acción requerida del usuario.
+- Incluir un **distintivo visible de versión** en la UI y verificar que coincide con el despliegue real; no dejarlo oculto exclusivamente en un footer.
+- La **última sección** se titulará «Enlace para probar / verificar». Ofrecer la URL exacta del entorno verificado; si solo se corrieron tests, enlazar la ejecución y aclarar que todavía no hay aplicación nueva para probar. Nunca inventar links ni inducir a testear código que no está publicado.
+- Cerrar con el enlace específico, claramente identificado. Evitar obligar al usuario a interpretar logs o a pedir repetidamente dónde entrar.
+- Esta regla es transversal, también a Geoapify, buscador de lugares, GPS, autenticación, mapa, APK conductor y tareas de rollback.
+
+La directiva operativa completa también está en `AGENTS.md`, en la raíz del repositorio.
