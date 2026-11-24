@@ -1,0 +1,86 @@
+name: "Vía V30 — publicar SOLO Worker POI QA aislado"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths:
+      - "scripts/v30-poi-qa-package.py"
+      - ".github/workflows/via-v30-poi-isolated-worker-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-poi-isolated-worker-qa
+  cancel-in-progress: true
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Reconstruir el sitio efectivo V30 y aislar toda API de reservas
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 -m py_compile scripts/v30-poi-qa-package.py
+          node --check scripts/v30-poi-frontend-patch.mjs
+          node --check scripts/v30-geoapify-integration.mjs
+          python3 scripts/v30-poi-qa-package.py
+      - name: Dry-run sin modificar Cloudflare
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-qa-build/wrangler.qa.jsonc --dry-run --keep-vars
+      - name: Desplegar EXCLUSIVAMENTE via-traslados-v30-poi-stage-20261124
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-qa-build/wrangler.qa.jsonc --keep-vars
+      - name: Smoke stage aislado y producción 100 por ciento intacta
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json,os,runpy,time,urllib.error,urllib.request
+          old=runpy.run_path('scripts/via-v291-prepare.py')
+          live=old['active_version']
+          baseline='ac8e0a7e-a032-47f8-8328-bd7b716a4342'
+          url='https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev'
+          assert live()==baseline,'Prod cambió: revisar inmediatamente'
+          def read(path):
+            try:
+              with urllib.request.urlopen(urllib.request.Request(url+path,headers={'Cache-Control':'no-cache'}),timeout=25) as r:
+                return r.status,r.read().decode('utf8','replace')
+            except urllib.error.HTTPError as e:
+              return e.code,e.read().decode('utf8','replace')
+          for i in range(12):
+            try:
+              html=read('/index.html');assert html[0]==200 and 'V30 QA GEOAPIFY' in html[1]
+              auto=read('/address-autocomplete.js');assert auto[0]==200 and 'looksLikeStreetInput' in auto[1]
+              conf=read('/config.js');assert conf[0]==200 and 'via-traslados-v30-poi-stage-20261124' in conf[1]
+              assert 'https://via-traslados-api.marcelof-gx.workers.dev' not in conf[1]
+              api=read('/api/health');assert api[0]==503,'API no está aislada'
+              places=read('/api/direcciones?mode=places&q=Hotel%20Radisson')
+              assert places[0]==200 and isinstance(json.loads(places[1]).get('results'),list),'Buscador IDE falló'
+              break
+            except Exception:
+              if i==11:raise
+              time.sleep(4)
+          assert live()==baseline,'Prod cambió durante QA'
+          print('VIA_POI_QA_WORKER_STAGED_SAFE '+json.dumps({
+             'qa':url,'webVersion':'V30.0','autocomplete':'patched',
+             'placesProvider':'DISABLED_NO_SECRET','apiWrites':'BLOCKED',
+             'prodWorker':baseline,'prodChanged':False}))
+          PY
+      - name: Guardar manifiesto sin claves ni Worker completo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v30-poi-stage-qa-manifest
+          path: v30-poi-qa-build/manifest.json
+          retention-days: 10
+          if-no-files-found: ignore
