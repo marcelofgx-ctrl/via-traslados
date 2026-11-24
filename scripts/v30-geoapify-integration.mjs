@@ -5,14 +5,18 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 
 export function patchWorkerSource(source,addon) {
-  const matches=source.match(/\bexport\s+default\b/g)||[];
-  if (matches.length!==1 || !source.includes('/api/direcciones') ||
-      !source.includes('env.ASSETS.fetch(request)'))
+  const defaultExport=source.match(/\bexport\s+default\b/g)||[];
+  const bundledExport=[...source.matchAll(/\bexport\s*\{\s*([A-Za-z_$][\w$]*)\s+as\s+default\s*\}\s*;?/g)];
+  if (!((defaultExport.length===1 && bundledExport.length===0) ||
+        (defaultExport.length===0 && bundledExport.length===1)) ||
+      !source.includes('/api/direcciones') || !source.includes('env.ASSETS.fetch(request)'))
     throw Error('El Worker activo no coincide con el contrato conocido: abortar');
   if (!addon.includes('export async function extendPlaceSearch') ||
       source.includes('__viaLegacyWorker') || source.includes('Geoapify Places'))
     throw Error('Complemento inesperado o ya integrado: abortar');
-  const base=source.replace(/\bexport\s+default\b/,'const __viaLegacyWorker =');
+  const base=defaultExport.length===1
+    ? source.replace(/\bexport\s+default\b/,'const __viaLegacyWorker =')
+    : source.replace(bundledExport[0][0],'const __viaLegacyWorker = '+bundledExport[0][1]+';');
   const plus=addon.replace('export async function extendPlaceSearch','async function extendPlaceSearch');
   return base+'\n\nconst __viaExtendPlaceSearch = (() => {\n'+plus+'\nreturn extendPlaceSearch;\n})();\n\n'+
     'export default {async fetch(request,env,ctx){'+
