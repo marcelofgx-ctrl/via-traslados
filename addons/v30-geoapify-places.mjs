@@ -103,7 +103,7 @@ export async function extendPlaceSearch(request, originalResponse, env, fetcher=
     }
     if (!incoming.length) return originalResponse;
     const merged = combine(old.results,incoming);
-    if (merged.length === old.results.length) return originalResponse;
+    if (merged.length === old.results.length && merged.every((item,i)=>item===old.results[i])) return originalResponse;
     const headers = new Headers(originalResponse.headers);
     headers.set('Content-Type','application/json; charset=utf-8');
     headers.set('Cache-Control','no-store');
