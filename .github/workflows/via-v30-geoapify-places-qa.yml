@@ -12,6 +12,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  statuses: write
 jobs:
   test-only:
     runs-on: ubuntu-24.04
@@ -34,3 +35,16 @@ jobs:
         run: |
           echo "V30_GEOAPIFY_POI_TEST_ONLY"
           echo "No Wrangler, no Cloudflare writes, no D1, no production"
+      - name: Informar resultado de QA para auditoría externa
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_RESULT: ${{ job.status }}
+        run: |
+          state=success
+          if [ "$JOB_RESULT" != "success" ]; then state=failure; fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$state" \
+            -f context="via-v30-geoapify-places-test-only" \
+            -f description="V30 POI isolated tests (no deploy)" \
+            -f target_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
