@@ -1,0 +1,36 @@
+name: Vía V30 — Geoapify POI pruebas no destructivas
+on:
+  push:
+    branches:
+      - via-v30-geoapify-places-qa-20261124
+    paths:
+      - "addons/v30-geoapify-places.mjs"
+      - "scripts/v30-geoapify-integration.mjs"
+      - "tests/v30-geoapify-places.test.mjs"
+      - "tests/v30-geoapify-integration.test.mjs"
+      - ".github/workflows/via-v30-geoapify-places-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verificar sintaxis del complemento y el wrapper
+        run: |
+          node --check addons/v30-geoapify-places.mjs
+          node --check scripts/v30-geoapify-integration.mjs
+      - name: Comprobar fallback, lugares, coordenadas y contrato del Worker
+        run: |
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs
+      - name: Confirmar ninguna credencial ni despliegue
+        run: |
+          echo "V30_GEOAPIFY_POI_TEST_ONLY"
+          echo "No Wrangler, no Cloudflare writes, no D1, no production"
