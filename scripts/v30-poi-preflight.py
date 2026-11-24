@@ -34,13 +34,27 @@ for filename in ('app.js','store.js','address-autocomplete.js','reference.js','g
  assert 'text/html' not in head.get('Content-Type','').lower(),'Archivo crítico incorrecto '+filename
  sha[filename]=hashlib.sha256(body).hexdigest()
 assert before==version(),'Worker productivo cambió durante la revisión'
+def geo_binding():
+ try:
+  import urllib.request
+  target='https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/scripts/via-traslados-web-prod/settings'
+  req=urllib.request.Request(target,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+  with urllib.request.urlopen(req,timeout=25) as response: obj=json.load(response)
+  if not obj.get('success'):return 'unverified'
+  result=obj.get('result') or {}
+  bindings=result.get('bindings') or result.get('settings',{}).get('bindings') or []
+  if not isinstance(bindings,list):return 'unverified'
+  return 'present' if any(b.get('name')=='VIA_GEOAPIFY_API_KEY' for b in bindings) else 'absent'
+ except Exception:return 'unverified'
+web_binding=geo_binding()
+print('VIA_WEB_GEOAPIFY_BINDING '+web_binding,flush=True)
 report={'status':'V30_POI_PREFLIGHT_PASS','web_version':'v30.0',
  'active_worker_version_id':before,
  'live_worker_sha256':hashlib.sha256(bundle.encode()).hexdigest(),
  'patched_worker_sha256':hashlib.sha256((dir/'worker-poi.mjs').read_bytes()).hexdigest(),
  'unchanged_critical_assets':sha,
  'deployment':'NONE','d1_changes':'NONE','api_changes':'NONE',
- 'secrets_checked':'presence of CI Cloudflare account/token only; Geoapify WEB binding not verified'}
+ 'secrets_checked':'presence of CI Cloudflare account/token only', 'web_geoapify_binding':web_binding}
 (dir/'report.json').write_text(json.dumps(report,indent=2,ensure_ascii=False))
 (dir/'worker-active.mjs').unlink()
 (dir/'worker-poi.mjs').unlink()
