@@ -78,7 +78,7 @@ async function search(q,lat,lng,key,fetcher,service) {
   try {
     // Worker API conserva VIA_GEOAPIFY_API_KEY, nunca se copia a la WEB.
     const endpoint=service?new URL('https://via-poi.internal/api/via-places'):u;
-    if(service){endpoint.searchParams.set('q',q);
+    if(service){endpoint.searchParams.set('q',poiName(q));
       if(valid(lat,lng)){endpoint.searchParams.set('lat',String(lat));endpoint.searchParams.set('lng',String(lng));}}
     const response=service?
       await service.fetch(new Request(endpoint.toString(),{method:'GET',signal:controller.signal,headers:{Accept:'application/json'}})):
