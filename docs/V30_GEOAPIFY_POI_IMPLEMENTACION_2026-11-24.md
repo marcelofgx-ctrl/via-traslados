@@ -114,3 +114,46 @@ Después: búsquedas reales a Geoapify Places, comparación de ubicación de hot
 - Worker QA aislado: publicado y smoke público aprobado.
 - Consulta real de Places: **pendiente de clave**.
 - Publicación productiva Geoapify Places: **NO realizada**.
+
+
+## Solicitud explícita de salida directa a producción — 24/11/2026
+
+El titular autorizó **publicación directa en producción con rollback** debido a la necesidad turística de buscar hoteles, restaurantes y rentadoras. Se intentó avanzar directamente, **pero producción NO ha sido modificada** por esta fase.
+
+### Impedimento técnico real
+
+A partir de 11:54 UTC, GitHub Actions comenzó a completar **todos los nuevos jobs con conclusión failure y sin asignar un runner** (`runner_id=0`, `steps=[]`), incluidos workflows QA históricos que antes funcionaban. Se confirmó con:
+- https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45388430210 (preflight API: 0 pasos)
+- https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45388443497 (QA habitual: 0 pasos)
+- https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45388443619 (QA habitual: 0 pasos).
+
+**NO se conoce la causa exacta**: verificar en GitHub Actions la incidencia del repositorio, facturación/minutos y restricciones de cuenta. No afirmar «cuota agotada» sin confirmación. Sin runner no hay acceso a los secretos Cloudflare de CI ni posibilidad de publicar mediante el mecanismo disponible. No copiar Cloudflare tokens a GitHub ni al chat, no intentar leer el secreto Geoapify.
+
+### Alternativa de arquitectura lista en el PR #55
+
+Para evitar tener que volver a introducir el secreto Geoapify en el Worker web:
+
+1. `addons/v30-poi-api-proxy.mjs`: proxy mínimo `GET /api/via-places?q=...` que consulta Geoapify Places usando **la clave ya existente en el Worker API**. No expone ni registra la clave, devuelve sólo nombres, ciudad, departamento, IDs y coordenadas de Uruguay. Límite compartido en tabla `otp_rate_limits` EXISTENTE: máximo 900 consultas/día global y 65/h por IP; estos límites escriben contadores operativos, **pero no alteran tablas de reservas ni usuarios y no requieren migración de D1**.
+2. `scripts/v30-poi-api-bundle-wrapper.mjs`: envuelve la API efectivamente desplegada, no la copia histórica de GitHub, conservando las rutas originales.
+3. `addons/v30-geoapify-places.mjs`: admite `env.VIA_POI_API.fetch(...)` como Cloudflare Service Binding, sin secreto en WEB. Conserva fallback IDE, flag de activación, coordenadas y búsqueda nacional. Permite modo directo con secreto para QA, pero **no es necesario en producción**.
+4. `tests/v30-poi-api-service.test.mjs`: pruebas del proxy, clave no divulgada, filtro Uruguay, fallback y Service Binding.
+5. `scripts/v30-poi-prod-package.py`: captura por GET **ambos Workers activos**, envuelve API y web, reconstruye inventario de assets V30, **modifica sólo `address-autocomplete.js`** y prepara dos configuraciones Wrangler con `--keep-vars` y el binding `VIA_POI_API` del web al API. Exige IDs de Worker activos V30/actual V35 y rechaza diferencias, código API inesperado, assets ausentes, modificaciones extra.
+6. `scripts/v30-poi-prod-rollback.mjs`: restaura el 100 % de tráfico a dos IDs originales concretos, sin SQL y con confirmación de Cloudflare.
+7. `.github/workflows/via-v30-poi-production-release.yml`: flujo de publicación **manual**, con aprobación explícita, pruebas, preflight, dry-run, API primero, consulta REAL a Geoapify con clave protegida, WEB después, smoke y rollback doble ante error. No es workflow de publicación por `push`; no puede empezar a publicar de forma diferida cuando GitHub recupere runners. Para ejecutarlo por `workflow_dispatch` puede ser necesario ubicar el workflow en rama por defecto, según las reglas de GitHub; verificar antes de intentar liberación.
+
+**NO probado:** nuevo proxy contra proveedor real (CI bloqueada); bundle API activo real (CI bloqueada); build de despliegue completo; publicación. La sintaxis de los addons y wrappers fue evaluada localmente en un entorno JS, pero NO equivale a tests Node/Cloudflare ejecutados. La QA anterior de 18 tests y E2E Android/iOS corresponde a la versión de Geoapify antes de agregar Service Binding.
+
+### Próximos pasos después de restablecer GitHub Actions
+
+1. Revisar problema de arranque de jobs (runner_id 0) con el titular, sin inventar su causa.
+2. Ejecutar suite de pruebas `via-v30-geoapify-places-qa.yml`, incluida prueba del API proxy.
+3. Comprobar fuentes/versiones activas Cloudflare y secret de API por metadatos.
+4. Hacer dry-run con paquete de producción.
+5. Publicar API con wrapper, verificar salud/OTP/autorización, consultar Geoapify Places **con su clave real sin revelarla** y exigir al menos un hotel o comercio real.
+6. Publicar Web V30 con binding y cambio único del autocomplete; verificar casos de nombres propios + IDE exacto.
+7. Confirmar 100 % de tráfico nuevo y mantener IDs anteriores como rollback. Si falla, restaurar primero Web y luego API.
+8. Registrar evidencia y declarar producción **solamente después del smoke público**.
+
+### Invariantes de negocio
+
+No tocar reglas de socios/administradores, asignación, OTP, D1 schema, usuarios, reservas, APK ni flujos de cotización. Backend utiliza rate counters existentes para limitar el consumo de Places, sin migraciones. Mantener V30 original hasta pasar las verificaciones. Evitar desplegar por sorpresa el workflow preparado si Actions se recupera.
