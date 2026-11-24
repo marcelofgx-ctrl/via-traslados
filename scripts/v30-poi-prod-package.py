@@ -45,8 +45,16 @@ def api_source():
   if '/api/health' in code and ('export{' in code or 'export default' in code):
    candidates.append(code)
  if len(candidates)!=1:raise AssertionError('Bundle API no único o dependencias no reconocidas')
- if re.search(r'\bimport\s+[^;]+from\s+["\x27]\./',candidates[0]):
-  raise AssertionError('Worker API contiene imports externos: empaquetado no seguro')
+ # La expresión previa podía atravesar todo el bundle minificado, dando un falso
+ # positivo al mezclar un `import` dinámico con un `from` posterior dentro de cadenas.
+ # Rechazar solo especificadores relativos completos; Wrangler --dry-run verificará
+ # además que no quede ninguna dependencia sin resolver antes de cualquier despliegue.
+ code=candidates[0]
+ import_from=re.search(r'\bimport\s+[^;\n]{0,500}?\s+from\s*(["\x27])\.[^"\x27]+\1',code)
+ import_side_effect=re.search(r'\bimport\s*(["\x27])\.[^"\x27]+\1',code)
+ import_dynamic=re.search(r'\bimport\s*\(\s*(["\x27])\.[^"\x27]+\1',code)
+ if import_from or import_side_effect or import_dynamic:
+  raise AssertionError('Worker API tiene imports relativos reales; empaquetado abortado')
  return candidates[0]
 def fetch_asset(name):
  try:body,hdr=get(WEB+'/'+urllib.parse.quote(name,safe='/'))
