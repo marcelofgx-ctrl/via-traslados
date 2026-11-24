@@ -7,6 +7,7 @@ import {chromium,webkit} from 'playwright';
 const PROD='https://viatraslados.com';
 const patch=await readFile('v30-poi-browser-proof/address-autocomplete-qa.js','utf8');
 const OUT='v30-poi-browser-proof';
+console.log('VIA_POI_DISPLAY_CODE '+patch.slice(patch.indexOf('function display('),patch.indexOf('function display(')+4200).replace(/\s+/g,' ').slice(0,4200));
 await mkdir(OUT,{recursive:true});
 const poi={
   label:'Radisson Victoria Plaza Hotel, Montevideo, Montevideo',
