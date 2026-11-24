@@ -59,12 +59,23 @@ jobs:
               return e.code,e.read().decode('utf8','replace')
           for i in range(12):
             try:
-              html=read('/index.html');assert html[0]==200 and 'V30 QA GEOAPIFY' in html[1]
-              auto=read('/address-autocomplete.js');assert auto[0]==200 and 'looksLikeStreetInput' in auto[1]
-              conf=read('/config.js');assert conf[0]==200 and 'via-traslados-v30-poi-stage-20261124' in conf[1]
-              assert 'https://via-traslados-api.marcelof-gx.workers.dev' not in conf[1]
-              api=read('/api/health');assert api[0]==503,'API no está aislada'
+              html=read('/index.html')
+              auto=read('/address-autocomplete.js')
+              conf=read('/config.js')
+              api=read('/api/health')
               places=read('/api/direcciones?mode=places&q=Hotel%20Radisson')
+              flags={'html':[html[0],'V30 QA GEOAPIFY' in html[1]],
+                     'autocomplete':[auto[0],'looksLikeStreetInput' in auto[1]],
+                     'config':[conf[0],'via-traslados-v30-poi-stage-20261124' in conf[1],
+                               'https://via-traslados-api.marcelof-gx.workers.dev' in conf[1]],
+                     'api':[api[0]],
+                     'places':[places[0],len(places[1])]}
+              print('VIA_POI_STAGE_QA_DIAG '+json.dumps(flags),flush=True)
+              assert html[0]==200 and 'V30 QA GEOAPIFY' in html[1],'Stage HTML no corresponde'
+              assert auto[0]==200 and 'looksLikeStreetInput' in auto[1],'Autocomplete no se actualizó'
+              assert conf[0]==200 and 'via-traslados-v30-poi-stage-20261124' in conf[1],'Config QA ausente'
+              assert 'https://via-traslados-api.marcelof-gx.workers.dev' not in conf[1],'Config API PROD en QA'
+              assert api[0]==503,'API no está aislada'
               assert places[0]==200 and isinstance(json.loads(places[1]).get('results'),list),'Buscador IDE falló'
               break
             except Exception:
