@@ -2,7 +2,7 @@ name: "Vía V30 — empaquetado y compilación Geoapify sin despliegue"
 on:
   push:
     branches: [via-v30-geoapify-places-qa-20261124]
-    paths: [".github/workflows/via-v30-poi-production-dryrun-readonly.yml","scripts/v30-poi-prod-package.py"]
+    paths: [".github/workflows/via-v30-poi-production-dryrun-readonly.yml","scripts/v30-poi-prod-package.py","addons/v30-poi-api-proxy.mjs","tests/v30-poi-api-service.test.mjs"]
 permissions:
   contents: read
 jobs:
