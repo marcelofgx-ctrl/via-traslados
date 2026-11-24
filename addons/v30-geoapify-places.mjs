@@ -44,8 +44,13 @@ function same(a,b) {
     fold(a.city || a.department) === fold(b.city || b.department);
 }
 function combine(existing,added) {
-  const items = [...existing];
-  for (const p of added) if (p && !items.some(x=>same(x,p))) items.push(p);
+  const fresh = added.filter(p=>p && !existing.some(x=>same(x,p)));
+  if (!fresh.length) return existing;
+  // La UI muestra 12 sugerencias. Reservar hasta 4 huecos para nuevos POI
+  // sin desplazar los primeros resultados verificados de IDE Uruguay.
+  const budget = Math.min(4,fresh.length);
+  const items = existing.slice(0,12-budget);
+  for (const p of fresh) if (!items.some(x=>same(x,p))) items.push(p);
   return items.slice(0,12);
 }
 async function search(q,lat,lng,key,fetcher) {
