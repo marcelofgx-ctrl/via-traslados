@@ -18,7 +18,7 @@ const newOrdering = `// Mantener direcciones por delante si la búsqueda es ambi
 export function patchAutocompleteSource(source) {
   if(typeof source!=='string'||source.includes('looksLikeStreetInput')||
     source.split(oldGate).length!==2||source.split(oldOrdering).length!==2||
-    !source.includes('mode=places')||!source.includes('setMeta(input,place)'))
+    !source.includes('mode=places')||!source.includes('const setMeta=(input,place)=>'))
     throw Error('Autocomplete efectivo distinto o ya parchado: abortar');
   return source.replace(oldGate,newGate).replace(oldOrdering,newOrdering);
 }
