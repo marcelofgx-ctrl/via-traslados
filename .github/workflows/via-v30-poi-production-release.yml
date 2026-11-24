@@ -4,6 +4,7 @@ on:
     branches: [via-v30-geoapify-places-qa-20261124]
     paths:
       - release/VIA_V30_POI_RELEASE_ONCE_20261124
+      - release/VIA_V30_POI_PROVIDER_DIAG_ONCE_20261124
   workflow_dispatch:
     inputs:
       approval:
@@ -19,7 +20,9 @@ jobs:
   release:
     if: >-
       (github.event_name == 'workflow_dispatch' && github.event.inputs.approval == 'PUBLICAR_V30_POI') ||
-      (github.event_name == 'push' && github.ref_name == 'via-v30-geoapify-places-qa-20261124' && github.event.head_commit.message == 'release: authorize one-time V30 Geoapify deploy 20261124')
+      ((github.event_name == 'push' && github.ref_name == 'via-v30-geoapify-places-qa-20261124') &&
+        (github.event.head_commit.message == 'release: authorize one-time V30 Geoapify deploy 20261124' ||
+         github.event.head_commit.message == 'diagnostic: authorize one-time POI provider test 20261124'))
     runs-on: ubuntu-24.04
     timeout-minutes: 24
     steps:
@@ -88,7 +91,11 @@ jobs:
             const url=base+'/api/via-places?q='+encodeURIComponent(q);
             const r=await fetch(url,{signal:AbortSignal.timeout(13000)});
             let body={};try{body=await r.json()}catch{}
-            statuses.push({name:q,status:r.status,features:body.features?.length??null,error:body.error||null});
+            statuses.push({name:q,status:r.status,features:body.features?.length??null,error:body.error||null,
+            providerRaw:r.headers.get('X-Via-Poi-Raw'),
+            providerNamed:r.headers.get('X-Via-Poi-Named'),
+            providerAccepted:r.headers.get('X-Via-Poi-Accepted'),
+            missingCountry:r.headers.get('X-Via-Poi-Missing-Country')});
             if(r.ok&&Array.isArray(body.features))confirmed+=body.features.length;
             if(r.status===429||r.status===503)throw Error('Provider quota/clave no operativa: '+(body.error||r.status));
             if(confirmed>0)break;
