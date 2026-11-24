@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 
 const oldGate = String.raw`const isPlaceQuery=/\b(aeropuerto|shopping|hotel|hospital|sanatorio|terminal|estadio|universidad|costa urbana|centro comercial|plaza|teatro)\b/i.test(q);`;
 const oldOrdering = "const results=(looksLikePlace&&!looksLikeAddress)?[...poiResults,...streetResults]:[...streetResults,...poiResults];";
-const oldSelection = "else chosen={...chosen,source:'address_search', postalStatus:chosen.accuracy==='portal'?'user_confirmed':'user_confirmed'};";
+const oldSelection = /else\\s+chosen\\s*=\\s*\\{\\s*\\.\\.\\.chosen\\s*,\\s*source\\s*:\\s*'address_search'\\s*,\\s*postalStatus\\s*:\\s*chosen\\.accuracy\\s*===\\s*'portal'\\s*\\?\\s*'user_confirmed'\\s*:\\s*'user_confirmed'\\s*\\}\\s*;/g;
 const newSelection = "else chosen=chosen.kind==='place'?{...chosen,source:chosen.source||'place_search',postalStatus:'unknown'}:{...chosen,source:'address_search',postalStatus:'user_confirmed'};";
 const newGate = String.raw`const legacyPlaceQuery=/\b(aeropuerto|shopping|hotel|hospital|sanatorio|terminal|estadio|universidad|costa urbana|centro comercial|plaza|teatro)\b/i.test(q);
   // POI con nombre propio (Radisson, Hertz, La Perdiz), sin degradar calle/portal.
@@ -20,12 +20,12 @@ const newOrdering = `// Mantener direcciones por delante si la búsqueda es ambi
 export function patchAutocompleteSource(source) {
   if(typeof source!=='string'||source.includes('looksLikeStreetInput')||
     source.split(oldGate).length!==2||source.split(oldOrdering).length!==2||
-    source.split(oldSelection).length!==2||
+    [...source.matchAll(oldSelection)].length!==1||
     !source.includes('mode=places')||!source.includes('const setMeta=(input,place)=>'))
     throw Error('Autocomplete efectivo distinto o ya parchado: abortar '+JSON.stringify({
       gate:source.split(oldGate).length-1,
       ordering:source.split(oldOrdering).length-1,
-      selection:source.split(oldSelection).length-1,
+      selection:[...source.matchAll(oldSelection)].length,
       existsAlready:source.includes('looksLikeStreetInput'),
       places:source.includes('mode=places'),
       metadata:source.includes('const setMeta=(input,place)=>')
