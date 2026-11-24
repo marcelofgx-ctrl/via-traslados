@@ -15,7 +15,7 @@ const mock = (name='Radisson Victoria Plaza Hotel',country='uy') =>
     assert.equal(u.host,'api.geoapify.com');
     assert.equal(u.pathname,'/v2/places');
     assert.equal(u.searchParams.get('name'),'Radisson');
-    assert(u.searchParams.get('categories').includes('rental.car'));
+    assert(u.searchParams.get('categories').includes('rental'));
     return new Response(JSON.stringify({features:[{properties:{
       name,city:'Montevideo',state:'Montevideo',country_code:country,place_id:'poi-1'
     },geometry:{coordinates:[-56.198,-34.905]}}]}),{status:200});
