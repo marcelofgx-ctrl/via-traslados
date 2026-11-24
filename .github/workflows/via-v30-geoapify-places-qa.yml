@@ -10,6 +10,10 @@ on:
       - "tests/v30-geoapify-integration.test.mjs"
       - "scripts/v30-poi-frontend-patch.mjs"
       - "tests/v30-poi-frontend-patch.test.mjs"
+      - "tests/v30-poi-api-service.test.mjs"
+      - "addons/v30-poi-api-proxy.mjs"
+      - "scripts/v30-poi-api-bundle-wrapper.mjs"
+      - "scripts/v30-poi-prod-package.py"
       - ".github/workflows/via-v30-geoapify-places-qa.yml"
   workflow_dispatch:
 permissions:
@@ -31,9 +35,12 @@ jobs:
           node --check addons/v30-geoapify-places.mjs
           node --check scripts/v30-geoapify-integration.mjs
           node --check scripts/v30-poi-frontend-patch.mjs
+          node --check addons/v30-poi-api-proxy.mjs
+          node --check scripts/v30-poi-api-bundle-wrapper.mjs
+          python3 -m py_compile scripts/v30-poi-prod-package.py
       - name: Comprobar fallback, lugares, coordenadas y contrato del Worker
         run: |
-          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs
       - name: Probar parche de UI contra el archivo efectivo V30 (solo descarga)
         run: |
           set -euo pipefail
