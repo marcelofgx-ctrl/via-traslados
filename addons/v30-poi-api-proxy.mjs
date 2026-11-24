@@ -6,9 +6,9 @@ const viaPoiCache=new Map();
 const viaPoiText=x=>String(x??'').normalize('NFC').replace(/\s+/g,' ').trim().slice(0,95);
 const viaPoiFold=x=>viaPoiText(x).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const viaPoiValid=(lat,lng)=>Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-36&&lat<=-30&&lng>=-59&&lng<=-52;
-const viaPoiJson=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{
+const viaPoiJson=(data,status=200,telemetry={})=>new Response(JSON.stringify(data),{status,headers:{
  'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
- 'X-Content-Type-Options':'nosniff'
+ 'X-Content-Type-Options':'nosniff',...telemetry
 }});
 const viaPoiHash=async text=>{
  const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
@@ -49,7 +49,17 @@ async function viaPoiRemote(q,lat,lng,key){
  if(!r.ok)return viaPoiJson({error:'geoapify_upstream'},502);
  const body=await r.json();
  if(!Array.isArray(body?.features))return viaPoiJson({error:'geoapify_invalid_response'},502);
- return viaPoiJson({features:body.features.map(viaPoiNormalize).filter(Boolean).slice(0,12)});
+ // Contadores anónimos para distinguir falta de datos del proveedor y filtros locales.
+ // No se registran claves, direcciones, nombres ni coordenadas de terceros.
+ const accepted=body.features.map(viaPoiNormalize).filter(Boolean).slice(0,12);
+ const missingCountry=body.features.filter(f=>!f?.properties?.country_code&&!f?.properties?.country_code_iso2).length;
+ const named=body.features.filter(f=>viaPoiText(f?.properties?.name)).length;
+ return viaPoiJson({features:accepted},200,{
+  'X-Via-Poi-Raw':String(body.features.length),
+  'X-Via-Poi-Accepted':String(accepted.length),
+  'X-Via-Poi-Missing-Country':String(missingCountry),
+  'X-Via-Poi-Named':String(named)
+ });
 }
 async function viaPoiHandle(request,env){
  if(request.method!=='GET')return viaPoiJson({error:'method_not_allowed'},405);
