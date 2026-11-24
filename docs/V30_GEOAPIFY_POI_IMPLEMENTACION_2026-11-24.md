@@ -80,3 +80,37 @@ La activación productiva todavía necesita el paquete generado a partir de la v
 
 ### Próximo paso seguro
 Provisionar QA Web aislado y configurar allí `VIA_GEOAPIFY_API_KEY` como secreto y `VIA_PLACES_ENABLED=true` solo en QA, con autorización y fuente de credenciales segura. Repetir pruebas vivas y E2E. Solo entonces diseñar la liberación protegida, rollback y prueba postproducción.
+
+
+## Fase QA avanzada — 24/11/2026
+
+### Implementación y pruebas concretas realizadas
+- Corrigió la selección de POI en la copia del frontend V30 real: ahora conserva el origen `Geoapify Places` y `postalStatus=unknown`, sin etiquetar un hotel como domicilio postal de IDE ya confirmado.
+- **18 pruebas unitarias aprobadas** sobre addons/integrador/frontend, incluida precisión y procedencia de POI.
+  Evidencia: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45385117103
+- **E2E Chrome Android y Safari WebKit iOS aprobados** con respuestas Geoapify/IDE **simuladas**: autocompletado por «Radisson» sin prefijo «hotel», elección del lugar, preservación de `lat/lng/source`, coordenadas entregadas al cálculo de ruta y regresión de una calle con número y `accuracy=portal`. Se intercepta toda llamada `/api` en ambas pestañas, no hay escrituras productivas. Evidencia: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45385576696
+
+### Worker QA aislado
+- Worker nuevo y diferente del productivo: `via-traslados-v30-poi-stage-20261124`.
+- URL: https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev
+- Construido desde Worker y assets **efectivamente desplegados de V30**. Inventario de 38 assets; solo se alteraron en QA `index.html` (aviso evidente de pruebas), `config.js` (API dirigida a stage, NO producción) y `address-autocomplete.js` (criterio de búsqueda y procedencia POI); `worker-qa.mjs` envuelve la lógica original.
+- Toda API excepto la lectura de `/api/direcciones` se rechaza con HTTP 503; sin binding D1. El flag `VIA_PLACES_ENABLED` permanece **false**; no se copió el secreto de Geoapify.
+- El primer smoke recibió HTTP 403 transitorio en `workers.dev`. Una auditoría posterior comprobó HTTP 200 en la web, autocompletado y configuración QA; HTTP 503 en API de reservas; HTTP 200 y contrato `results[]` del catálogo IDE. No atribuir al 403 ninguna causa no confirmada. Evidencia: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45385626354
+- Publicación de QA solamente. Sin despliegue a `via-traslados-web-prod`, sin writes a `via-traslados-api`, ni cambios D1.
+
+### Bloqueo obligatorio para pruebas REALES del proveedor
+La clave `VIA_GEOAPIFY_API_KEY` se encuentra como `secret_text` en `via-traslados-api` pero Cloudflare no expone su valor en la API o en GitHub Actions. No intentar extraerla a través de un endpoint, un script temporal o registros.
+
+**Única acción de cuenta pendiente:** desde https://myprojects.geoapify.com obtener la clave autorizada del proyecto y configurarla como **Secret** con nombre `VIA_GEOAPIFY_API_KEY` en el Worker **QA**, nunca en repositorio ni chat. Primero conservar `VIA_PLACES_ENABLED=false`, verificar condiciones de uso/cupo y posteriormente activarlo **solamente en QA**. El flag actual de la configuración de Wrangler QA es false, de modo que una nueva publicación de stage lo mantendrá apagado hasta que el pipeline QA se actualice de forma controlada.
+
+Después: búsquedas reales a Geoapify Places, comparación de ubicación de hoteles/rentadoras/restaurantes en varios departamentos, prueba E2E completa con Geoapify real y reservas simuladas en QA. Solo entonces preparar despliegue productivo protegido y rollback del Worker y asset, sin D1/API/APK.
+
+### Estado al cierre de este bloque
+- PR #55: sigue **draft**, no fusionado.
+- Producción: V30 sin cambios de Places.
+- Integración y frontend: desarrollados en QA.
+- QA automático: 18 pruebas aprobadas.
+- QA navegador Android + iOS con datos simulados: aprobado.
+- Worker QA aislado: publicado y smoke público aprobado.
+- Consulta real de Places: **pendiente de clave**.
+- Publicación productiva Geoapify Places: **NO realizada**.
