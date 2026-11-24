@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 export function moveVisibleVersionToHeader(source) {
   const html=String(source);
   const meta=[...html.matchAll(/<meta\s+name="via-release-version"\s+content="([0-9][a-zA-Z0-9.-]*)"\s*\/?\s*>/g)];
-  const indicators=[...html.matchAll(/<small\s+id="via-release-indicator"\b[^>]*>v[0-9][a-zA-Z0-9.-]*<\/small>/g)];
+  const indicators=[...html.matchAll(/<small\s+id="via-release-indicator"[^>]*>v[0-9][a-zA-Z0-9.-]*<\/small>/g)];
   const anchor='<small>TRASLADOS PRIVADOS</small>';
   if(meta.length!==1||indicators.length!==1||html.split(anchor).length!==2)
     throw Error('Contrato de versión o encabezado distinto; no modificar producción');
