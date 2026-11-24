@@ -8,6 +8,8 @@ on:
       - "scripts/v30-geoapify-integration.mjs"
       - "tests/v30-geoapify-places.test.mjs"
       - "tests/v30-geoapify-integration.test.mjs"
+      - "scripts/v30-poi-frontend-patch.mjs"
+      - "tests/v30-poi-frontend-patch.test.mjs"
       - ".github/workflows/via-v30-geoapify-places-qa.yml"
   workflow_dispatch:
 permissions:
@@ -28,9 +30,18 @@ jobs:
         run: |
           node --check addons/v30-geoapify-places.mjs
           node --check scripts/v30-geoapify-integration.mjs
+          node --check scripts/v30-poi-frontend-patch.mjs
       - name: Comprobar fallback, lugares, coordenadas y contrato del Worker
         run: |
-          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs
+      - name: Probar parche de UI contra el archivo efectivo V30 (solo descarga)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 'https://viatraslados.com/address-autocomplete.js' -o /tmp/via-autocomplete-v30-real.js
+          node scripts/v30-poi-frontend-patch.mjs /tmp/via-autocomplete-v30-real.js /tmp/via-autocomplete-v30-poi-qa.js
+          node --check /tmp/via-autocomplete-v30-poi-qa.js
+          test -s /tmp/via-autocomplete-v30-poi-qa.js
+          echo "VIA_POI_UI_PATCH_REAL_ASSET_PASS (NO DEPLOY)"
       - name: Confirmar ninguna credencial ni despliegue
         run: |
           echo "V30_GEOAPIFY_POI_TEST_ONLY"
