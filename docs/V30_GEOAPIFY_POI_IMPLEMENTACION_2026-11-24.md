@@ -157,3 +157,25 @@ Para evitar tener que volver a introducir el secreto Geoapify en el Worker web:
 ### Invariantes de negocio
 
 No tocar reglas de socios/administradores, asignación, OTP, D1 schema, usuarios, reservas, APK ni flujos de cotización. Backend utiliza rate counters existentes para limitar el consumo de Places, sin migraciones. Mantener V30 original hasta pasar las verificaciones. Evitar desplegar por sorpresa el workflow preparado si Actions se recupera.
+
+
+## Resultado de publicación y rollback — 24/11/2026, verificado
+
+- La conversión temporal a repositorio público desbloqueó GitHub Actions en runners estándar sin tarjeta. QA, sintaxis, empaquetado y Wrangler `--dry-run` pasaron:
+  https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45412925782
+- Se autorizó una publicación protegida mediante ejecución de un único marcador de CI.
+  Ejecución https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45413339169.
+- El Worker API llegó a desplegarse temporalmente, pero la prueba real de Geoapify Places devolvió HTTP 200 con **0** lugares para Radisson, Hyatt, Enjoy, Sofitel, Hertz y Hilton. No se publicó la web POI.
+- **Rollback confirmado en logs:** `via-traslados-web-prod` versión `ac8e0a7e-a032-47f8-8328-bd7b716a4342` ya estaba activa; API restaurada y verificada `9349f01a-5824-4401-848f-edb4f3f7d5b0`.
+- Comprobación Cloudflare solo lectura posterior: API `9349f01a-5824-4401-848f-edb4f3f7d5b0` atiende **100 %** del tráfico:
+  https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45415704689.
+- Se detectó una diferencia crucial: `GET /workers/scripts/{name}` puede devolver el **último código subido**, no la versión a la que un rollback devolvió el 100 % del tráfico. El último código API aún tiene `viaPoiHandle` mientras el despliegue activo es la API original. No reconstruir producción reutilizando ese archivo.
+- `scripts/v30-poi-prod-package.py` ahora rechaza la publicación si la última versión subida difiere de la versión efectivamente activa. Esto es intencional; no desactivar el control para hacer pasar la prueba.
+- El workflow de publicación se devolvió a **`workflow_dispatch` exclusivamente**; no hay un lanzamiento automático pendiente.
+- La credencial de Geoapify sigue bajo secreto en Cloudflare API. No extraerla ni incorporarla al repositorio. No migrar D1 ni alterar reservas.
+
+### Bloqueo real y decisión de arquitectura pendiente
+
+1. Determinar si el proveedor realmente devuelve `features: []` o si `viaPoiNormalize` filtra todos los registros. Los contadores anónimos de respuesta están agregados al addon de QA, todavía no verificados con el proveedor real.
+2. Para un release seguro se necesita reconstruir desde el código de la **versión activa** de Cloudflare, no del último upload. La API de metadatos de versión no expone directamente el source del Worker ejecutable. Evaluar web-only con secreto habilitado por el propietario y pruebas QA, o un proceso de entrega basado en fuente inmutable y empaquetado reproducible.
+3. Mantener `viatraslados.com` V30 estable hasta una prueba viva con lugares reales, coordenadas válidas, fallback a IDE y rollback probado.
