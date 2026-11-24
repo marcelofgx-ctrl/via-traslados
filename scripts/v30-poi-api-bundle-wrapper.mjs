@@ -5,15 +5,25 @@ import {pathToFileURL} from 'node:url';
 
 export function patchActiveApiSource(source,addon){
  const plain=source.match(/\bexport\s+default\b/g)||[];
- const bundled=[...source.matchAll(/\bexport\s*\{\s*([A-Za-z_$][\w$]*)\s+as\s+default\s*\}\s*;?/g)];
- if(!((plain.length===1&&bundled.length===0)||(plain.length===0&&bundled.length===1))||
+ // El Worker API real mantiene, además de default, exports auxiliares del bundle.
+ // Identificar solo exportaciones ESM completas y conservar las demás intactas.
+ const exportGroups=[...source.matchAll(/\bexport\s*\{([^}]*)\}\s*;?/g)]
+   .map(m=>({match:m[0],entries:m[1].split(',').map(x=>x.trim()).filter(Boolean)}));
+ const defaultGroups=exportGroups.map(g=>({
+   ...g,defaults:g.entries.map(e=>e.match(/^([A-Za-z_$][\w$]*)\s+as\s+default$/)).filter(Boolean)
+ })).filter(g=>g.defaults.length);
+ if(!((plain.length===1&&defaultGroups.length===0)||(plain.length===0&&defaultGroups.length===1))||
    !source.includes('/api/health')||!source.includes('env.DB')||
    !addon.includes('async function viaPoiHandle')||
    source.includes('viaPoiHandle')||source.includes('__viaActiveApiWorker'))
    throw Error('Bundle API activo no reconocido o ya integrado: NO desplegar');
+ const bundled=defaultGroups[0]||null;
  let base;
- if(bundled.length){
-   base=source.replace(bundled[0][0], 'const __viaActiveApiWorker='+bundled[0][1]+';');
+ if(bundled){
+   const remaining=bundled.entries.filter(e=>!/^[A-Za-z_$][\w$]*\s+as\s+default$/.test(e));
+   const sideExports=remaining.length?'export{'+remaining.join(',')+'};\n':'';
+   base=source.replace(bundled.match,
+     'const __viaActiveApiWorker='+bundled.defaults[0][1]+';\n'+sideExports);
  }else{
    const a=source.match(/\bexport\s+default\s+(\{)/);
    const b=source.match(/\bexport\s+default\s+([A-Za-z_$][\w$]*)\s*;?/);
