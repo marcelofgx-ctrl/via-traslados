@@ -34,7 +34,7 @@ def build():
  sw=ASSETS/'sw.js';s=sw.read_text();assert 'via-traslados-v30.1-poi' in s
  sw.write_text(s.replace('via-traslados-v30.1-poi','via-traslados-v30.2-route-cache'))
  for n in ['app.js','store.js','sw.js']:subprocess.run(['node','--check',str(ASSETS/n)],check=True)
- source=O['get_live_worker_source']();assert 'VIA_POI_API' in source and 'viaPoi' in source
+ source=O['get_live_worker_source']();assert all(m in source for m in ('VIA_POI_API','__viaLegacyWorker','extendPlaceSearch','/api/direcciones')), 'Live POI integration contract missing'
  (OUT/'worker.mjs').write_text(source)
  cfg={'name':WEB,'main':'./worker.mjs','compatibility_date':'2026-11-10','workers_dev':True,'keep_vars':True,'vars':{'VIA_PLACES_ENABLED':'true'},'services':[{'binding':'VIA_POI_API','service':API}],'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
  (OUT/'wrangler.jsonc').write_text(json.dumps(cfg))

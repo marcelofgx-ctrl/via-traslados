@@ -1,4 +1,4 @@
-name: "Vía V30.2 — caché persistente de rutas QA sin tráfico"
+name: "Vía V30.2 — caché persistente de rutas QA sin tráfico (revalidación)"
 on:
   push:
     branches: [via-v30-geoapify-places-qa-20261124]
