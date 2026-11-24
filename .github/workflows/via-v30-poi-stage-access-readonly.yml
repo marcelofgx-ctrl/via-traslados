@@ -1,0 +1,33 @@
+name: "Vía V30 — diagnóstico QA 403 sin escritura"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-poi-stage-access-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Examinar respuestas HTTP de QA vs stage anterior (solo GET)
+        run: |
+          node --input-type=module <<'NODE'
+          for(const base of [
+           'https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev',
+           'https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev']){
+            for(const path of ['/index.html','/api/health']){
+              try{
+                const r=await fetch(base+path,{signal:AbortSignal.timeout(13000)});
+                const body=await r.text();
+                console.log('VIA_POI_QA_ACCESS '+JSON.stringify({
+                   host:new URL(base).hostname,path,status:r.status,
+                   length:body.length,snippet:body.slice(0,150),
+                   contentType:r.headers.get('content-type'),server:r.headers.get('server')
+                }));
+              }catch(e){console.log('VIA_POI_QA_ACCESS_ERROR '+JSON.stringify({
+                 host:new URL(base).hostname,path,error:String(e.name)
+              }))}
+            }
+          }
+          NODE
