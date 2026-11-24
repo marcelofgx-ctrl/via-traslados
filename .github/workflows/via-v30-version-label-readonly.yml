@@ -1,0 +1,23 @@
+name: "Vía V30 — inspeccionar etiqueta de versión visible (solo lectura)"
+on:
+  push:
+    branches: [via-version-visible-v30-20261124]
+    paths: [".github/workflows/via-v30-version-label-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspeccionar HTML público, sin escribir en Cloudflare
+        run: |
+          node --input-type=module <<'NODE'
+          const url='https://viatraslados.com/index.html';
+          const r=await fetch(url,{signal:AbortSignal.timeout(18000)});
+          if(!r.ok)throw Error('No se puede leer index V30: '+r.status);
+          const html=await r.text();
+          const tokens=[...html.matchAll(/.{0,160}(?:via-release-version|v30\.0|<small|version|versión).{0,170}/gim)].slice(0,35);
+          console.log('VERSION_LIVE_HTML_CONTRACT '+JSON.stringify({http:r.status,bytes:html.length,hasV30:html.includes('v30.0'),tokens:tokens.map(x=>x[0].replace(/\s+/g,' ').slice(0,300))}));
+          NODE
+      - run: echo "NO DEPLOY, NO D1, NO SECRETS"
