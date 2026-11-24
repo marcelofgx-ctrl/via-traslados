@@ -17,7 +17,9 @@ const skip = q => q.length<4 || !/[a-záéíóúüñ]/i.test(q) ||
 // «Radisson Victoria Plaza Hotel». Quitar únicamente el descriptor genérico.
 const poiName = q => {
   const stripped = q.replace(/^\s*(?:(?:oficina de )?alquiler de autos|rentadora(?: de autos)?|hotel|restaurante|restaurant|shopping)\s+/i,'').trim();
-  return stripped.length >= 4 ? stripped : q;
+  const name=stripped.length >= 4 ? stripped : q;
+  // Geoapify requiere puntuación exacta para algunas marcas: McDonalds != McDonald's.
+  return name.replace(/\bmc[\s-]*donald'?s\b/gi,"McDonald's");
 };
 
 function throttle(request) {
