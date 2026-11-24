@@ -17,10 +17,17 @@ def hashes(after=False):
  if after:expected.update(r['new_assets'])
  def check(item):
   n,h=item
-  body,_=P['get'](P['WEB']+'/'+urllib.parse.quote(n,safe='/'))
-  if n.endswith('.html'):body=O['sanitize_html'](body)
-  assert M['sha'](body)==h,'Asset hash mismatch: '+n
- with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(check,expected.items()))
+  for attempt in range(4):
+   try:
+    body,_=P['get'](P['WEB']+'/'+urllib.parse.quote(n,safe='/'))
+    if n.endswith('.html'):body=O['sanitize_html'](body)
+    assert M['sha'](body)==h,'Asset hash mismatch: '+n
+    return
+   except Exception as e:
+    print('VIA_ASSET_CHECK_RETRY '+json.dumps({'asset':n,'attempt':attempt+1,'type':type(e).__name__}),flush=True)
+    if attempt==3:raise
+    time.sleep(2*(attempt+1))
+ with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(check,expected.items()))
  print('VIA_V301_HASH_CHECK '+json.dumps({'phase':'after' if after else 'before','assets':len(expected)}),flush=True)
 def verify():
  assert version(API)==BASE_API and version(WEB)==BASE_WEB,'Production changed'
