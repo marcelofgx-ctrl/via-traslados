@@ -31,6 +31,25 @@ def build():
    VIA_POI_API:viaQaPoiService
  });'''
  changed=original.replace(marker,bridge)
+ # Read-only QA bridge diagnostic: count results and status, never print keys/addresses.
+ probe='''if(pathname==="/__via-qa/poi-diagnostic"){
+    try{
+      const upstream=new URL("https://a50f7a32-via-traslados-api.marcelof-gx.workers.dev/api/via-places?q=Radisson");
+      const result=await fetch(upstream.toString(),{headers:{Accept:"application/json"},signal:AbortSignal.timeout(8500)});
+      let obj={};try{obj=await result.json()}catch{}
+      return new Response(JSON.stringify({upstreamHttp:result.status,
+        featureCount:Array.isArray(obj.features)?obj.features.length:null,
+        errorCode:obj.error||null}),{headers:{"Content-Type":"application/json","Cache-Control":"no-store"}});
+    }catch(error){
+      return new Response(JSON.stringify({bridgeErrorType:error?.name||"unknown",
+        bridgeErrorMessage:String(error?.message||"").slice(0,100)}),
+        {status:502,headers:{"Content-Type":"application/json","Cache-Control":"no-store"}});
+    }
+   }
+   '''
+ clause='if(pathname.startsWith("/api/")&&pathname!=="/api/direcciones")'
+ assert changed.count(clause)==1,'QA API gate unexpectedly changed'
+ changed=changed.replace(clause,probe+clause,1)
  assert changed.count('viaQaPoiService')==2
  assert changed.count('VIA_POI_API:viaQaPoiService')==1
  assert changed.count('QA aislada: ninguna API de reservas disponible')==1
