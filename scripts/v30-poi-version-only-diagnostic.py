@@ -52,6 +52,15 @@ def build():
   assert '/api/health' in old and 'viaPoiHandle' in old and '__viaActiveApiWorker' in old, 'No previously rolled-back POI candidate; stop'
   assert old.count('async function viaPoiRemote(')==1
   new=old
+  metrics={
+    'exactFilterCount':old.count(" url.searchParams.set('filter','rect:-58.6,-35.25,-53.1,-30.05');"),
+    'rectStringCount':old.count('rect:-58.6,-35.25,-53.1,-30.05'),
+    'nameCount':old.count(" url.searchParams.set('name',q);"),
+    'rawReturnCount':old.count('return viaPoiJson({features:body.features.map(viaPoiNormalize).filter(Boolean).slice(0,12)});'),
+    'remoteFunctionCount':old.count('async function viaPoiRemote('),
+    'liveMarkerCount':old.count('__viaActiveApiWorker'),
+  }
+  print('VIA_POI_CANDIDATE_SOURCE_SIGNATURE '+json.dumps(metrics),flush=True)
   # IMPORTANT: diagnostic only; permit Geoapify to rank by user's proximity.
   # Server-side normalization still rejects other countries and invalid coordinates.
   new=change_once(new,
