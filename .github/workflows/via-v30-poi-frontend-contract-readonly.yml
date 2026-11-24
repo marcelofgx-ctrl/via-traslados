@@ -33,3 +33,16 @@ jobs:
           }
           console.log('VIA_POI_FRONTEND_READONLY_OK');
           NODE
+
+      - name: Inspeccionar decisiones de búsqueda y conservación de coordenadas en V30
+        run: |
+          node --input-type=module <<'NODE'
+          const r=await fetch('https://viatraslados.com/address-autocomplete.js',{signal:AbortSignal.timeout(13000)});
+          if(!r.ok)throw Error('No se pudo leer autocomplete actual');
+          const src=await r.text();
+          for(const phrase of ['const isPlaceQuery','const looksLikePlace','function apply','via:address','dataset.lat','function choose']){
+            let i=src.indexOf(phrase);
+            console.log('VIA_V30_AUTOCOMPLETE_SELECTION '+JSON.stringify({phrase,found:i!==-1,
+              excerpt:i===-1?'':src.slice(Math.max(0,i-950),Math.min(src.length,i+2200)).replace(/\\s+/g,' ').slice(0,3150)}));
+          }
+          NODE
