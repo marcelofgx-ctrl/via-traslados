@@ -23,7 +23,7 @@ jobs:
                 const r=await fetch(u,{signal:AbortSignal.timeout(16000)});
                 const data=await r.json();
                 console.log('VIA_QA_BRIDGE_STATUS '+JSON.stringify({name,status:r.status,
-                  provider:data?.provider||null,bridgeErrorType:data?.bridgeErrorType||null,
+                  provider:data?.provider||null,keys:Object.keys(data||{}).slice(0,12),bridgeErrorType:data?.bridgeErrorType||null,
                   bridgeErrorMessage:data?.bridgeErrorMessage||null,
                   featureCount:data?.featureCount??data?.features?.length??null,
                   listCount:data?.results?.length??null,
