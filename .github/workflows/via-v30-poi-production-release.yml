@@ -1,5 +1,9 @@
 name: "Vía V30 Geoapify Places — producción protegida con rollback (MANUAL)"
 on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths:
+      - release/VIA_V30_POI_RELEASE_ONCE_20261124
   workflow_dispatch:
     inputs:
       approval:
@@ -13,7 +17,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    if: github.event.inputs.approval == 'PUBLICAR_V30_POI'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.approval == 'PUBLICAR_V30_POI') ||
+      (github.event_name == 'push' && github.ref_name == 'via-v30-geoapify-places-qa-20261124' && github.event.head_commit.message == 'release: authorize one-time V30 Geoapify deploy 20261124')
     runs-on: ubuntu-24.04
     timeout-minutes: 24
     steps:
@@ -35,7 +41,7 @@ jobs:
       - name: Test unitarios del proveedor, fallback y las credenciales preservadas
         run: |
           set -euo pipefail
-          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs tests/v30-poi-api-wrapper.test.mjs
       - name: Construir desde Workers actualmente activos, NO archivos históricos
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
