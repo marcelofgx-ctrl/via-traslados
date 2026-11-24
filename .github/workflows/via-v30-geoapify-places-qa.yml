@@ -10,7 +10,7 @@ on:
       - "tests/v30-geoapify-integration.test.mjs"
       - "scripts/v30-poi-frontend-patch.mjs"
       - "tests/v30-poi-frontend-patch.test.mjs"
-      - "tests/v30-poi-api-service.test.mjs"
+      - "tests/v30-poi-api-service.test.mjs tests/v30-poi-api-wrapper.test.mjs"
       - "addons/v30-poi-api-proxy.mjs"
       - "scripts/v30-poi-api-bundle-wrapper.mjs"
       - "scripts/v30-poi-prod-package.py"
@@ -40,7 +40,7 @@ jobs:
           python3 -m py_compile scripts/v30-poi-prod-package.py
       - name: Comprobar fallback, lugares, coordenadas y contrato del Worker
         run: |
-          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs tests/v30-poi-api-wrapper.test.mjs
       - name: Probar parche de UI contra el archivo efectivo V30 (solo descarga)
         run: |
           set -euo pipefail
