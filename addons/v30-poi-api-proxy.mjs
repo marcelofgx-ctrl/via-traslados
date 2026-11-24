@@ -78,3 +78,5 @@ async function viaPoiHandle(request,env){
   return res;
  }catch{return viaPoiJson({error:'poi_upstream_unavailable'},503)}
 }
+
+export {viaPoiHandle};
