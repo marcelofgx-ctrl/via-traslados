@@ -1,0 +1,48 @@
+name: "Vía V30 — verificar acceso al código versionado sin modificar Cloudflare"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-cloudflare-version-content-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Inspeccionar SOLO metadatos y hashes de endpoints versionados
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,json,re,hashlib,urllib.request,urllib.error
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          assert re.fullmatch('[0-9a-fA-F]{32}',a) and t
+          root='https://api.cloudflare.com/client/v4/accounts/'+a+'/workers/scripts/via-traslados-api'
+          ver='9349f01a-5824-4401-848f-edb4f3f7d5b0'
+          paths=['/deployments','/versions/'+ver,'/versions/'+ver+'/content','/versions/'+ver+'/content/v2','/content/v2?version='+ver,'?version='+ver]
+          for suffix in paths:
+            url=root+suffix
+            req=urllib.request.Request(url,headers={'Authorization':'Bearer '+t})
+            try:
+              with urllib.request.urlopen(req,timeout=16) as r:
+                status=r.status; mime=r.headers.get('Content-Type','');body=r.read()
+            except urllib.error.HTTPError as e:
+              status=e.code;mime=e.headers.get('Content-Type','');body=e.read(2000)
+            record={'path':suffix,'status':status,'mime':mime.split(';')[0],'body_bytes':len(body)}
+            if status==200 and 'application/json' in mime:
+              try:
+                j=json.loads(body);record['top_keys']=list(j.keys())[:12]
+                if isinstance(j.get('result'),dict):
+                  result=j['result'];record['result_keys']=list(result.keys())[:16]
+                  if isinstance(result.get('resources'),dict):record['resource_keys']=list(result['resources'].keys())[:16]
+                  if suffix=='/deployments':record['traffic_versions']=[{'id':v.get('version_id'),'pct':v.get('percentage')} for v in result.get('deployments',[{}])[0].get('versions',[])]
+              except Exception:record['json_parse_error']=True
+            if status==200 and ('javascript' in mime or 'multipart/' in mime):
+              record['sha256']=hashlib.sha256(body).hexdigest()
+              record['has_marker']=b'viaPoiHandle' in body
+              record['has_worker_js']=b'name="worker.js"' in body
+            print('CF_VERSION_PROBE '+json.dumps(record))
+          PY
+      - run: echo "READ ONLY - no script body, no secrets, no DB writes"
