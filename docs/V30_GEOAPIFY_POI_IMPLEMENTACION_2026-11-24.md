@@ -40,3 +40,11 @@ El workflow `.github/workflows/via-v30-geoapify-places-qa.yml` es **solo pruebas
 
 ## Advertencia
 La activación productiva todavía necesita el paquete generado a partir de la versión **efectivamente desplegada** y que el secreto esté disponible en el Worker WEB. Esta rama por sí sola no publica la mejora.
+
+## Auditoría efectiva del 24/11/2026
+- **11/11 pruebas automatizadas aprobadas** con Node 22, incluida protección frente a desactivación, países fuera de Uruguay, direcciones con número y resultados IDE completos: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45377444093
+- **Cloudflare Worker WEB en producción:** versión activa `ac8e0a7e-a032-47f8-8328-bd7b716a4342`, web visible v30.0 (consultado por GitHub Actions de solo lectura).
+- El código real de producción tiene exportación ESM minificada (`export{worker_default as default}`). El wrapper se adaptó a este formato; pasó compilación `node --check` sobre una copia real: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45378170865
+- **Bloqueo pendiente:** no existe binding `VIA_GEOAPIFY_API_KEY` en el Worker WEB; tampoco se detectó una clave `VIA_GEOAPIFY_API_KEY` / `GEOAPIFY_API_KEY` disponible como secreto de GitHub Actions. Verificación no destructiva: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45378430599
+- Para activarlo, configurar la clave en Cloudflare, Worker `via-traslados-web-prod` → Settings → Variables and Secrets. Elegir **Secret** y nombre exacto `VIA_GEOAPIFY_API_KEY`. No compartir la clave por chat o repositorio.
+- **No hubo publicación:** V30 permanece intacta. Es incorrecto anunciar Geoapify Places como habilitado hasta terminar pruebas reales de QA y publicación protegida.
