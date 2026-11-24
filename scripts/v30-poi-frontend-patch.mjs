@@ -6,6 +6,8 @@ import {pathToFileURL} from 'node:url';
 
 const oldGate = String.raw`const isPlaceQuery=/\b(aeropuerto|shopping|hotel|hospital|sanatorio|terminal|estadio|universidad|costa urbana|centro comercial|plaza|teatro)\b/i.test(q);`;
 const oldOrdering = "const results=(looksLikePlace&&!looksLikeAddress)?[...poiResults,...streetResults]:[...streetResults,...poiResults];";
+const oldSelection = "else chosen={...chosen,source:'address_search', postalStatus:chosen.accuracy==='portal'?'user_confirmed':'user_confirmed'};";
+const newSelection = "else chosen=chosen.kind==='place'?{...chosen,source:chosen.source||'place_search',postalStatus:'unknown'}:{...chosen,source:'address_search',postalStatus:'user_confirmed'};";
 const newGate = String.raw`const legacyPlaceQuery=/\b(aeropuerto|shopping|hotel|hospital|sanatorio|terminal|estadio|universidad|costa urbana|centro comercial|plaza|teatro)\b/i.test(q);
   // POI con nombre propio (Radisson, Hertz, La Perdiz), sin degradar calle/portal.
   const looksLikeStreetInput=/\b\d{3,5}\b/.test(q)||/^\s*(?:calle|avenida|av\.?|ruta|camino|pasaje|bulevar|blvr\.?|rambla)\b/i.test(q);
@@ -18,9 +20,10 @@ const newOrdering = `// Mantener direcciones por delante si la búsqueda es ambi
 export function patchAutocompleteSource(source) {
   if(typeof source!=='string'||source.includes('looksLikeStreetInput')||
     source.split(oldGate).length!==2||source.split(oldOrdering).length!==2||
+    source.split(oldSelection).length!==2||
     !source.includes('mode=places')||!source.includes('const setMeta=(input,place)=>'))
     throw Error('Autocomplete efectivo distinto o ya parchado: abortar');
-  return source.replace(oldGate,newGate).replace(oldOrdering,newOrdering);
+  return source.replace(oldGate,newGate).replace(oldOrdering,newOrdering).replace(oldSelection,newSelection);
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const [,,input,target]=process.argv;
