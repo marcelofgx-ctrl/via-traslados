@@ -1,0 +1,41 @@
+name: "Vía V30 — etiqueta de versión visible QA (sin deploy)"
+on:
+  push:
+    branches: [via-version-visible-v30-20261124]
+    paths: [".github/workflows/via-visible-version-qa.yml","scripts/via-home-visible-version.mjs","tests/via-home-visible-version.test.mjs"]
+permissions:
+  contents: read
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Probar contrato de versión permanente
+        run: |
+          set -euo pipefail
+          node --check scripts/via-home-visible-version.mjs
+          node --test tests/via-home-visible-version.test.mjs
+      - name: Aplicar a copia del HTML ACTIVO sin publicar
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 2 https://viatraslados.com/index.html -o /tmp/via-home-live.html
+          node scripts/via-home-visible-version.mjs /tmp/via-home-live.html /tmp/via-home-with-version.html
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          const old=readFileSync('/tmp/via-home-live.html','utf8'), html=readFileSync('/tmp/via-home-with-version.html','utf8');
+          const v=html.match(/<meta name="via-release-version" content="([^"]+)"/)?.[1];
+          const head=html.split('</header>')[0],footer=html.split('<footer>').at(-1);
+          assert.equal(v,'30.0');
+          assert(head.includes('id="via-release-indicator"'),'Etiqueta no visible en header');
+          assert(head.includes('· v30.0'),'No coincide versión');
+          assert(!footer.includes('id="via-release-indicator"'),'Etiqueta sigue oculta en footer');
+          assert(old.includes('<small>TRASLADOS PRIVADOS</small>'),'No se reconoce branding');
+          for(const x of ['address-autocomplete.js','app.js','store.js','mis-reservas.html'])assert(html.includes(x),'Recurso original eliminado: '+x);
+          console.log('VIA_HEADER_VERSION_QA_PASS version='+v+' oldBytes='+old.length+' newBytes='+html.length+' no-deploy');
+          NODE
+      - run: echo "QA ONLY: NO DEPLOY, NO API/D1, NO BACKEND, NO APK"
