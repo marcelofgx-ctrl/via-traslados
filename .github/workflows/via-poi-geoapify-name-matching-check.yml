@@ -1,0 +1,33 @@
+name: "Geoapify — comparar nombre real del catálogo contra filtro name (solo GET)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-geoapify-name-matching-check.yml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Comparar resultados reales de catálogo con consulta por nombre sin publicar
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://ed821e37-via-traslados-api.marcelof-gx.workers.dev';
+          async function find(q){
+            const u=new URL(base+'/api/via-places');u.searchParams.set('q',q);
+            const r=await fetch(u,{signal:AbortSignal.timeout(15000)});
+            let d;try{d=await r.json()}catch{}
+            return {status:r.status,raw:r.headers.get('X-Via-Poi-Raw'),features:d?.features||[],error:d?.error||null};
+          }
+          const catalog=await find('ViaCategoryDiagnostic');
+          const names=[...new Set(catalog.features.map(f=>f?.properties?.name).filter(x=>typeof x==='string'&&x.length>=4))].slice(0,3);
+          console.log('VIA_POI_CATALOG_NAMED '+JSON.stringify({http:catalog.status,count:catalog.features.length,
+            sampleNames:names}));
+          for(const name of names){
+            const r=await find(name);
+            console.log('VIA_POI_GEOAPIFY_NAME_CONFIRM '+JSON.stringify({name,http:r.status,raw:r.raw,
+              count:r.features.length,error:r.error}));
+          }
+          NODE
+      - run: echo "NO CLOUDFARE DEPLOY, no source, no keys, preview version only"
