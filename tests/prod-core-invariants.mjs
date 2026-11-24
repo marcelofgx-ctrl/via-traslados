@@ -33,13 +33,20 @@ assert(route.json&&Number.isFinite(route.json.distanceKm)
 const reverse=await check('reverse-geocoding',WEB+'/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185');
 assert(Array.isArray(reverse.json?.results),'Buscador IDE/Geoapify no devuelve resultados');
 const home=await check('homepage',WEB+'/');
-for(const marker of ['review-compact-v29.css?v=29','app.js?v=29','geo-v2/core.mjs?v=3',
- 'via-driver-v35-download'])assert(home.txt.includes(marker),'Asset web faltante: '+marker);
+// Validate the actual same-origin asset references, independently of cache version.
+function assetRef(name){
+ const refs=[...home.txt.matchAll(/(?:src|href)\s*=\s*["']([^"']+)["']/gi)].map(m=>new URL(m[1],WEB+'/'));
+ const u=refs.find(u=>u.origin===WEB&&u.pathname==='/'+name);
+ assert(u,'Asset web faltante: '+name);return u.href;
+}
+for(const name of ['review-compact-v29.css','app.js'])assetRef(name);
+assert(home.txt.includes('geo-v2/core.mjs'),'Módulo geo ausente');
+assert(home.txt.includes('via-driver-v35-download'),'Descarga APK ausente');
 const config=await check('config',WEB+'/config.js');
 assert(config.txt.includes(API),'Se perdió API de producción configurada en frontend');
-const app=await check('app-js',WEB+'/app.js?v=29');
+const app=await check('app-js',assetRef('app.js'));
 assert(app.txt.includes('distanceKm')&&app.txt.includes('ViaStore'),'JS de reservas roto');
-const geo=await check('geographic-engine',WEB+'/geo-v2/core.mjs?v=3');
+const geo=await check('geographic-engine',WEB+'/geo-v2/core.mjs');
 assert(geo.txt.length>100&&!(geo.r.headers.get('content-type')||'').includes('text/html'),
  'Engine geográfico devuelto como HTML');
 const booking=await check('booking-html',WEB+'/reserva.html');
