@@ -21,7 +21,7 @@ export function patchActiveApiSource(source,addon){
    else if(b)base=source.replace(b[0],'const __viaActiveApiWorker='+b[1]+';');
    else throw Error('Export API incompatible; NO desplegar');
  }
- return base+'\n'+addon+'\n'+
+ return base+'\n'+addon.replace(/export\s*\{\s*viaPoiHandle\s*\}\s*;?/,'')+'\n'+
    'export default {...__viaActiveApiWorker,async fetch(request,env,ctx){'+
    'if(new URL(request.url).pathname==="/api/via-places")return viaPoiHandle(request,env);'+
    'return __viaActiveApiWorker.fetch.call(__viaActiveApiWorker,request,env,ctx);'+
