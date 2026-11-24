@@ -60,7 +60,7 @@ test('el Worker web invoca el binding y combina IDE con POI, sin copiar clave',a
    const u=new URL(request.url);
    assert.equal(u.pathname,'/api/via-places');
    assert.equal(u.searchParams.get('q'),'Radisson');
-   assert.equal(u.searchParams.get('lat'),'-34.90');
+   assert.equal(u.searchParams.get('lat'),'-34.9');
    return new Response(JSON.stringify({features:[feature()]}));
  }};
  const req=new Request('https://viatraslados.com/api/direcciones?mode=places&q=Radisson&lat=-34.90&lng=-56.19');
