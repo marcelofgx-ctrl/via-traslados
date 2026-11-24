@@ -31,10 +31,17 @@ def get_js():
   m=re.search(r'boundary="?([^";]+)',mime)
   assert m,'multipart boundary missing'
   chosen=[]
+  inventory=[]
   for part in body.split(b'--'+m.group(1).encode()):
-    if b'name="worker.js"' not in part or b'\r\n\r\n' not in part:continue
-    chosen.append(part.split(b'\r\n\r\n',1)[1].rstrip(b'\r\n').decode('utf8'))
-  assert len(chosen)==1
+    if b'Content-Disposition' not in part or b'\r\n\r\n' not in part:continue
+    head,code=part.split(b'\r\n\r\n',1)
+    name=re.search(rb'name="([^"]+)"',head)
+    kind=name.group(1).decode('ascii','replace') if name else 'unknown'
+    if kind.endswith('.map') or kind.endswith('.json'):continue
+    inventory.append({'name':kind,'bytes':len(code)})
+    if b'/api/health' in code and b'viaPoiHandle' in code and b'__viaActiveApiWorker' in code:
+      chosen.append(code.rstrip(b'\r\n').decode('utf8'))
+  assert len(chosen)==1, 'No unique effective POI module; parts='+json.dumps(inventory)
   return chosen[0]
 def change_once(txt,old,new):
   assert txt.count(old)==1, 'Unexpected live addon signature; stop'
@@ -52,7 +59,7 @@ def build():
     " // QA version only: provider proximity ranking without rectangle, to test empty Places response.")
   new=change_once(new,
     " url.searchParams.set('name',q);",
-    """ url.searchParams.set('name',q.replace(/\bmc[\s-]*donald'?s\b/gi,"McDonald's"));""")
+    r""" url.searchParams.set('name',q.replace(/\bmc[\s-]*donald'?s\b/gi,"McDonald's"));""")
   oldReturn=" return viaPoiJson({features:body.features.map(viaPoiNormalize).filter(Boolean).slice(0,12)});"
   newReturn=""" const kept=body.features.map(viaPoiNormalize).filter(Boolean).slice(0,12);
  const named=body.features.filter(f=>String(f?.properties?.name||'').trim()).length;
