@@ -26,6 +26,9 @@ test('proxy API mantiene secreto fuera de la respuesta y usa cobertura nacional'
  try{
   const response=await viaPoiHandle(new Request('https://api.via/api/via-places?q=Hotel%20Radisson&lat=-34.90&lng=-56.19'),{...vars,DB:db()});
   assert.equal(response.status,200);
+  assert.equal(response.headers.get('X-Via-Poi-Raw'),'1');
+  assert.equal(response.headers.get('X-Via-Poi-Accepted'),'1');
+  assert.equal(response.headers.get('X-Via-Poi-Missing-Country'),'0');
   const raw=await response.text();
   assert(!raw.includes('fake-qa-secret'));
   const body=JSON.parse(raw);
