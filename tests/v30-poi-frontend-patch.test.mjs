@@ -12,7 +12,10 @@ function search(input){const q=input.value.trim();
   const unique=new Map();
 }
 const setMeta=(input,place)=>{}; // mode=places
-function select(){ setMeta(input,place); }
+function select(){
+  if(false){}else chosen={...chosen,source:'address_search', postalStatus:chosen.accuracy==='portal'?'user_confirmed':'user_confirmed'};
+  setMeta(input,place);
+}
 `;
 test('no parchea un archivo desconocido ni se aplica dos veces',()=>{
   assert.throws(()=>patchAutocompleteSource('irreconocible'),/distinto/);
@@ -43,4 +46,20 @@ test('una lista de doce calles reserva cuatro huecos para POI',()=>{
   assert.deepEqual(result.slice(8,12),pois);
   assert.deepEqual(result.slice(0,12).filter(x=>pois.includes(x)),pois);
   assert.deepEqual(arrange(false,false,[],streets),streets);
+});
+
+test('al seleccionar POI se conserva fuente y no se inventa verificación postal',()=>{
+  const p=patchAutocompleteSource(original);
+  const start=p.indexOf("else chosen=chosen.kind==='place'?");
+  const end=p.indexOf(';',start);
+  assert(start>0&&end>start,'No se cambió la rama de selección');
+  const branch=p.slice(start,end+1);
+  const check=new Function('chosen','let state=chosen;'+branch.replace('else chosen=','state=')+'return state;');
+  const place=check({kind:'place',source:'Geoapify Places',accuracy:'poi',lat:-34.905,lng:-56.198});
+  assert.equal(place.source,'Geoapify Places');
+  assert.equal(place.postalStatus,'unknown');
+  assert.equal(place.lat,-34.905);
+  const portal=check({kind:'address',source:'IDE Uruguay',accuracy:'portal'});
+  assert.equal(portal.source,'address_search');
+  assert.equal(portal.postalStatus,'user_confirmed');
 });
