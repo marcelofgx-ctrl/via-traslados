@@ -15,6 +15,7 @@ s=home.decode('utf8')
 assert 'v30.0' in s and ('content="30.0"' in s or 'v30.0</small>' in s), 'No está sirviendo V30.0'
 bundle=worker()
 print('VIA_WORKER_MODULE_SHAPE '+json.dumps({'source_length':len(bundle),'export_default':bundle.count('export default'),'export_braced':bundle.count('export{')+bundle.count('export {'),'add_event_listener':bundle.count('addEventListener('),'fetch_handlers':bundle.count('fetch('),'has_directions':'/api/direcciones' in bundle,'has_assets':'env.ASSETS.fetch(request)' in bundle}),flush=True)
+print('VIA_WORKER_EXPORT_SIGNATURE '+json.dumps([re.sub(r'[^a-zA-Z0-9_$, ]','',x)[:160] for x in re.findall(r'export\s*\{([^}]*)\}',bundle)]),flush=True)
 assert (bundle.count('export default')==1 or len(re.findall(r'export\\s*\\{\\s*([A-Za-z_$][\\w$]*)\\s+as\\s+default\\s*\\}\\s*;?',bundle))==1),'Worker distinto: export no reconocido'
 assert 'env.ASSETS.fetch(request)' in bundle and '/api/direcciones' in bundle,'Worker inesperado'
 dir=pathlib.Path('v30-places-preflight');dir.mkdir(exist_ok=True)
