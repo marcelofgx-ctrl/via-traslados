@@ -85,3 +85,17 @@ test('sin flag la web no usa el binding y conserva respuesta exacta IDE',async()
   old,{VIA_POI_API:{async fetch(){called=true;throw Error()}}});
  assert.strictEqual(r,old);assert.equal(called,false);
 });
+
+test("marca McDonalds sin apóstrofo consulta Geoapify con McDonald's",async()=>{
+ const save=globalThis.fetch;let requested;
+ globalThis.fetch=async url=>{
+  requested=new URL(url);
+  return new Response(JSON.stringify({features:[feature("McDonald's")]}),{status:200});
+ };
+ try{
+  const response=await viaPoiHandle(new Request('https://api.via/api/via-places?q=Mcdonalds'),{...vars,DB:db()});
+  assert.equal(response.status,200);
+  assert.equal(requested.searchParams.get('name'),"McDonald's");
+  assert.equal((await response.json()).features[0].properties.name,"McDonald's");
+ }finally{globalThis.fetch=save}
+});
