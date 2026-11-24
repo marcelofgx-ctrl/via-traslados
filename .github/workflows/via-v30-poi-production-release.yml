@@ -1,0 +1,150 @@
+name: "Vía V30 Geoapify Places — producción protegida con rollback (MANUAL)"
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "Escribir PUBLICAR_V30_POI para autorizar producción"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.event.inputs.approval == 'PUBLICAR_V30_POI'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Sólo PR #55 y código existente; no publicar desde otra rama
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "via-v30-geoapify-places-qa-20261124"
+          test -f addons/v30-poi-api-proxy.mjs
+          test -f scripts/v30-poi-prod-package.py
+          test -f scripts/v30-poi-prod-rollback.mjs
+          node --check addons/v30-poi-api-proxy.mjs
+          node --check addons/v30-geoapify-places.mjs
+          node --check scripts/v30-poi-api-bundle-wrapper.mjs
+          node --check scripts/v30-poi-prod-rollback.mjs
+      - name: Test unitarios del proveedor, fallback y las credenciales preservadas
+        run: |
+          set -euo pipefail
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs
+      - name: Construir desde Workers actualmente activos, NO archivos históricos
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/v30-poi-prod-package.py
+          python3 scripts/v30-poi-prod-package.py
+          grep -F '"changed_assets": [' v30-poi-prod-build/manifest.json
+      - name: Compilar ambos Workers sin desplegar, conservar bindings existentes
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config v30-poi-prod-build/wrangler.api.jsonc --dry-run --keep-vars
+          npx --yes wrangler@4.160.1 deploy --config v30-poi-prod-build/wrangler.web.jsonc --dry-run --keep-vars
+      - name: Publicar ÚNICAMENTE el Worker API existente con proxy seguro
+        id: api
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-prod-build/wrangler.api.jsonc --keep-vars
+      - name: Verificar API, clave real Geoapify, lugares y contratos de acceso
+        id: provider
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://via-traslados-api.marcelof-gx.workers.dev';
+          const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+          let healthy=false;
+          for(let i=0;i<8;i++){
+            try{
+              const r=await fetch(base+'/api/health',{signal:AbortSignal.timeout(10000)});
+              const v=await r.json();
+              if(r.ok&&v.ok===true&&v.otpAvailable===true){healthy=true;break;}
+            }catch{}
+            await sleep(1800);
+          }
+          if(!healthy)throw Error('API original no mantiene salud/OTP');
+          const unauthorized=await fetch(base+'/api/operator/requests',{signal:AbortSignal.timeout(12000)});
+          if(unauthorized.status!==401)throw Error('Contrato de autenticación de conductores cambió');
+          let confirmed=0;const statuses=[];
+          for(const q of ['Radisson','Hyatt','Enjoy','Sofitel','Hertz','Hilton']){
+            const url=base+'/api/via-places?q='+encodeURIComponent(q);
+            const r=await fetch(url,{signal:AbortSignal.timeout(13000)});
+            let body={};try{body=await r.json()}catch{}
+            statuses.push({name:q,status:r.status,features:body.features?.length??null,error:body.error||null});
+            if(r.ok&&Array.isArray(body.features))confirmed+=body.features.length;
+            if(r.status===429||r.status===503)throw Error('Provider quota/clave no operativa: '+(body.error||r.status));
+            if(confirmed>0)break;
+          }
+          console.log('VIA_POI_REAL_PROVIDER_CHECK '+JSON.stringify(statuses));
+          if(!confirmed)throw Error('Ningún establecimiento real encontrado: NO publicar web');
+          NODE
+      - name: Publicar SOLO Worker web V30 y autocomplete desde assets efectivos
+        id: web
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-prod-build/wrangler.web.jsonc --keep-vars
+      - name: Smoke real de producción, calles/puertas, POI, API y APK
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://viatraslados.com';
+          const sleep=ms=>new Promise(ok=>setTimeout(ok,ms));
+          let success=false;const statuses=[];
+          for(let i=0;i<10;i++){
+            try{
+              const [h,a,p,s]=await Promise.all([
+                fetch(base+'/index.html',{signal:AbortSignal.timeout(12000)}),
+                fetch(base+'/address-autocomplete.js',{signal:AbortSignal.timeout(12000)}),
+                fetch(base+'/api/direcciones?mode=places&q=Radisson',{signal:AbortSignal.timeout(15000)}),
+                fetch(base+'/api/direcciones?mode=suggest&q=Av%20Italia%201000',{signal:AbortSignal.timeout(12000)})
+              ]);
+              const html=await h.text(),auto=await a.text();
+              const poi=await p.json(),street=await s.json();
+              const found=Array.isArray(poi.results)&&poi.results.some(x=>x.source==='Geoapify Places'&&
+                Number.isFinite(Number(x.lat))&&Number.isFinite(Number(x.lng)));
+              const ok=h.ok&&html.includes('v30.0')&&a.ok&&
+                auto.includes('looksLikeStreetInput')&&p.ok&&found&&
+                s.ok&&Array.isArray(street.results);
+              statuses.push({try:i+1,home:h.status,auto:a.status,
+                poi:p.status,foundGeoapify:found,street:s.status});
+              if(ok){success=true;break;}
+            }catch(e){statuses.push({try:i+1,error:e?.name||'unknown'});}
+            await sleep(2500);
+          }
+          console.log('VIA_POI_PROD_SMOKE '+JSON.stringify(statuses));
+          if(!success)throw Error('Prod Geoapify no pasó smoke: rollback obligatorio');
+          NODE
+          node tests/prod-core-invariants.mjs
+      - name: Registrar versiones finales y verificar sin modificación de API/D1 de reservas
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node scripts/v30-cloudflare-inventory.mjs
+          echo "VIA_POI_PROD_RELEASE_VERIFIED — Geoapify real, IDE y reservas intactas"
+      - name: Restaurar 100% WEB y API anteriores ante cualquier fallo tras publicar API
+        if: failure() && steps.api.outcome != 'skipped'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/v30-poi-prod-rollback.mjs
+      - name: Conservar sólo inventario de hashes, nunca scripts ni claves
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v30-poi-prod-rollback-manifest
+          path: v30-poi-prod-build/manifest.json
+          retention-days: 30
+          if-no-files-found: ignore
