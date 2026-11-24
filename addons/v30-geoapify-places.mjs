@@ -13,6 +13,12 @@ const num = n => Number(n);
 const skip = q => q.length<4 || !/[a-záéíóúüñ]/i.test(q) ||
   /^\s*(?:av\.?|avenida|calle|camino|ruta|bulevar|blvr|rambla)\b/i.test(q) ||
   /\b\d{2,6}\b/.test(q);
+// El usuario puede escribir «Hotel Radisson» aunque el nombre OSM sea
+// «Radisson Victoria Plaza Hotel». Quitar únicamente el descriptor genérico.
+const poiName = q => {
+  const stripped = q.replace(/^\s*(?:(?:oficina de )?alquiler de autos|rentadora(?: de autos)?|hotel|restaurante|restaurant|shopping)\s+/i,'').trim();
+  return stripped.length >= 4 ? stripped : q;
+};
 
 function throttle(request) {
   const ip = (request.headers.get('CF-Connecting-IP') || 'unknown').slice(0,80);
@@ -56,17 +62,16 @@ function combine(existing,added) {
 async function search(q,lat,lng,key,fetcher) {
   const u = new URL('https://api.geoapify.com/v2/places');
   u.searchParams.set('categories',CATEGORIES);
-  u.searchParams.set('name',q);
+  u.searchParams.set('name',poiName(q));
   u.searchParams.set('lang','es');
   u.searchParams.set('limit','12');
-  // GPS -> radio local. Sin GPS -> rectángulo de búsqueda de Uruguay, validado después.
-  if (valid(lat,lng)) {
-    u.searchParams.set('filter','circle:'+lng+','+lat+',90000');
-    u.searchParams.set('bias','proximity:'+lng+','+lat);
-  } else {
-    u.searchParams.set('filter','rect:-58.6,-35.25,-53.1,-30.05');
-    u.searchParams.set('bias','proximity:-56.17,-34.90');
-  }
+  // Traslados entre departamentos: el GPS ordena, NUNCA limita a 90 km.
+  // Rectángulo aproximado de Uruguay + validación posterior country_code=uy.
+  // countrycode:uy sigue documentado como «coming soon» para GET: evitar
+  // depender de esa función hasta comprobarla con el proveedor real.
+  u.searchParams.set('filter','rect:-58.6,-35.25,-53.1,-30.05');
+  u.searchParams.set('bias',valid(lat,lng)
+    ? 'proximity:'+lng+','+lat : 'proximity:-56.17,-34.90');
   u.searchParams.set('apiKey',key);
   const controller = new AbortController();
   const timeout = setTimeout(()=>controller.abort(),2800);
@@ -107,6 +112,8 @@ export async function extendPlaceSearch(request, originalResponse, env, fetcher=
     const headers = new Headers(originalResponse.headers);
     headers.set('Content-Type','application/json; charset=utf-8');
     headers.set('Cache-Control','no-store');
+    // Cuerpo JSON distinto: nunca reutilizar longitud, codificación ni ETag.
+    for (const h of ['Content-Length','Content-Encoding','ETag','Last-Modified']) headers.delete(h);
     return new Response(JSON.stringify({...old,results:merged,provider:'IDE Uruguay + Geoapify Places'}),
       {status:originalResponse.status,headers});
   } catch { return originalResponse; }
