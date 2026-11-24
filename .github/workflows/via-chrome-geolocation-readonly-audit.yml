@@ -26,6 +26,12 @@ jobs:
               if(matches.length>=65)break;
             }
             console.log('GPS_PUBLIC_SOURCE '+JSON.stringify({file,status:response.status,bytes:txt.length,matches}));
+            if(file==='reference.js')for(const [from,to] of [[48,59],[108,123],[137,211]]){
+              console.log('GPS_REFERENCE_SEGMENT '+JSON.stringify({lines:from+'-'+to,code:lines.slice(from-1,to).map((v,i)=>(from+i)+': '+v).join('\n').slice(0,22000)}));
+            }
+            if(file==='geo-v2/core.mjs'){
+              console.log('GPS_CORE_SEGMENT '+JSON.stringify({code:lines.slice(0,70).map((v,i)=>(i+1)+': '+v).join('\n').slice(0,12500)}));
+            }
           }
           NODE
       - name: Confirmar revisión sin cambios
