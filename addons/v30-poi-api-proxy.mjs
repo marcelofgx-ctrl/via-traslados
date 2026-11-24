@@ -36,7 +36,8 @@ function viaPoiNormalize(feature){
 async function viaPoiRemote(q,lat,lng,key){
  const url=new URL('https://api.geoapify.com/v2/places');
  url.searchParams.set('categories',VIA_POI_CATEGORIES);
- url.searchParams.set('name',q);
+ // En Places la puntuación es relevante: aceptar "Mcdonalds" como "McDonald's".
+ url.searchParams.set('name',q.replace(/\bmc[\s-]*donald'?s\b/gi,"McDonald's"));
  url.searchParams.set('lang','es');
  url.searchParams.set('limit','12');
  url.searchParams.set('filter','rect:-58.6,-35.25,-53.1,-30.05');
