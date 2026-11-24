@@ -1,0 +1,32 @@
+name: "INCIDENTE V30 — inspeccionar Geoapify en versión sin tráfico (GET únicamente)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-version-url-provider-diagnostic.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Consultar la versión API no activa sin desplegar ni conocer secretos
+        run: |
+          node --input-type=module <<'NODE'
+          const prefix='https://39d2d942-via-traslados-api.marcelof-gx.workers.dev';
+          async function probe(name,path){
+            try{
+              const r=await fetch(prefix+path,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
+              const text=await r.text();let d;
+              try{d=JSON.parse(text)}catch{}
+              console.log('VIA_POI_VERSION_PROBE '+JSON.stringify({name,urlPrefix:'39d2d942',http:r.status,
+                featureCount:Array.isArray(d?.features)?d.features.length:null,
+                error:d?.error||null,contentType:r.headers.get('content-type'),
+                providerRaw:r.headers.get('X-Via-Poi-Raw')}));
+            }catch(e){console.log('VIA_POI_VERSION_PROBE '+JSON.stringify({name,errorType:e?.name||'unknown'}))}
+          }
+          await probe('health','/api/health');
+          await probe('hotel','/api/via-places?q=Radisson');
+          await probe('restaurant','/api/via-places?q='+encodeURIComponent("McDonald's"));
+          NODE
+      - run: echo "NO DEPLOY NO API CODE CHANGES; Version URL can share prod rate limiter"
