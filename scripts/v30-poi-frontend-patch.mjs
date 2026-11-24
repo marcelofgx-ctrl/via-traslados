@@ -22,7 +22,14 @@ export function patchAutocompleteSource(source) {
     source.split(oldGate).length!==2||source.split(oldOrdering).length!==2||
     source.split(oldSelection).length!==2||
     !source.includes('mode=places')||!source.includes('const setMeta=(input,place)=>'))
-    throw Error('Autocomplete efectivo distinto o ya parchado: abortar');
+    throw Error('Autocomplete efectivo distinto o ya parchado: abortar '+JSON.stringify({
+      gate:source.split(oldGate).length-1,
+      ordering:source.split(oldOrdering).length-1,
+      selection:source.split(oldSelection).length-1,
+      existsAlready:source.includes('looksLikeStreetInput'),
+      places:source.includes('mode=places'),
+      metadata:source.includes('const setMeta=(input,place)=>')
+    }));
   return source.replace(oldGate,newGate).replace(oldOrdering,newOrdering).replace(oldSelection,newSelection);
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
