@@ -14,7 +14,7 @@ const mock = (name='Radisson Victoria Plaza Hotel',country='uy') =>
     const u = new URL(url);
     assert.equal(u.host,'api.geoapify.com');
     assert.equal(u.pathname,'/v2/places');
-    assert.equal(u.searchParams.get('name'),'Hotel Radisson');
+    assert.equal(u.searchParams.get('name'),'Radisson');
     assert(u.searchParams.get('categories').includes('rental.car'));
     return new Response(JSON.stringify({features:[{properties:{
       name,city:'Montevideo',state:'Montevideo',country_code:country,place_id:'poi-1'
@@ -74,4 +74,51 @@ test('un listado IDE lleno deja visibles lugares comerciales añadidos',async()=
   assert.equal(body.results.length,12);
   assert.equal(body.results[0].label,'Punto 0');
   assert(body.results.some(x=>x.source==='Geoapify Places'));
+});
+
+test('GPS en Montevideo no impide buscar un hotel lejano en Maldonado',async()=>{
+  let called=false;
+  const req=request('Enjoy Punta del Este','&lat=-34.905&lng=-56.19');
+  const r=await extendPlaceSearch(req,legacy(),enabled,async link=>{
+    called=true;
+    const url=new URL(link);
+    assert.equal(url.searchParams.get('filter'),'rect:-58.6,-35.25,-53.1,-30.05');
+    assert.equal(url.searchParams.get('bias'),'proximity:-56.19,-34.905');
+    assert.equal(url.searchParams.get('name'),'Enjoy Punta del Este');
+    return new Response(JSON.stringify({features:[{
+      properties:{name:'Enjoy Punta del Este',city:'Punta del Este',
+        state:'Maldonado',country_code:'uy',place_id:'remote-maldonado'},
+      geometry:{coordinates:[-54.936,-34.947]}
+    }]}),{status:200});
+  });
+  assert(called);
+  const body=await r.json();
+  assert(body.results.some(x=>x.placeId==='remote-maldonado'));
+  assert(body.results.some(x=>x.source==='Geoapify Places'&&x.lat===-34.947));
+});
+
+test('búsqueda sin GPS usa todo Uruguay y sesgo a Montevideo',async()=>{
+  const req=request('Radisson Montevideo hotel');
+  await extendPlaceSearch(req,legacy(),enabled,async link=>{
+    const url=new URL(link);
+    assert.equal(url.searchParams.get('filter'),'rect:-58.6,-35.25,-53.1,-30.05');
+    assert.equal(url.searchParams.get('bias'),'proximity:-56.17,-34.90');
+    return new Response(JSON.stringify({features:[]}),{status:200});
+  });
+});
+
+test('no replica longitud ni ETag tras ampliar la respuesta JSON',async()=>{
+  const original=legacy();
+  original.headers.set('ETag','"version-antigua"');
+  original.headers.set('Content-Length','77');
+  const req=request('Posada del Sol Maldonado');
+  const r=await extendPlaceSearch(req,original,enabled,async()=>{
+    return new Response(JSON.stringify({features:[{
+      properties:{name:'Posada del Sol',country_code:'uy',city:'Maldonado'},
+      geometry:{coordinates:[-54.95,-34.90]}
+    }]}),{status:200});
+  });
+  assert.equal(r.headers.has('ETag'),false);
+  assert.equal(r.headers.has('Content-Length'),false);
+  assert((await r.json()).results.some(x=>x.source==='Geoapify Places'));
 });
