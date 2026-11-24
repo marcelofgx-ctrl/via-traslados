@@ -14,7 +14,8 @@ home,_=get(live+'/')
 s=home.decode('utf8')
 assert 'v30.0' in s and ('content="30.0"' in s or 'v30.0</small>' in s), 'No está sirviendo V30.0'
 bundle=worker()
-assert bundle.count('export default')==1,'Worker distinto: no se puede envolver de forma segura'
+print('VIA_WORKER_MODULE_SHAPE '+json.dumps({'source_length':len(bundle),'export_default':len(re.findall(r'\\bexport\\s+default\\b',bundle)),'export_braced':len(re.findall(r'\\bexport\\s*\\{',bundle)),'add_event_listener':len(re.findall(r'addEventListener\\s*\\(',bundle)),'fetch_handlers':len(re.findall(r'fetch\\s*\\(',bundle)),'has_directions':'/api/direcciones' in bundle,'has_assets':'env.ASSETS.fetch(request)' in bundle}),flush=True)
+assert len(re.findall(r'\\bexport\\s+default\\b',bundle))==1,'Worker distinto: no se puede envolver de forma segura'
 assert 'env.ASSETS.fetch(request)' in bundle and '/api/direcciones' in bundle,'Worker inesperado'
 dir=pathlib.Path('v30-places-preflight');dir.mkdir(exist_ok=True)
 (dir/'worker-active.mjs').write_text(bundle,encoding='utf8')
