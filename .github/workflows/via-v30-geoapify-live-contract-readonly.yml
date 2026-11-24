@@ -1,0 +1,61 @@
+name: "Vía V30 — Geoapify contrato real y bindings (solo lectura)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths:
+      - ".github/workflows/via-v30-geoapify-live-contract-readonly.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-real-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Auditar contrato V30, versión Cloudflare y presencia de nombres de bindings
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const CF=process.env.CLOUDFLARE_ACCOUNT_ID, TOKEN=process.env.CLOUDFLARE_API_TOKEN;
+          if(!/^[a-f0-9]{32}$/i.test(CF||'')||!TOKEN)throw Error('Credenciales Cloudflare indisponibles');
+          const root='https://api.cloudflare.com/client/v4/accounts/'+CF;
+          async function cf(path){
+            const r=await fetch(root+path,{headers:{Authorization:'Bearer '+TOKEN},signal:AbortSignal.timeout(18000)});
+            if(!r.ok)throw Error('Cloudflare '+path.split('/').slice(0,3).join('/')+' HTTP '+r.status);
+            const o=await r.json();if(o.success!==true)throw Error('Cloudflare respuesta inválida');
+            return o.result;
+          }
+          const deployments=await cf('/workers/scripts/via-traslados-web-prod/deployments');
+          console.log('VIA_WEB_ACTIVE_VERSIONS '+JSON.stringify(deployments.deployments?.[0]?.versions?.map(x=>({id:x.version_id,traffic:x.percentage}))||[]));
+          for(const worker of ['via-traslados-web-prod','via-traslados-api']){
+            try{
+              const settings=await cf('/workers/scripts/'+worker+'/settings');
+              const bindings=settings.bindings||settings.settings?.bindings||[];
+              console.log('VIA_GEO_BINDING_PRESENCE '+JSON.stringify({worker,bindingNames:bindings.filter(x=>/geoapify|places|route/i.test(x.name||'')).map(x=>({name:x.name,type:x.type}))}));
+            }catch(e){console.log('VIA_GEO_BINDING_UNVERIFIED '+JSON.stringify({worker,reason:String(e.message).slice(0,110)}))}
+          }
+          const cases=[
+            ['radisson','Hotel Radisson',null],
+            ['hyatt','Hyatt Centric Montevideo',null],
+            ['airport','Aeropuerto Internacional de Carrasco',null],
+            ['punta-gps','Enjoy Punta del Este',{lat:-34.905,lng:-56.19}],
+            ['colonia','Hotel Colonia del Sacramento',null],
+            ['street-number','Av Italia 1000',null]
+          ];
+          for(const [caseId,q,gps]of cases){
+            const u=new URL('https://viatraslados.com/api/direcciones');
+            u.searchParams.set('mode','places');u.searchParams.set('q',q);
+            if(gps){u.searchParams.set('lat',String(gps.lat));u.searchParams.set('lng',String(gps.lng))}
+            try{
+              const r=await fetch(u,{headers:{'Accept':'application/json'},signal:AbortSignal.timeout(16000)});
+              const mime=r.headers.get('content-type')||'';
+              const text=await r.text();
+              let obj;try{obj=JSON.parse(text)}catch{}
+              const arr=Array.isArray(obj)?obj:Array.isArray(obj?.results)?obj.results:Array.isArray(obj?.items)?obj.items:null;
+              console.log('VIA_LIVE_PLACES_CONTRACT '+JSON.stringify({caseId,status:r.status,contentType:mime,rootType:Array.isArray(obj)?'array':typeof obj,rootKeys:obj&&!Array.isArray(obj)&&typeof obj==='object'?Object.keys(obj).slice(0,18):[],resultsArray:Array.isArray(obj?.results),itemsArray:Array.isArray(obj?.items),count:arr?.length??null,sampleKeys:arr?.[0]?Object.keys(arr[0]).slice(0,25):[],sample:arr?.slice(0,2).map(v=>({label:v.label,street:v.street,kind:v.kind,type:v.type,lat:v.lat,lng:v.lng,source:v.source})),responseLength:text.length}));
+            }catch(e){console.log('VIA_LIVE_PLACES_FAILURE '+JSON.stringify({caseId,error:String(e?.name||'Error').slice(0,70)}))}
+          }
+          console.log('VIA_LIVE_CONTRACT_READONLY_DONE no D1 writes no deployments no secrets');
+          NODE
