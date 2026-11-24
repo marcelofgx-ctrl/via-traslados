@@ -1,0 +1,45 @@
+name: "Vía V30 — preflight API active para Geoapify Places sin escrituras"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-poi-api-active-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: API Worker y D1 activo, firmas de bundle y bindings sin valores
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          const a=process.env.CLOUDFLARE_ACCOUNT_ID,t=process.env.CLOUDFLARE_API_TOKEN;
+          if(!/^[a-f0-9]{32}$/i.test(a||'')||!t)throw Error('credentials');
+          const base='https://api.cloudflare.com/client/v4/accounts/'+a+'/workers/scripts/via-traslados-api';
+          const hdr={Authorization:'Bearer '+t};
+          async function json(path){
+            const r=await fetch(base+path,{headers:hdr,signal:AbortSignal.timeout(15000)});
+            if(!r.ok)throw Error(path+': '+r.status);
+            const v=await r.json();if(!v.success)throw Error('CF not success');
+            return v.result;
+          }
+          const [d,s,src]=await Promise.all([json('/deployments'),json('/settings'),
+            fetch(base,{headers:hdr,signal:AbortSignal.timeout(18000)})]);
+          if(!src.ok)throw Error('Cloudflare script GET HTTP '+src.status);
+          const raw=await src.text();
+          const mime=src.headers.get('content-type')||'';
+          const exportSig=[...raw.matchAll(/export\s*\{[^}]{0,200}\}/g)].slice(-5).map(x=>x[0].slice(0,180));
+          console.log('VIA_POI_API_ACTIVE_SIGNATURE '+JSON.stringify({
+            versions:d.deployments?.[0]?.versions?.map(x=>({id:x.version_id,percentage:x.percentage})),
+            contentType:mime,length:raw.length,sha256:createHash('sha256').update(raw).digest('hex'),
+            multipart:mime.includes('multipart'),exportSig,defaults:(raw.match(/export default/g)||[]).length,
+            hasWorkerDefault:raw.includes('worker_default'),hasGeoapify:raw.includes('GEOAPIFY_API_KEY'),
+            hasHealth:raw.includes('/api/health'),hasDB:raw.includes('env.DB')
+          }));
+          const bs=s.bindings||s.settings?.bindings||[];
+          console.log('VIA_POI_API_BINDING_SHAPES '+JSON.stringify(bs.map(b=>({name:b.name,type:b.type,dbId:b.type==='d1'?b.id:undefined}))));
+          NODE
