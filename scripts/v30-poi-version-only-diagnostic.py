@@ -68,12 +68,12 @@ def build():
   # IMPORTANT: diagnostic only; permit Geoapify to rank by user's proximity.
   # Server-side normalization still rejects other countries and invalid coordinates.
   new=change_once(new,
-    " url.searchParams.set('filter','rect:-58.6,-35.25,-53.1,-30.05');",
+    '  url.searchParams.set("filter", "rect:-58.6,-35.25,-53.1,-30.05");',
     " // QA version only: provider proximity ranking without rectangle, to test empty Places response.")
   new=change_once(new,
-    " url.searchParams.set('name',q);",
-    r""" url.searchParams.set('name',q.replace(/\bmc[\s-]*donald'?s\b/gi,"McDonald's"));""")
-  oldReturn=" return viaPoiJson({features:body.features.map(viaPoiNormalize).filter(Boolean).slice(0,12)});"
+    '  url.searchParams.set("name", q);',
+    r"""  url.searchParams.set("name", q.replace(/\bmc[\s-]*donald'?s\b/gi, "McDonald's"));""")
+  oldReturn="  return viaPoiJson({ features: body.features.map(viaPoiNormalize).filter(Boolean).slice(0, 12) });"
   newReturn=""" const kept=body.features.map(viaPoiNormalize).filter(Boolean).slice(0,12);
  const named=body.features.filter(f=>String(f?.properties?.name||'').trim()).length;
  const uy=body.features.filter(f=>String(f?.properties?.country_code||f?.properties?.country_code_iso2||'').toLowerCase()==='uy').length;
