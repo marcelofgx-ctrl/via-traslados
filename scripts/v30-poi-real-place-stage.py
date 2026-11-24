@@ -59,11 +59,15 @@ def build():
  cfg=json.loads(cfgfile.read_text())
  assert cfg['name']=='via-traslados-v30-poi-stage-20261124' and 'd1_databases' not in cfg and 'services' not in cfg
  cfg['vars']['VIA_PLACES_ENABLED']='true'
+ # Only this QA Worker: route version URL subrequests via the public edge.
+ # Do not change production compatibility flags or API/D1 bindings.
+ cfg['compatibility_flags']=['global_fetch_strictly_public']
  cfgfile.write_text(json.dumps(cfg,indent=2))
  data=json.loads((OUT/'manifest.json').read_text())
  data['places_flag']='true QA-only with Geoapify Autocomplete via nondeployed API'
  data['places_qa_api_version']=VERSION
  data['places_qa_origin']=QA_API
+ data['qa_compatibility_flags']=cfg['compatibility_flags']
  data['api_except_directions']='blocked; only directions triggers Geoapify backend version GET'
  data['d1_write']='QA web has no D1; versioned API writes rate-limiter counters in existing API D1'
  data['route_preview']='blocked; no bookings or route previews in stage'
