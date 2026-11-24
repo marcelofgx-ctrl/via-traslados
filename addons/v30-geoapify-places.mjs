@@ -1,7 +1,7 @@
 // Vía Traslados V30 — complemento de lugares comerciales (NO sustituye IDE).
 // El secreto VIA_GEOAPIFY_API_KEY vive solo en Cloudflare Worker.
 // Activación explícita VIA_PLACES_ENABLED=true; apagado = legado byte a byte.
-const CATEGORIES = 'accommodation,catering.restaurant,rental.car,commercial,healthcare,airport.terminal,tourism';
+const CATEGORIES = 'accommodation,catering,commercial,rental,healthcare,tourism,entertainment';
 const CACHE = new Map();
 const RATE = new Map();
 const MAX_CACHE = 180;
@@ -59,7 +59,7 @@ function combine(existing,added) {
   for (const p of fresh) if (!items.some(x=>same(x,p))) items.push(p);
   return items.slice(0,12);
 }
-async function search(q,lat,lng,key,fetcher) {
+async function search(q,lat,lng,key,fetcher,service) {
   const u = new URL('https://api.geoapify.com/v2/places');
   u.searchParams.set('categories',CATEGORIES);
   u.searchParams.set('name',poiName(q));
@@ -72,11 +72,17 @@ async function search(q,lat,lng,key,fetcher) {
   u.searchParams.set('filter','rect:-58.6,-35.25,-53.1,-30.05');
   u.searchParams.set('bias',valid(lat,lng)
     ? 'proximity:'+lng+','+lat : 'proximity:-56.17,-34.90');
-  u.searchParams.set('apiKey',key);
+  if (!service) u.searchParams.set('apiKey',key);
   const controller = new AbortController();
   const timeout = setTimeout(()=>controller.abort(),2800);
   try {
-    const response = await fetcher(u.toString(),{signal:controller.signal,headers:{Accept:'application/json'}});
+    // Worker API conserva VIA_GEOAPIFY_API_KEY, nunca se copia a la WEB.
+    const endpoint=service?new URL('https://via-poi.internal/api/via-places'):u;
+    if(service){endpoint.searchParams.set('q',q);
+      if(valid(lat,lng)){endpoint.searchParams.set('lat',String(lat));endpoint.searchParams.set('lng',String(lng));}}
+    const response=service?
+      await service.fetch(new Request(endpoint.toString(),{method:'GET',signal:controller.signal,headers:{Accept:'application/json'}})):
+      await fetcher(u.toString(),{signal:controller.signal,headers:{Accept:'application/json'}});
     if (!response.ok) return [];
     const json = await response.json();
     return (Array.isArray(json?.features)?json.features:[]).map(normalize).filter(Boolean);
@@ -84,9 +90,10 @@ async function search(q,lat,lng,key,fetcher) {
 }
 // Recibe la respuesta ORIGINAL del buscador. Ante cualquier error devuelve esa misma respuesta.
 export async function extendPlaceSearch(request, originalResponse, env, fetcher=fetch) {
-  if (env?.VIA_PLACES_ENABLED !== 'true' ||
-      typeof env?.VIA_GEOAPIFY_API_KEY !== 'string' ||
-      env.VIA_GEOAPIFY_API_KEY.length < 10) return originalResponse;
+  const service=env?.VIA_POI_API&&typeof env.VIA_POI_API.fetch==='function'?env.VIA_POI_API:null;
+  const apiKey=typeof env?.VIA_GEOAPIFY_API_KEY==='string'&&env.VIA_GEOAPIFY_API_KEY.length>=10
+    ? env.VIA_GEOAPIFY_API_KEY : null;
+  if(env?.VIA_PLACES_ENABLED!=='true'||(!apiKey&&!service))return originalResponse;
   try {
     const url = new URL(request.url);
     if (url.pathname !== '/api/direcciones' || url.searchParams.get('mode') !== 'places' ||
@@ -102,7 +109,7 @@ export async function extendPlaceSearch(request, originalResponse, env, fetcher=
     if (cached && cached.expires > now()) incoming = cached.places;
     else {
       if (!throttle(request)) return originalResponse;
-      incoming = await search(q,lat,lng,env.VIA_GEOAPIFY_API_KEY,fetcher);
+      incoming = await search(q,lat,lng,apiKey,fetcher,service);
       if (CACHE.size >= MAX_CACHE) CACHE.clear();
       if (incoming.length) CACHE.set(cacheKey,{expires:now()+180000,places:incoming});
     }
