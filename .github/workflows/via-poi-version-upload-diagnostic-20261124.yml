@@ -1,0 +1,85 @@
+name: "INCIDENTE V30 — Geoapify versión QA sin despliegue de tráfico"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-version-upload-diagnostic-20261124.yml"]
+permissions:
+  contents: read
+jobs:
+  version-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Construir candidato desde última versión experimental, verificando 100 por ciento V30 original en tráfico
+        run: |
+          python3 scripts/v30-poi-version-only-diagnostic.py
+          node --check v30-poi-version-only/worker.mjs
+      - name: Verificar compatibilidad Wrangler sin subir nada
+        run: |
+          npx --yes wrangler@4.160.1 deploy --config v30-poi-version-only/wrangler.api.jsonc --dry-run --keep-vars
+      - name: Subir VERSIÓN sin desplegarla y probar Places con secreto existente
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 versions upload --config v30-poi-version-only/wrangler.api.jsonc --keep-vars
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          api='https://api.cloudflare.com/client/v4/accounts/'+a+'/workers/scripts/via-traslados-api'
+          def cf(path):
+            req=urllib.request.Request(api+path,headers={'Authorization':'Bearer '+t})
+            with urllib.request.urlopen(req,timeout=20) as r:return json.load(r)
+          data=cf('/deployments')
+          versions=data['result']['deployments'][0]['versions']
+          assert len(versions)==1 and versions[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(versions[0]['percentage'])==100
+          data=cf('/versions?per_page=1')
+          items=data['result']['items'] if isinstance(data['result'],dict) else data['result']
+          assert len(items)>=1
+          candidate=items[0]['id']
+          assert candidate!='39d2d942-1597-4bdc-9c17-76acf2b1a025'
+          print('VIA_POI_NEW_VERSION_UPLOAD_ONLY '+json.dumps({'id':candidate,'production100pctOriginal':True,'productionDeployed':False}))
+          with open('/tmp/poi-version-id.txt','w') as f:f.write(candidate)
+          PY
+      - name: Medir cantidad de respuestas del proveedor REAL sin guardar datos personales
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const id=readFileSync('/tmp/poi-version-id.txt','utf8').trim();
+          const base='https://'+id.slice(0,8)+'-via-traslados-api.marcelof-gx.workers.dev';
+          for(const q of ['Radisson',"McDonald's",'Hyatt','Enjoy']){
+            const url=new URL(base+'/api/via-places');
+            url.searchParams.set('q',q);
+            try{
+              const res=await fetch(url,{signal:AbortSignal.timeout(18000)});
+              let obj;try{obj=await res.json()}catch{}
+              console.log('VIA_POI_PROVIDER_DIAGNOSTIC '+JSON.stringify({
+                query:q,http:res.status,features:Array.isArray(obj?.features)?obj.features.length:null,
+                providerRaw:res.headers.get('X-Via-Poi-Raw'),
+                providerNamed:res.headers.get('X-Via-Poi-Named'),
+                providerUy:res.headers.get('X-Via-Poi-Uy'),
+                providerAccepted:res.headers.get('X-Via-Poi-Accepted'),
+                error:obj?.error||null
+              }));
+            }catch(e){console.log('VIA_POI_PROVIDER_DIAGNOSTIC '+JSON.stringify({query:q,errorType:e.name}))}
+          }
+          NODE
+      - name: Garantizar que versión original API sigue activa 100 por ciento
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          u=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-api/deployments'
+          req=urllib.request.Request(u,headers={'Authorization':'Bearer '+t})
+          with urllib.request.urlopen(req,timeout=25) as r:data=json.load(r)
+          vs=data['result']['deployments'][0]['versions']
+          assert len(vs)==1 and vs[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(vs[0]['percentage'])==100
+          print('VIA_POI_PRODUCTION_NOT_CHANGED VERIFIED 100 PCT')
+          PY
