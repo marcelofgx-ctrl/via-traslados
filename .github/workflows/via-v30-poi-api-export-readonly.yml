@@ -29,7 +29,7 @@ jobs:
           plain=len(re.findall(r'\bexport\s+default\b',source))
           bundled=re.findall(r'\bexport\s*\{\s*([A-Za-z_$][\w$]*)\s+as\s+default\s*\}\s*;?',source)
           other=re.findall(r'\bexport\s*\{[^}]{0,150}\}',source)
-          info={'module_len':len(source),'plain_default_count':plain,'bundled_default_count':len(bundled),'has_health':('/api/health' in source),'has_exact_envDB':('env.DB' in source),'has_other_DB':('.DB.' in source or '.DB)' in source),'has_viaPoiHandle':('viaPoiHandle' in source),'has_active_worker_marker':('__viaActiveApiWorker' in source),'export_block_count':len(other),'export_structural_lengths':[len(x) for x in other[-3:]],'has_dynamic_import':bool(re.search(r'\bimport\s*\(',source)),'starts_with_module_comment':source.lstrip().startswith('//')}
+          info={'module_len':len(source),'plain_default_count':plain,'bundled_default_count':len(bundled),'has_health':('/api/health' in source),'has_exact_envDB':('env.DB' in source),'has_other_DB':('.DB.' in source or '.DB)' in source),'has_viaPoiHandle':('viaPoiHandle' in source),'has_active_worker_marker':('__viaActiveApiWorker' in source),'export_block_count':len(other),'export_structural_lengths':[len(x) for x in other[-3:]],'export_identifier_signature':[re.sub(r'[^A-Za-z0-9_$,{}; ]','?',x) for x in other[-3:]],'has_dynamic_import':bool(re.search(r'\bimport\s*\(',source)),'starts_with_module_comment':source.lstrip().startswith('//')}
           print('VIA_POI_API_EXPORT_DIAGNOSTIC '+json.dumps(info))
           PY
       - run: echo "READ ONLY - no source printed, no D1, no deploy"
