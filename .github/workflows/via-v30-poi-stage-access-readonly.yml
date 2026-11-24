@@ -31,3 +31,35 @@ jobs:
             }
           }
           NODE
+
+      - name: Smoke de QA accesible con API aislada y fuente POI intacta
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev';
+          const get=async path=>{
+            for(let i=0;i<4;i++){
+              const r=await fetch(base+path,{signal:AbortSignal.timeout(16000)});
+              const body=await r.text();
+              if(r.status!==403||i===3)return {status:r.status,body};
+              await new Promise(ok=>setTimeout(ok,2000));
+            }
+          };
+          const [home,autocomplete,config,health,places]=await Promise.all([
+            get('/index.html'),get('/address-autocomplete.js'),get('/config.js'),
+            get('/api/health'),get('/api/direcciones?mode=places&q=Aeropuerto%20Internacional%20de%20Carrasco')
+          ]);
+          const placeJSON=places.status===200?JSON.parse(places.body):null;
+          const status={
+            home:home.status,qaBanner:home.body.includes('V30 QA GEOAPIFY'),
+            autocomplete:autocomplete.status,poigated:autocomplete.body.includes('looksLikeStreetInput'),
+            preservesSource:autocomplete.body.includes("source:chosen.source||'place_search'"),
+            config:config.status,configProdApi:config.body.includes('https://via-traslados-api.marcelof-gx.workers.dev'),
+            health:health.status,places:places.status,legacyResultsArray:Array.isArray(placeJSON?.results)
+          };
+          console.log('VIA_POI_QA_PUBLIC_SMOKE '+JSON.stringify(status));
+          if(!(status.home===200&&status.qaBanner&&status.autocomplete===200&&
+            status.poigated&&status.preservesSource&&status.config===200&&!status.configProdApi&&
+            status.health===503&&status.places===200&&status.legacyResultsArray))
+            throw Error('QA no cumple smoke de aislamiento y contrato');
+          console.log('VIA_POI_QA_PUBLIC_SMOKE_PASS');
+          NODE
