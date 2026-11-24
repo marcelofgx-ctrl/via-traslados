@@ -14,10 +14,10 @@ export function patchWorkerSource(source,addon) {
     throw Error('Complemento inesperado o ya integrado: abortar');
   const base=source.replace(/\bexport\s+default\b/,'const __viaLegacyWorker =');
   const plus=addon.replace('export async function extendPlaceSearch','async function extendPlaceSearch');
-  return base+'\n\n'+plus+'\n\n'+
+  return base+'\n\nconst __viaExtendPlaceSearch = (() => {\n'+plus+'\nreturn extendPlaceSearch;\n})();\n\n'+
     'export default {async fetch(request,env,ctx){'+
     'const original=await __viaLegacyWorker.fetch(request,env,ctx);'+
-    'return extendPlaceSearch(request,original,env);'+
+    'return __viaExtendPlaceSearch(request,original,env);'+
     '}};\n';
 }
 
