@@ -40,12 +40,11 @@ def api_source():
  for part in raw.split(b'--'+match.group(1).encode()):
   if b'Content-Disposition' not in part or b'\r\n\r\n' not in part:continue
   head,body=part.split(b'\r\n\r\n',1)
-  # Cloudflare entrega worker.js y worker.js.map por multipart; nunca envolver el sourcemap.
-  if not re.search(rb'(?:filename|name)="[^"]+\.m?js"',head):continue
+  # Elegir exactamente la parte ejecutable `worker.js`, nunca `worker.js.map`.
+  # La exportación ESM se valida luego con el wrapper y con Wrangler --dry-run.
+  if b'name="worker.js"' not in head:continue
   code=body.rstrip(b'\r\n').decode('utf8','replace')
-  exported=bool(re.search(r'\bexport\s*\{\s*[A-Za-z_$][\w$]*\s+as\s+default\s*\}',code) or
-   re.search(r'\bexport\s+default\b',code))
-  if '/api/health' in code and exported:
+  if '/api/health' in code:
    candidates.append(code)
  if len(candidates)!=1:raise AssertionError('Bundle API no único o dependencias no reconocidas')
  # La expresión previa podía atravesar todo el bundle minificado, dando un falso
