@@ -1,0 +1,78 @@
+name: "Vía V30 — subida exclusiva versión POI Autocomplete QA (sin tráfico productivo)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-live-autocomplete-version-qa.yml","scripts/v30-poi-live-autocomplete-qa-version.py"]
+permissions:
+  contents: read
+concurrency:
+  group: via-poi-autocomplete-version-only-20261124
+  cancel-in-progress: false
+jobs:
+  version-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Compilar desde versión experimental preservando API y tráfico
+        run: |
+          set -euo pipefail
+          python3 scripts/v30-poi-live-autocomplete-qa-version.py
+          node --check v30-poi-live-autocomplete-qa/worker.mjs
+      - name: Wrangler dry-run - ningún despliegue
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-live-autocomplete-qa/wrangler.jsonc --dry-run --keep-vars
+      - name: Subir versión INACTIVA con el secreto existente de la API
+        run: |
+          npx --yes wrangler@4.160.1 versions upload --config v30-poi-live-autocomplete-qa/wrangler.jsonc --keep-vars
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          u=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-api'
+          def get(s):
+            with urllib.request.urlopen(urllib.request.Request(u+s,headers={'Authorization':'Bearer '+t}),timeout=24) as r:return json.load(r)
+          v=get('/deployments')['result']['deployments'][0]['versions']
+          assert len(v)==1 and v[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(v[0]['percentage'])==100
+          j=get('/versions?per_page=1')['result']
+          items=j['items'] if isinstance(j,dict) else j
+          id=items[0]['id']
+          assert id!='595d67be-293b-4b3f-9022-6a5a672f8aad'
+          open('/tmp/via-poi-real-version-id.txt','w').write(id)
+          print('VIA_POI_QA_UPLOAD_ONLY '+json.dumps({'id':id,'production100PctOld':True}))
+          PY
+      - name: Comprobar nombres y coordenadas reales sin datos personales
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const id=readFileSync('/tmp/via-poi-real-version-id.txt','utf8').trim();
+          const base='https://'+id.slice(0,8)+'-via-traslados-api.marcelof-gx.workers.dev';
+          for(const [query,expected] of [["McDonald's",1],['Mcdonalds',1],['Radisson',1],['Hyatt',1],['Don Koto',1]]){
+            const u=new URL(base+'/api/via-places');u.searchParams.set('q',query);
+            const r=await fetch(u,{signal:AbortSignal.timeout(20000)});
+            const j=await r.json();
+            const list=Array.isArray(j.features)?j.features:[];
+            const valid=list.filter(f=>f?.properties?.country_code==='uy'&&f?.properties?.name&&
+              Array.isArray(f?.geometry?.coordinates)&&f.geometry.coordinates.length===2);
+            console.log('VIA_POI_LIVE_QA_REAL '+JSON.stringify({query,http:r.status,
+              results:list.length,validCoordinates:valid.length,provider:r.headers.get('X-Via-Poi-Source'),
+              error:j.error||null}));
+            if(r.status!==200||valid.length<expected)throw Error('Real business search failed for '+query);
+          }
+          console.log('VIA_POI_LIVE_QA_BUSINESSES_PASS version='+id);
+          NODE
+      - name: Confirmar API productiva original 100 por ciento
+        run: |
+          python3 - <<'PY'
+          import os,urllib.request,json
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          url=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-api/deployments'
+          with urllib.request.urlopen(urllib.request.Request(url,headers={'Authorization':'Bearer '+t}),timeout=25) as r:d=json.load(r)
+          vs=d['result']['deployments'][0]['versions']
+          assert len(vs)==1 and vs[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(vs[0]['percentage'])==100
+          print('VIA_PROD_API_ORIGINAL_100_PCT_NO_DEPLOY')
+          PY
