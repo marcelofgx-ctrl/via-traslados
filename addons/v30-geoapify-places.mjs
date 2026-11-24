@@ -74,7 +74,7 @@ async function search(q,lat,lng,key,fetcher,service) {
     ? 'proximity:'+lng+','+lat : 'proximity:-56.17,-34.90');
   if (!service) u.searchParams.set('apiKey',key);
   const controller = new AbortController();
-  const timeout = setTimeout(()=>controller.abort(),2800);
+  const timeout = setTimeout(()=>controller.abort(),4800);
   try {
     // Worker API conserva VIA_GEOAPIFY_API_KEY, nunca se copia a la WEB.
     const endpoint=service?new URL('https://via-poi.internal/api/via-places'):u;
