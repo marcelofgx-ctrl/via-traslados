@@ -63,3 +63,41 @@ jobs:
             throw Error('QA no cumple smoke de aislamiento y contrato');
           console.log('VIA_POI_QA_PUBLIC_SMOKE_PASS');
           NODE
+
+      - name: Certificar producción V30 sin cambios y QA sin bindings D1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const a=process.env.CLOUDFLARE_ACCOUNT_ID,t=process.env.CLOUDFLARE_API_TOKEN;
+          if(!/^[0-9a-f]{32}$/i.test(a||'')||!t)throw Error('Cloudflare read credentials missing');
+          const root='https://api.cloudflare.com/client/v4/accounts/'+a;
+          async function cf(p){
+            const r=await fetch(root+p,{headers:{Authorization:'Bearer '+t},signal:AbortSignal.timeout(20000)});
+            if(!r.ok)throw Error('Cloudflare HTTP '+r.status);
+            const json=await r.json();
+            if(json.success!==true)throw Error('Cloudflare unsuccessful read');
+            return json.result;
+          }
+          const names=['via-traslados-web-prod','via-traslados-api','via-traslados-v30-poi-stage-20261124'];
+          const rows=[];
+          for(const name of names){
+            const [d,s]=await Promise.all([
+              cf('/workers/scripts/'+name+'/deployments'),
+              cf('/workers/scripts/'+name+'/settings')
+            ]);
+            const bindings=s.bindings||s.settings?.bindings||[];
+            rows.push({name,versions:d.deployments?.[0]?.versions?.map(x=>({id:x.version_id,traffic:x.percentage}))||[],
+              hasGeoapify:bindings.some(x=>x.name==='VIA_GEOAPIFY_API_KEY'),
+              hasD1:bindings.some(x=>x.type==='d1'||x.type==='d1_database'),
+              placesFlag:bindings.find(x=>x.name==='VIA_PLACES_ENABLED')?.text??'not present'});
+          }
+          console.log('VIA_POI_CF_FINAL_INVENTORY '+JSON.stringify(rows));
+          const prod=rows[0],api=rows[1],qa=rows[2];
+          if(prod.versions.length!==1||prod.versions[0].id!=='ac8e0a7e-a032-47f8-8328-bd7b716a4342'||
+            Number(prod.versions[0].traffic)!==100||!api.hasGeoapify||
+            qa.hasGeoapify||qa.hasD1||qa.placesFlag!=='false')
+            throw Error('Invariante crítico de QA / PROD no confirmado');
+          console.log('VIA_POI_CF_FINAL_INVARIANTS_PASS');
+          NODE
