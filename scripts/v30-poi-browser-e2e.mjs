@@ -84,6 +84,7 @@ for(const [os,w,h] of [['android',390,844],['ios',375,667]]){
   const selection=page.locator('#address-suggestions button').filter({hasText:'Radisson'}).first();
   await selection.click();
   const selected=await page.evaluate(()=>window.ViaAddress.get('home-destination'));
+  console.log('VIA_V30_POI_SELECTED_DEBUG '+JSON.stringify({os,selected}));
   assert.equal(selected.lat,poi.lat,'Latitude perdida al elegir comercio');
   assert.equal(selected.lng,poi.lng,'Longitude perdida al elegir comercio');
   assert.equal(selected.source,poi.source,'Fuente perdida');
