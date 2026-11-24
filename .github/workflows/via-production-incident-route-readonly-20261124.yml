@@ -1,0 +1,72 @@
+name: "INCIDENTE V30 — diagnóstico rutas en producción (sin reservas)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-production-incident-route-readonly-20261124.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Leer versiones y bindings actuales sin valores secretos
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          account=os.environ['CLOUDFLARE_ACCOUNT_ID']
+          token=os.environ['CLOUDFLARE_API_TOKEN']
+          for worker in ['via-traslados-api','via-traslados-web-prod']:
+            base=f'https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/{worker}'
+            for suffix in ['/deployments','/versions']:
+              try:
+                req=urllib.request.Request(base+suffix,headers={'Authorization':'Bearer '+token})
+                with urllib.request.urlopen(req,timeout=20) as r: data=json.load(r)
+                result=data.get('result')
+                if suffix=='/deployments':
+                  deps=result.get('deployments',[]) if isinstance(result,dict) else []
+                  print('VIA_LIVE_WORKER '+json.dumps({'name':worker,'versions':deps[0].get('versions') if deps else [],'success':data.get('success')}))
+                else:
+                  items=result.get('items',[]) if isinstance(result,dict) else result if isinstance(result,list) else []
+                  print('VIA_LIVE_WORKER_LAST_UPLOADED '+json.dumps({'name':worker,'last_uploaded_id':items[0].get('id') if items else None,'success':data.get('success')}))
+              except Exception as e: print('VIA_WORKER_META_ERROR '+json.dumps({'name':worker,'endpoint':suffix,'errorType':type(e).__name__}))
+          PY
+      - name: Comprobar API pública, kilometraje y geocodificación sin crear reservas
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const api='https://via-traslados-api.marcelof-gx.workers.dev';
+          const site='https://viatraslados.com';
+          async function hit(name,url,init={}){
+            try{
+              const started=Date.now();
+              const res=await fetch(url,{...init,signal:AbortSignal.timeout(23000)});
+              const text=await res.text();let obj;
+              try{obj=JSON.parse(text)}catch{}
+              const item={name,http:res.status,durationMs:Date.now()-started,cors:res.headers.get('access-control-allow-origin'),
+                ok:res.ok,error:obj?.error||null,reason:obj?.reason||null,
+                distanceKm:obj?.distanceKm??null,durationMinutes:obj?.durationMinutes??null,
+                results:Array.isArray(obj?.results)?obj.results.length:null,
+                provider:obj?.provider||null,configured:obj?.configured||null};
+              console.log('VIA_INCIDENT_RESULT '+JSON.stringify(item));return item;
+            }catch(err){const item={name,errorType:err?.name||'unknown'};console.log('VIA_INCIDENT_RESULT '+JSON.stringify(item));return item;}
+          }
+          await hit('api-health',api+'/api/health',{headers:{Origin:site}});
+          await hit('booking-status',api+'/api/public/status',{headers:{Origin:site}});
+          await hit('front-config',site+'/config.js');
+          await hit('geocode-places-mcdonalds',site+'/api/direcciones?mode=places&q='+encodeURIComponent("McDonald's"));
+          await hit('geocode-reverse',site+'/api/direcciones?mode=reverse&lat=-34.905&lng=-56.185');
+          const base={method:'POST',headers:{Origin:site,'Content-Type':'application/json'}};
+          const payloads=[
+           {name:'coords-montevideo-airport',origin:'Centro de Montevideo',destination:'Aeropuerto Internacional de Carrasco',
+             originLocation:{lat:-34.905,lng:-56.185,source:'map',postalStatus:'unknown'},
+             destinationLocation:{lat:-34.83696,lng:-56.01638,source:'map',postalStatus:'unknown'}},
+           {name:'addresses-shangrila-airport',origin:'Roque Sáenz Peña 1711, Shangrilá, Canelones',destination:'Aeropuerto Internacional de Carrasco, Colonia Nicolich, Canelones'}
+          ];
+          for(const p of payloads){const {name,...body}=p;await hit(name,api+'/api/public/route-preview',{...base,body:JSON.stringify(body)});}
+          NODE
+      - name: Confirmar no despliegue ni modificación de reservas
+        run: echo "READ ONLY INFRA, ONLY PUBLIC ROUTE PREVIEWS, NO DEPLOY, NO AUTH, NO BOOKINGS"
