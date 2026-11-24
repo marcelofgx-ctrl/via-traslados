@@ -63,3 +63,15 @@ test('no altera ningún endpoint distinto de places',async()=>{
   const res=await extendPlaceSearch(r,original,enabled,async()=>{throw new Error('unexpected')});
   assert.strictEqual(res,original);
 });
+
+test('un listado IDE lleno deja visibles lugares comerciales añadidos',async()=>{
+  const full=Array.from({length:12},(_,i)=>({label:'Punto '+i,street:'Punto '+i,
+    city:'Montevideo',lat:-34.8+i*0.001,lng:-56.1,kind:'place'}));
+  const original=new Response(JSON.stringify({results:full,mode:'places'}),{
+    headers:{'Content-Type':'application/json'}});
+  const result=await extendPlaceSearch(request(),original,enabled,mock());
+  const body=await result.json();
+  assert.equal(body.results.length,12);
+  assert.equal(body.results[0].label,'Punto 0');
+  assert(body.results.some(x=>x.source==='Geoapify Places'));
+});
