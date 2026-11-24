@@ -7,7 +7,6 @@ import {chromium,webkit} from 'playwright';
 const PROD='https://viatraslados.com';
 const patch=await readFile('v30-poi-browser-proof/address-autocomplete-qa.js','utf8');
 const OUT='v30-poi-browser-proof';
-console.log('VIA_POI_DISPLAY_CODE '+patch.slice(patch.indexOf('function display('),patch.indexOf('function display(')+4200).replace(/\s+/g,' ').slice(0,4200));
 await mkdir(OUT,{recursive:true});
 const poi={
   label:'Radisson Victoria Plaza Hotel, Montevideo, Montevideo',
@@ -32,7 +31,7 @@ for(const [os,w,h] of [['android',390,844],['ios',375,667]]){
  const seen={places:[],suggest:[],routes:[],deniedWrites:0};
  const jsErrors=[];
  page.on('pageerror',e=>jsErrors.push(e.message));
- await page.route('**/*',async route=>{
+ await ctx.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());
   if(url.origin===PROD&&url.pathname==='/address-autocomplete.js'){
    return route.fulfill({status:200,contentType:'application/javascript; charset=utf-8',body:patch});
