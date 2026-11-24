@@ -4,6 +4,9 @@ on:
     branches: [via-v30-geoapify-places-qa-20261124]
     paths:
       - "scripts/v30-poi-qa-package.py"
+      - "scripts/v30-poi-frontend-patch.mjs"
+      - "scripts/v30-geoapify-integration.mjs"
+      - "addons/v30-geoapify-places.mjs"
       - ".github/workflows/via-v30-poi-isolated-worker-qa.yml"
   workflow_dispatch:
 permissions:
