@@ -19,5 +19,15 @@ jobs:
           const html=await r.text();
           const tokens=[...html.matchAll(/.{0,160}(?:via-release-version|v30\.0|<small|version|versión).{0,170}/gim)].slice(0,35);
           console.log('VERSION_LIVE_HTML_CONTRACT '+JSON.stringify({http:r.status,bytes:html.length,hasV30:html.includes('v30.0'),tokens:tokens.map(x=>x[0].replace(/\s+/g,' ').slice(0,300))}));
+          const start=html.indexOf('premium-brand');
+          const footer=html.indexOf('id="via-release-indicator"');
+          const bodyClose=html.lastIndexOf('</body>');
+          const headerEnd=html.indexOf('</header>');
+          console.log('VERSION_LIVE_PLACEMENT '+JSON.stringify({
+           brandSnippet:html.slice(Math.max(0,start-280),start+800).replace(/\s+/g,' ').slice(0,1100),
+           footerSnippet:html.slice(Math.max(0,footer-450),footer+360).replace(/\s+/g,' ').slice(0,900),
+           bodyEnd:html.slice(Math.max(0,bodyClose-170),bodyClose+10).replace(/\s+/g,' '),
+           headerEnd,brandPos:start,footerPos:footer,hasHeader:html.includes('</header>')
+          }));
           NODE
       - run: echo "NO DEPLOY, NO D1, NO SECRETS"
