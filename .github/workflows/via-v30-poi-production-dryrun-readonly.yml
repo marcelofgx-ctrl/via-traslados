@@ -1,0 +1,37 @@
+name: "Vía V30 — empaquetado y compilación Geoapify sin despliegue"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-poi-production-dryrun-readonly.yml","scripts/v30-poi-prod-package.py"]
+permissions:
+  contents: read
+jobs:
+  dryrun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Probar extensión y contratos sin tocar producción
+        run: |
+          set -euo pipefail
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs
+          python3 -m py_compile scripts/v30-poi-prod-package.py
+      - name: Crear paquete a partir de versiones ACTIVAS con controles y sin escritura
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/v30-poi-prod-package.py
+      - name: Validación de Wrangler sin despliegue API y WEB
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 deploy --config v30-poi-prod-build/wrangler.api.jsonc --dry-run --keep-vars
+          npx --yes wrangler@4.160.1 deploy --config v30-poi-prod-build/wrangler.web.jsonc --dry-run --keep-vars
+          echo "VIA_POI_SAFE_DRY_RUN_PASS NO DEPLOY NO D1 WRITES"
