@@ -1,13 +1,5 @@
 name: "Vía V30 — publicar SOLO Worker POI QA aislado"
 on:
-  push:
-    branches: [via-v30-geoapify-places-qa-20261124]
-    paths:
-      - "scripts/v30-poi-qa-package.py"
-      - "scripts/v30-poi-frontend-patch.mjs"
-      - "scripts/v30-geoapify-integration.mjs"
-      - "addons/v30-geoapify-places.mjs"
-      - ".github/workflows/via-v30-poi-isolated-worker-qa.yml"
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,6 +8,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   stage:
+    if: false # Superseded by via-poi-real-places-stage-release.yml; never overwrite shared stage
     runs-on: ubuntu-24.04
     timeout-minutes: 23
     steps:
