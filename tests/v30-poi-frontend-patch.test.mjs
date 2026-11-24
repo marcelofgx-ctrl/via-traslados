@@ -9,7 +9,7 @@ function search(input){const q=input.value.trim();
   const looksLikePlace=/\b(hotel|shopping)\b/i.test(q);
   const looksLikeAddress=false;
   const results=(looksLikePlace&&!looksLikeAddress)?[...poiResults,...streetResults]:[...streetResults,...poiResults];
-  const unique=new Map();
+  const unique=new Map();for(const p of results){const key=(p.label||'').toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'');if(!unique.has(key))unique.set(key,p)}
 }
 const setMeta=(input,place)=>{}; // mode=places
 function select(){
@@ -32,18 +32,18 @@ test('nombres propios activan places y calles/números se conservan',()=>{
   for(const q of ['Av Italia 1000','Calle Colonia 1234','Camino Carrasco','Rambla República de México'])
     assert.equal(check(q),false,q);
 });
-test('una lista de doce calles reserva cuatro huecos para POI',()=>{
+test('una lista de doce calles reserva hasta ocho huecos para POI',()=>{
   const p=patchAutocompleteSource(original);
   const start=p.indexOf('const poiSlots=');
   const end=p.indexOf('const unique=new Map()');
   const arrange=new Function('looksLikePlace','looksLikeAddress','poiResults','streetResults',
     p.slice(start,end)+'return results;');
   const streets=Array.from({length:12},(_,i)=>'Calle '+i);
-  const pois=['Hotel A','Restaurante B','Alquiler C','Hotel D'];
+  const pois=Array.from({length:8},(_,i)=>'Comercio '+i);
   const result=arrange(false,false,pois,streets);
-  assert.equal(result.length,16);
-  assert.deepEqual(result.slice(0,8),streets.slice(0,8));
-  assert.deepEqual(result.slice(8,12),pois);
+  assert.equal(result.length,20);
+  assert.deepEqual(result.slice(0,4),streets.slice(0,4));
+  assert.deepEqual(result.slice(4,12),pois);
   assert.deepEqual(result.slice(0,12).filter(x=>pois.includes(x)),pois);
   assert.deepEqual(arrange(false,false,[],streets),streets);
 });
@@ -62,4 +62,13 @@ test('al seleccionar POI se conserva fuente y no se inventa verificación postal
   const portal=check({kind:'address',source:'IDE Uruguay',accuracy:'portal'});
   assert.equal(portal.source,'address_search');
   assert.equal(portal.postalStatus,'user_confirmed');
+});
+
+test('la interfaz conserva sucursales homónimas con coordenadas distintas',()=>{
+ const patch=patchAutocompleteSource(original);
+ const i=patch.indexOf('const unique=new Map();for');
+ const j=patch.indexOf('\n}',i);
+ const run=new Function('results',patch.slice(i,j)+';return [...unique.values()]');
+ const rows=[{label:'Cadena, Montevideo',kind:'place',lat:-34.9,lng:-56.1},{label:'Cadena, Montevideo',kind:'place',lat:-34.91,lng:-56.12}];
+ assert.equal(run([...rows,rows[0]]).length,2);
 });

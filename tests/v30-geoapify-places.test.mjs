@@ -137,3 +137,14 @@ test("McDonalds escrito sin apóstrofo consulta la marca oficial sin alterar IDE
   assert(body.results.some(x=>x.source==='Geoapify Places'));
   assert(body.results.some(x=>x.street==='Aeropuerto Internacional de Carrasco'));
 });
+
+test('sucursales homónimas de la misma ciudad conservan identidad, coordenadas y dirección',async()=>{
+ const req=request('Cadena Comercial','&lat=-34.9&lng=-56.1');
+ const features=Array.from({length:8},(_,i)=>({properties:{name:'Cadena Comercial',city:'Montevideo',state:'Montevideo',country_code:'uy',place_id:'branch-'+i,formatted:'Cadena Comercial, Calle '+i+', Montevideo, Uruguay'},geometry:{coordinates:[-56.1-i*.005,-34.9]}}));
+ const result=await extendPlaceSearch(req,legacy(),enabled,async()=>new Response(JSON.stringify({features:[...features,features[0]]})));
+ const rows=(await result.json()).results.filter(x=>x.source==='Geoapify Places');
+ assert.equal(rows.length,8);
+ assert.equal(new Set(rows.map(x=>x.placeId)).size,8);
+ assert(rows[0].label.includes('Calle 0'));
+ assert.equal(rows[0].lng,-56.1);
+});

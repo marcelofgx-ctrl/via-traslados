@@ -40,23 +40,29 @@ function normalize(feature) {
   if (!name || !valid(lat,lng) || fold(p.country_code || p.country_code_iso2 || '') !== 'uy') return null;
   const city = tidy(p.city || p.suburb || p.county || '');
   const department = tidy(p.state || '');
-  const label = [name,city,department].filter(Boolean).join(', ');
-  return {label,street:name,city,department,lat,lng,accuracy:'poi',
+  // Preserve provider's postal description, without declaring a confirmed entrance.
+  const formatted=tidy(p.formatted);
+  const address=formatted.split(',').map(x=>x.trim()).filter(x=>x&&fold(x)!==fold(name)&&fold(x)!==fold(city)&&fold(x)!==fold(department)&&!/^uruguay$/i.test(x)).join(', ');
+  const street=address?name+' · '+address:name;
+  const label=[street,city,department].filter(Boolean).join(', ');
+  return {label,street,name,city,department,lat,lng,accuracy:'poi',
     kind:'place',source:'Geoapify Places',detail:'Confirmar entrada de recogida',
     placeId:tidy(p.place_id)};
 }
 function same(a,b) {
-  if (valid(num(a.lat),num(a.lng)) && valid(num(b.lat),num(b.lng)) &&
-    Math.abs(num(a.lat)-num(b.lat))<0.00015 && Math.abs(num(a.lng)-num(b.lng))<0.00015) return true;
-  return fold(a.street || a.label) === fold(b.street || b.label) &&
-    fold(a.city || a.department) === fold(b.city || b.department);
+  if(a.placeId&&b.placeId&&a.placeId===b.placeId)return true;
+  const sameName=fold(a.name||a.street||a.label)===fold(b.name||b.street||b.label);
+  if(valid(num(a.lat),num(a.lng))&&valid(num(b.lat),num(b.lng))){
+    return sameName&&Math.abs(num(a.lat)-num(b.lat))<0.00015&&Math.abs(num(a.lng)-num(b.lng))<0.00015;
+  }
+  return sameName&&fold(a.label)===fold(b.label);
 }
 function combine(existing,added) {
   const fresh = added.filter(p=>p && !existing.some(x=>same(x,p)));
   if (!fresh.length) return existing;
   // La UI muestra 12 sugerencias. Reservar hasta 4 huecos para nuevos POI
   // sin desplazar los primeros resultados verificados de IDE Uruguay.
-  const budget = Math.min(4,fresh.length);
+  const budget = Math.min(existing.length?8:12,fresh.length);
   const items = existing.slice(0,12-budget);
   for (const p of fresh) if (!items.some(x=>same(x,p))) items.push(p);
   return items.slice(0,12);
@@ -116,6 +122,11 @@ export async function extendPlaceSearch(request, originalResponse, env, fetcher=
       if (incoming.length) CACHE.set(cacheKey,{expires:now()+180000,places:incoming});
     }
     if (!incoming.length) return originalResponse;
+    // Stable proximity order, when a real search point is available.
+    if(valid(lat,lng)){
+      const d=p=>(p.lat-lat)**2+((p.lng-lng)*Math.cos(lat*Math.PI/180))**2;
+      incoming=[...incoming].sort((a,b)=>d(a)-d(b));
+    }
     const merged = combine(old.results,incoming);
     if (merged.length === old.results.length && merged.every((item,i)=>item===old.results[i])) return originalResponse;
     const headers = new Headers(originalResponse.headers);
