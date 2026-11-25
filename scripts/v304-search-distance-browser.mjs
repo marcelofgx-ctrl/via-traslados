@@ -18,7 +18,7 @@ for(const [os,engine] of [['Android',chromium],['iOS',webkit]]){
  assert.equal(routes,0);
  await input.fill('Mcdonalds');
  await p.waitForFunction(()=>/mcdonald/i.test(document.querySelector('#address-suggestions .address-choice')?.textContent||'')&&document.querySelectorAll('#address-suggestions .via-suggestion-distance').length>=2,undefined,{timeout:35000});
- const distances=await p.locator('#address-suggestions .via-suggestion-distance').allTextContents();
+ const distances=await list.evaluateAll(rows=>rows.filter(e=>/^McDonald['’]?s$/i.test(e.querySelector('strong')?.textContent||'')).map(e=>e.querySelector('.via-suggestion-distance')?.textContent).filter(Boolean));assert(distances.length>=2);
  const km=s=>Number(s.replace('≈ ','').replace(',','.').split(' ')[0])*(s.endsWith(' km')?1:.001);
  // Same brand branches should be distance ordered. Rounding may produce ties.
  for(let i=1;i<distances.length;i++)assert(km(distances[i-1])<=km(distances[i])+0.001,JSON.stringify(distances));
