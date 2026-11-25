@@ -1,19 +1,11 @@
 <style id="via-number-info-style">
-.reference-booking .via-number-info{
- display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;
- padding:3px 9px!important;margin:2px 0!important;min-height:0!important;height:auto!important;
- border:1px solid #d3e2ef!important;border-radius:10px!important;background:#e8f1fa!important;
- box-shadow:none!important;color:#365c79!important;text-align:left!important;box-sizing:border-box!important;
- flex:0 0 auto!important;line-height:1.25!important;
+body.premium-page:not(.in-booking) .reference-field .via-selected-accuracy:not([hidden]){
+ display:block!important;flex:0 0 auto;color:#315d80!important;background:#e8f1fa!important;
+ border-radius:5px;padding:1px 4px;font-weight:700;white-space:nowrap;
 }
-.reference-booking .via-number-info[hidden]{display:none!important}
-.reference-booking .via-number-info .via-number-copy{display:flex;align-items:center;gap:5px;min-width:0;font:600 11.5px/1.25 system-ui,sans-serif;color:#365c79}
-.via-number-copy svg{width:15px;height:15px;flex:0 0 15px}
-.reference-booking .via-number-info .via-number-action{display:inline-flex!important;align-items:center!important;justify-content:flex-end!important;flex:0 0 auto!important;width:auto!important;min-width:0!important;min-height:32px!important;height:auto!important;margin:0!important;padding:4px 0 4px 5px!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#315d80!important;font:700 11.5px/1.25 system-ui,sans-serif;white-space:nowrap!important}
-.reference-booking .via-number-info  .via-number-original{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
-.reference-route-fields:has(>.via-number-info)>.route-dash{display:none}
 @media(prefers-color-scheme:dark){
- .reference-booking .via-number-info{background:#233b4a!important;border-color:#3d5768!important;color:#c7e1f5!important}
- .reference-booking .via-number-info .via-number-copy,.reference-booking .via-number-info .via-number-action{color:#c7e1f5!important}
+ body.premium-page:not(.in-booking) .reference-field .via-selected-accuracy:not([hidden]){
+  color:#315d80!important;background:#e8f1fa!important;
+ }
 }
 </style>

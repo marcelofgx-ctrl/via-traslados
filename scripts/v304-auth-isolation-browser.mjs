@@ -7,7 +7,7 @@ for(const [os,engine] of [['Android',chromium],['iOS',webkit]]){
   const p=await browser.newPage({viewport:{width:390,height:844},serviceWorkers:'block'});
   await p.goto(base+'/index.html',{waitUntil:'domcontentloaded'});
   assert(await p.locator('#via-qa-auth-script').count()===1);
-  assert((await p.locator('body').innerText()).includes('V30.4.6 QA'));
+  assert((await p.locator('body').innerText()).includes('V30.4.7 QA'));
   // Test the deployed QA helper with a minimal identity-card DOM fixture, not a real login.
   await p.evaluate(()=>{const f=document.createElement('form');f.id='via-auth-fixture';f.innerHTML='<button type="submit">Continuar con mi celular →</button><div class="cf-turnstile">Widget</div>';document.body.append(f);});
   await p.waitForFunction(()=>document.querySelector('#via-auth-fixture button')?.disabled);
