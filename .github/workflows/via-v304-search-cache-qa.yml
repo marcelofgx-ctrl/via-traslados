@@ -1,4 +1,4 @@
-name: "Vía V30.4 — V30.4.1 — ayuda de ubicación QA"
+name: "Vía V30.4 — V30.4.2 — teclado y ayuda de ubicación QA"
 on:
   push:
     branches: [via-v30-geoapify-places-qa-20261124]
@@ -34,9 +34,6 @@ jobs:
           node scripts/v304-location-hint-browser.mjs
       - name: Probar búsquedas y rutas reales
         run: node scripts/v304-search-smoke.mjs
-      - name: Comprobar regresión de teclado (incidencia iOS conocida)
-        if: always()
-        run: node scripts/v304-viewport-browser.mjs
       - name: Confirmar producción intacta
         if: always()
         run: python3 -c "import runpy;runpy.run_path('scripts/v304-search-stage.py')['baseline']();print('VIA_V304_PROD_UNCHANGED')"

@@ -11,26 +11,25 @@ function position(input){
  if(keyboard&&document.activeElement===input&&(r.bottom>v.top+v.height-16||r.top<v.top+16)){
   input.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
  }
- const box=input.getBoundingClientRect(),view=viewport();
- const w=Math.min(Math.max(box.width,286),view.width-2*edge);
+ const box=(input.closest('.reference-field')||input).getBoundingClientRect(),view=viewport();
+ const w=Math.min(Math.max(input.getBoundingClientRect().width,286),view.width-2*edge);
  const below=Math.max(0,view.top+view.height-edge-box.bottom-gap);
  const above=Math.max(0,box.top-view.top-edge-gap);
  const down=below>=Math.min(180,above)||below>=above;
  const h=Math.min(295,down?below:above);
  panel.style.width=Math.max(0,w)+'px';
- panel.style.left=Math.max(view.left+edge,Math.min(box.left,view.left+view.width-w-edge))+'px';
+ panel.style.left=Math.max(view.left+edge,Math.min(input.getBoundingClientRect().left,view.left+view.width-w-edge))+'px';
+ panel.style.boxSizing='border-box';
  panel.style.maxHeight=h+'px';panel.style.bottom='auto';
  panel.style.visibility=h<36?'hidden':'visible';
- panel.style.top=down?(box.bottom+gap)+'px':'auto';
- if(!down){
-  // Anchor the actual panel height, not its maximum, above the active input.
-  panel.style.bottom=Math.max(0,window.innerHeight-box.top+gap)+'px';
- }
+ // Explicit top from measured panel height avoids WebKit bottom/viewport ambiguity.
+ panel.style.top=(down?box.bottom+gap:Math.max(view.top+edge,box.top-gap-panel.offsetHeight))+'px';
 }
 function relayout(){if(layoutFrame)return;layoutFrame=requestAnimationFrame(()=>{layoutFrame=0;if(active&&!panel.classList.contains('hidden'))position(active)})}
 window.visualViewport?.addEventListener('resize',relayout);
 window.visualViewport?.addEventListener('scroll',relayout);
 window.addEventListener('scroll',relayout,{passive:true});
+document.addEventListener('scroll',relayout,{passive:true,capture:true});
 document.addEventListener('focusin',e=>{if(fields.includes(e.target))relayout()});
 const localPoiKey='via-poi-cache-v1';
 async function fetchPlaces(endpoint,signal){
