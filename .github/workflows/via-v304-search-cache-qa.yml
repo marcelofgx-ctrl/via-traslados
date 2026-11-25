@@ -1,4 +1,4 @@
-name: "Vía V30.4 — V30.4.7 — número aproximado integrado y regresión QA"
+name: "Vía V30.4 — V30.4.8 — relevancia y distancias QA"
 on:
   push:
     branches: [via-v30-geoapify-places-qa-20261124]
@@ -34,6 +34,7 @@ jobs:
           node scripts/v304-location-hint-browser.mjs
           node scripts/v304-number-info-browser.mjs
           node scripts/v304-auth-isolation-browser.mjs
+          node scripts/v304-search-distance-browser.mjs
       - name: Probar búsquedas y rutas reales
         run: node scripts/v304-search-smoke.mjs
       - name: Confirmar producción intacta

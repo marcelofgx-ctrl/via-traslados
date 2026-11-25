@@ -56,7 +56,30 @@ async function fetchPlaces(endpoint,signal){
  return body;
 }
 `;
-s=s.slice(0,start)+patch+s.slice(end);
+const ranking=(await readFile(new URL('../addons/v304-search-ranking.mjs',import.meta.url),'utf8')).replace(/^export /gm,'');
+s=s.slice(0,start)+ranking+patch+s.slice(end);
+const once=(from,to)=>{if(s.split(from).length!==2)throw Error('Ranking contract: '+from.slice(0,95));s=s.replace(from,to)};
+once("const point=window.ViaSearchLocation.get()||[document.getElementById('home-origin'),document.getElementById('origin')].map(e=>e?.dataset).find(d=>d?.lat&&d?.lng);",
+"const point=viaPoint(window.ViaSearchLocation.get())||(input.id.includes('destination')?[document.getElementById('home-origin'),document.getElementById('origin')].map(e=>e?.dataset).filter(d=>d?.addressSelected==='true').map(viaPoint).find(Boolean):null);");
+const orderStart=s.indexOf('const poiSlots=Math.min('),orderEnd=s.indexOf('const unique=new Map()',orderStart);
+if(orderStart<0||orderEnd<orderStart)throw Error('Unknown ranking merge');
+s=s.slice(0,orderStart)+"const results=viaRank(q,[...poiResults,...streetResults],point,looksLikeAddress||looksLikeStreetInput);\n  "+s.slice(orderEnd);
+once("display(input,[...unique.values()].slice(0,12));","display(input,[...unique.values()].slice(0,12),point);");
+once("function display(input,items){","function display(input,items,point){");
+once("main.textContent=place.street;","main.textContent=place.name||place.street;");
+const subStart=s.indexOf('sub.textContent=([place.city'),subEnd=s.indexOf("btn.addEventListener('pointerdown'",subStart);
+if(subStart<0||subEnd<subStart)throw Error('Unknown suggestion rendering');
+s=s.slice(0,subStart)+String.raw`const detail=[place.city,place.department].filter(Boolean).filter((v,i,a)=>i===0||viaFold(v)!==viaFold(a[i-1])).join(' · ')||'Uruguay';
+ sub.textContent=detail+(place.kind==='place'?' · Lugar de interés':place.accuracy==='portal'?' · Número identificado':' · Verificá el número');
+ if(place.kind==='place'&&place.name&&place.street&&place.street!==place.name){const addr=place.street.replace(/^[^·]+ · /,'');if(addr!==place.street)sub.textContent=addr+' · '+detail}
+ const copy=document.createElement('span');copy.className='via-suggestion-copy';copy.append(main,sub);
+ const pin=document.createElementNS('http://www.w3.org/2000/svg','svg');pin.setAttribute('viewBox','0 0 24 24');pin.setAttribute('class','via-suggestion-pin');pin.setAttribute('aria-hidden','true');
+ pin.innerHTML='<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/>';
+ btn.append(pin,copy);
+ const km=viaKm(point,place),distance=viaDistanceLabel(km);
+ if(distance){const badge=document.createElement('span');badge.className='via-suggestion-distance';badge.textContent=distance;badge.title='Distancia aproximada en línea recta';badge.setAttribute('aria-label',distance+' en línea recta');btn.append(badge)}
+ `+s.slice(subEnd);
+
 const old="fetch(endpoint+'&mode=places',{signal:abort.signal}).then(r=>{if(!r.ok)throw Error();return r.json()})";
 if(s.split(old).length!==2)throw Error('Unknown POI fetch contract');
 s=s.replace(old,"fetchPlaces(endpoint,abort.signal)");

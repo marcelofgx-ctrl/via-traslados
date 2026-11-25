@@ -12,7 +12,7 @@ for(const [os,engine] of [['Android',chromium],['iOS',webkit]]){
   });
   const p=await ctx.newPage();await p.goto(base+'/index.html',{waitUntil:'domcontentloaded'});
   await p.waitForFunction(()=>typeof window.__viaTestPanel==='function'&&window.ViaAddress&&document.querySelector('.via-selected-accuracy'));
-  assert((await p.locator('body').innerText()).includes('V30.4.7 QA'));
+  assert((await p.locator('body').innerText()).includes('V30.4.8 QA'));
   const a={label:'Avenida Italia 4206, Montevideo',lat:-34.88,lng:-56.12,accuracy:'gps',numberIsApproximate:true,postalStatus:'suggested',referenceDistance:10};
   await p.evaluate(a=>{ViaAddress.set('home-origin',a);window.__viaTestPanel('Número orientativo','Referencia aproximada',[{label:'Ajustar en el mapa',go:()=>{}}])},a);
   const field=p.locator('.reference-field').filter({has:p.locator('#home-origin')});
