@@ -1,0 +1,79 @@
+name: "INCIDENTE V30 — Geoapify Autocomplete en versión aislada"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-autocomplete-provider-diagnostic.yml","scripts/v30-poi-autocomplete-version-probe.py"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Preparar desde versión experimental NO activa
+        run: |
+          python3 scripts/v30-poi-autocomplete-version-probe.py
+          node --check v30-poi-autocomplete-probe/worker.mjs
+      - name: Comprobar con Wrangler sin desplegar
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-autocomplete-probe/wrangler.jsonc --dry-run --keep-vars
+      - name: Subir versión de prueba sin cambiar porcentaje del tráfico
+        run: |
+          npx --yes wrangler@4.160.1 versions upload --config v30-poi-autocomplete-probe/wrangler.jsonc --keep-vars
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          u=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-api'
+          def get(s):
+            with urllib.request.urlopen(urllib.request.Request(u+s,headers={'Authorization':'Bearer '+t}),timeout=24) as r:return json.load(r)
+          v=get('/deployments')['result']['deployments'][0]['versions']
+          assert len(v)==1 and v[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(v[0]['percentage'])==100
+          r=get('/versions?per_page=1')['result']
+          items=r['items'] if isinstance(r,dict) else r
+          id=items[0]['id']
+          assert id!='ed821e37-66bf-431b-a4d5-2930e2ce0633'
+          open('/tmp/via-autocomplete-version-id.txt','w').write(id)
+          print('VIA_AUTO_VERSION_ONLY '+json.dumps({'id':id,'originalLive100Pct':True}))
+          PY
+      - name: Comparar geocoding vs autocomplete con lugares reales y sin datos personales
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const id=readFileSync('/tmp/via-autocomplete-version-id.txt','utf8').trim();
+          const base='https://'+id.slice(0,8)+'-via-traslados-api.marcelof-gx.workers.dev';
+          for(const q of ["McDonald's",'Radisson','Hyatt','Papiros','Don Koto']){
+            for(const mode of ['ViaAutoProbe:','ViaAutoAny:','ViaSearchProbe:']){
+              const u=new URL(base+'/api/via-places');u.searchParams.set('q',mode+q);
+              try{
+                const res=await fetch(u,{signal:AbortSignal.timeout(15000)});
+                let j;try{j=await res.json()}catch{}
+                console.log('VIA_AUTO_LIVE_RESULT '+JSON.stringify({
+                  mode,query:q,http:res.status,
+                  upstream:res.headers.get('X-Via-Auto-Upstream'),
+                  raw:res.headers.get('X-Via-Auto-Raw'),
+                  named:res.headers.get('X-Via-Auto-Named'),
+                  uy:res.headers.get('X-Via-Auto-Uy'),
+                  coords:res.headers.get('X-Via-Auto-Coords'),
+                  error:j?.error||null
+                }));
+              }catch(e){console.log('VIA_AUTO_LIVE_RESULT '+JSON.stringify({mode,query:q,errorType:e.name}))}
+            }
+          }
+          NODE
+      - name: Confirmar versión V30 original activa sin cambios
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          u=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-api/deployments'
+          with urllib.request.urlopen(urllib.request.Request(u,headers={'Authorization':'Bearer '+t}),timeout=24) as r:j=json.load(r)
+          v=j['result']['deployments'][0]['versions']
+          assert len(v)==1 and v[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(v[0]['percentage'])==100
+          print('VIA_AUTO_LIVE_API_UNCHANGED_100_PERCENT')
+          PY

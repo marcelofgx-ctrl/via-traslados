@@ -1,0 +1,38 @@
+name: "Vía V30.2 — caché persistente de rutas QA sin tráfico (revalidación)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v302-route-cache-qa.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Regresiones y paquete desde producción activa
+        run: |
+          npm test
+          python3 scripts/v302-route-cache-qa.py build
+          npx --yes wrangler@4.160.1 deploy --config v302-route-cache/wrangler.jsonc --dry-run --keep-vars
+      - name: Subir WEB candidata sin tráfico
+        run: |
+          npx --yes wrangler@4.160.1 versions upload --config v302-route-cache/wrangler.jsonc --keep-vars
+          python3 scripts/v302-route-cache-qa.py candidate
+      - name: Probar navegación, recarga, caché y cambio de destino en Android e iOS
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium webkit >/dev/null
+          node scripts/v302-route-cache-browser.mjs
+      - name: Confirmar producción sin cambios
+        run: python3 -c "import runpy;runpy.run_path('scripts/v302-route-cache-qa.py')['baseline']();print('VIA_V302_PROD_UNCHANGED')"

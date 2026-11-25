@@ -1,0 +1,110 @@
+name: "Vía V30 — publicar QA real de hoteles/restaurantes (reservas aisladas)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-real-places-stage-release.yml","scripts/v30-poi-real-place-stage.py"]
+permissions:
+  contents: read
+concurrency:
+  group: via-poi-isolated-qa-release-real-20261124
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 21
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verificar API/WEB productivos con versiones originales intactas
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          expected={'via-traslados-api':'9349f01a-5824-4401-848f-edb4f3f7d5b0','via-traslados-web-prod':'ac8e0a7e-a032-47f8-8328-bd7b716a4342'}
+          for worker,id in expected.items():
+            u=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/{worker}/deployments'
+            req=urllib.request.Request(u,headers={'Authorization':'Bearer '+t})
+            with urllib.request.urlopen(req,timeout=22) as r:d=json.load(r)
+            vs=d['result']['deployments'][0]['versions']
+            assert len(vs)==1 and vs[0]['version_id']==id and float(vs[0]['percentage'])==100
+          print('VIA_STAGE_PROD_BASELINE_UNTOUCHED')
+          PY
+      - name: Reconstruir copia QA desde web V30 original, sin API de reservas
+        run: |
+          python3 scripts/v30-poi-real-place-stage.py
+          node --check v30-poi-qa-build/worker-qa.mjs
+      - name: Regresión obligatoria antes de publicar QA
+        run: node --test tests/v30-geoapify-places.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs tests/v30-geoapify-integration.test.mjs
+      - name: Wrangler dry-run sobre Worker QA exclusivamente
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-qa-build/wrangler.qa.jsonc --dry-run --keep-vars
+      - name: Publicar SOLAMENTE Worker QA (no producción)
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-qa-build/wrangler.qa.jsonc --keep-vars
+      - name: Verificar búsqueda comercial REAL y bloqueo de reservas en la QA
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev';
+          async function get(path){
+            const r=await fetch(base+path,{signal:AbortSignal.timeout(22000)});
+            let d;try{d=await r.json()}catch{}return {status:r.status,body:d};
+          }
+          for(let attempt=0;attempt<9;attempt++){
+            try{
+              const h=await fetch(base+'/index.html',{signal:AbortSignal.timeout(18000)});
+              const html=await h.text();
+              const js=await fetch(base+'/address-autocomplete.js',{signal:AbortSignal.timeout(18000)}).then(r=>r.text());
+              if(h.status===200&&html.includes('V30 QA GEOAPIFY 2')&&js.includes('looksLikeStreetInput'))break;
+              if(attempt===8)throw Error('QA asset version not updated');
+            }catch(e){if(attempt===8)throw e;}
+            await new Promise(resolve=>setTimeout(resolve,3500));
+          }
+          for(const name of ["McDonald's",'Mcdonalds','Radisson','Hyatt']){
+            const u=new URL(base+'/api/direcciones');
+            u.searchParams.set('mode','places');u.searchParams.set('q',name);
+            const r=await get(u.pathname+u.search);
+            const rows=r.body?.results||[];
+            const matched=rows.filter(x=>x.kind==='place'&&x.source==='Geoapify Places'
+              &&Number.isFinite(x.lat)&&Number.isFinite(x.lng));
+            console.log('VIA_REAL_POI_WEB_QA '+JSON.stringify({name,http:r.status,
+              totalResults:rows.length,geoapifyPlaces:matched.length,
+              provider:r.body?.provider||null}));
+            if(r.status!==200||matched.length===0)throw Error('QA web did not display real Geoapify businesses: '+name);
+            if(name==='Mcdonalds'&&matched.length<4)throw Error('Regression: fewer than four distinct branches');
+            console.log('VIA_QA_POI_LABELS '+JSON.stringify({name,labels:matched.map(x=>x.label)}));
+          }
+          const h=await get('/api/health');
+          const blocked=await fetch(base+'/api/requests',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+          if(h.status!==503||blocked.status!==503)throw Error('QA security isolation lost');
+          const v=await fetch(base+'/api/public/route-preview',{method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({origin:'Centro de Montevideo',destination:'Aeropuerto Carrasco',originLocation:{lat:-34.905,lng:-56.185},destinationLocation:{lat:-34.83696,lng:-56.01638}})});
+          const route=await v.json();
+          console.log('VIA_QA_REAL_ROUTE '+JSON.stringify({http:v.status,km:route.distanceKm,min:route.durationMinutes}));
+          if(!v.ok||!(route.distanceKm>0)||!(route.durationMinutes>0))throw Error('QA route failed');
+          console.log('VIA_REAL_POI_WEB_QA_PASS_AND_BOOKINGS_BLOCKED url='+base);
+          NODE
+      - name: Comprobar que ambos Workers productivos siguen con 100 por ciento original
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          expected={'via-traslados-api':'9349f01a-5824-4401-848f-edb4f3f7d5b0','via-traslados-web-prod':'ac8e0a7e-a032-47f8-8328-bd7b716a4342'}
+          for worker,id in expected.items():
+            u=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/{worker}/deployments'
+            with urllib.request.urlopen(urllib.request.Request(u,headers={'Authorization':'Bearer '+t}),timeout=22) as r:d=json.load(r)
+            versions=d['result']['deployments'][0]['versions']
+            assert len(versions)==1 and versions[0]['version_id']==id and float(versions[0]['percentage'])==100
+          print('VIA_PRODUCTION_WEB_API_UNCHANGED_AFTER_QA_DEPLOY')
+          PY
+      - name: Adjuntar manifiesto de QA sin secretos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-poi-real-qa-manifest
+          path: v30-poi-qa-build/manifest.json
+          retention-days: 14
+          if-no-files-found: ignore

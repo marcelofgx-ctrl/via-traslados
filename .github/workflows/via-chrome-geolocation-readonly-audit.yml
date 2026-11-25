@@ -1,0 +1,38 @@
+name: "Vía V30 — auditoría GPS Chrome en JS productivo (solo lectura)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-chrome-geolocation-readonly-audit.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Analizar fuentes GPS públicas de V30 sin leer datos personales
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://viatraslados.com/';
+          for(const file of ['index.html','reference.js','geo-v2/core.mjs','map-point-picker.js','app.js']){
+            const response=await fetch(base+file,{signal:AbortSignal.timeout(18000)});
+            if(!response.ok){console.log('GPS_ASSET '+file+' HTTP '+response.status);continue}
+            const txt=await response.text();
+            const lines=txt.split('\n');
+            const regex=/getCurrentPosition|watchPosition|enableHighAccuracy|maximumAge|coords\.accuracy|accuracy\s*[<>]=?|Mejorando precisión|mejorando.precisión|location.*accuracy|accuracy.*location|geolocation|GPS|2000\s*m/i;
+            const matches=[];
+            for(let i=0;i<lines.length;i++)if(regex.test(lines[i])){
+              matches.push({line:i+1,fragment:lines[i].slice(0,230)});
+              if(matches.length>=65)break;
+            }
+            console.log('GPS_PUBLIC_SOURCE '+JSON.stringify({file,status:response.status,bytes:txt.length,matches}));
+            if(file==='reference.js')for(const [from,to] of [[48,59],[108,123],[137,211]]){
+              console.log('GPS_REFERENCE_SEGMENT '+JSON.stringify({lines:from+'-'+to,code:lines.slice(from-1,to).map((v,i)=>(from+i)+': '+v).join('\n').slice(0,22000)}));
+            }
+            if(file==='geo-v2/core.mjs'){
+              console.log('GPS_CORE_SEGMENT '+JSON.stringify({code:lines.slice(0,70).map((v,i)=>(i+1)+': '+v).join('\n').slice(0,12500)}));
+            }
+          }
+          NODE
+      - name: Confirmar revisión sin cambios
+        run: echo "AUDIT ONLY NO DEPLOY NO D1 NO PRIVATE DATA"

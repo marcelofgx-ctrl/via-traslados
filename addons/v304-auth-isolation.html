@@ -1,0 +1,29 @@
+<!-- QA-only: real authentication is intentionally blocked by the isolated worker. -->
+<style id="via-qa-auth-style">
+.cf-turnstile, iframe[src*="challenges.cloudflare.com"] { display:none!important; }
+#via-qa-auth-note{margin:12px 0 0;padding:12px 14px;border:1px solid #dbe5e0;border-radius:12px;background:#f2f6f4;color:#42645c;font:500 13px/1.5 system-ui,sans-serif}
+button[data-via-qa-auth-blocked]{opacity:.58;cursor:not-allowed}
+</style>
+<script id="via-qa-auth-script">
+(()=>{
+ const isIdentityButton=e=>e?.matches?.('button')&&/^continuar con mi celular(?:\s|$)/i.test(e.textContent.trim());
+ function sync(){
+  for(const b of document.querySelectorAll('button')){
+   if(!isIdentityButton(b))continue;
+   if(!b.disabled)b.disabled=true;
+   b.setAttribute('data-via-qa-auth-blocked','true');
+   b.setAttribute('aria-describedby','via-qa-auth-note');
+   const card=b.parentElement;
+   if(!card.querySelector('#via-qa-auth-note')){
+    const note=document.createElement('div');note.id='via-qa-auth-note';note.setAttribute('role','status');
+    note.textContent='Identificación no disponible en esta versión de pruebas. Volvé para seguir probando direcciones y rutas. No se procesan cuentas ni reservas.';
+    b.after(note);
+   }
+  }
+ }
+ document.addEventListener('click',e=>{if(isIdentityButton(e.target.closest?.('button'))){e.preventDefault();e.stopImmediatePropagation()}},true);
+ document.addEventListener('submit',e=>{if([...e.target.querySelectorAll('button')].some(isIdentityButton)){e.preventDefault();e.stopImmediatePropagation()}},true);
+ new MutationObserver(sync).observe(document.body,{subtree:true,childList:true});
+ sync();
+})();
+</script>

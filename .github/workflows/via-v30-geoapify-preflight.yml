@@ -1,0 +1,68 @@
+name: Vía V30 — Geoapify read-only production preflight
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths:
+      - "addons/v30-geoapify-places.mjs"
+      - "scripts/v30-geoapify-integration.mjs"
+      - "scripts/v30-poi-preflight.py"
+      - "tests/v30-geoapify-places.test.mjs"
+      - "tests/v30-geoapify-integration.test.mjs"
+      - ".github/workflows/via-v30-geoapify-preflight.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  statuses: write
+jobs:
+  inspect-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Probar sintaxis y funcionalidad de la extensión (sin desplegar)
+        run: |
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs
+          python3 -m py_compile scripts/v30-poi-preflight.py
+      - name: Chequear secreto Geoapify disponible en GitHub sin revelar valor
+        env:
+          VIA_SECRET: ${{ secrets.VIA_GEOAPIFY_API_KEY }}
+          GEO_SECRET: ${{ secrets.GEOAPIFY_API_KEY }}
+        run: |
+          if [ -n "$VIA_SECRET" ]; then
+            echo "VIA_GITHUB_GEOAPIFY_SECRET_NAME VIA_GEOAPIFY_API_KEY_PRESENT"
+          elif [ -n "$GEO_SECRET" ]; then
+            echo "VIA_GITHUB_GEOAPIFY_SECRET_NAME GEOAPIFY_API_KEY_PRESENT"
+          else
+            echo "VIA_GITHUB_GEOAPIFY_SECRET_NAME NOT_PRESENT"
+          fi
+      - name: Comprobar Worker real V30 en Cloudflare SOLO GET
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v30-poi-preflight.py
+      - name: Guardar manifiesto sin secretos ni código privado
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v30-poi-preflight-readonly
+          path: v30-places-preflight/report.json
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Registrar resultado auditable del preflight
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_RESULT: ${{ job.status }}
+        run: |
+          state=success
+          if [ "$JOB_RESULT" != "success" ]; then state=failure; fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$state" \
+            -f context="via-v30-geoapify-prod-readonly-preflight" \
+            -f description="V30 Worker read-only preflight; no deploy" \
+            -f target_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -1,0 +1,24 @@
+name: "INCIDENTE V30 — navegador Chrome móvil y kilómetros reales (solo prueba)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-prod-route-mobile-incident.yml","scripts/v30-prod-route-actual-browser-diagnostic.mjs"]
+permissions:
+  contents: read
+jobs:
+  mobile-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Instalar navegador Chrome de prueba
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verificar circuito de kilómetros REAL en Chrome Android sin crear reservas
+        run: node scripts/v30-prod-route-actual-browser-diagnostic.mjs
+      - name: Confirmar ninguna publicación ni cambio en datos de viajes
+        run: echo "NO DEPLOY NO BOOKINGS NO D1 MIGRATION; live route preview only"

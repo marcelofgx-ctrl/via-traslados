@@ -1,0 +1,46 @@
+name: "Vía V30.1 — reparar cuota de rutas y conservar Geoapify"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v301-route-cache-fix.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  release:
+    if: "github.event.head_commit.message == 'fix: restore route previews without changing web'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Validar regresiones y parche exacto de API
+        run: |
+          npm test
+          python3 scripts/v301-route-cache-fix.py build
+          node --check v301-route-fix/worker.mjs
+          npx --yes wrangler@4.160.1 deploy --config v301-route-fix/wrangler.jsonc --dry-run --keep-vars
+      - name: Subir versión sin tráfico productivo
+        run: |
+          npx --yes wrangler@4.160.1 versions upload --config v301-route-fix/wrangler.jsonc --keep-vars
+          python3 scripts/v301-route-cache-fix.py candidate
+      - name: Probar 11 consultas reales repetidas y POI antes de publicar
+        run: node scripts/v301-route-cache-smoke.mjs preview
+      - name: Promover exclusivamente API validada
+        id: promote
+        run: python3 scripts/v301-route-cache-fix.py promote
+      - name: Probar API real y verificar web intacta
+        run: |
+          node scripts/v301-route-cache-smoke.mjs production
+          node tests/prod-core-invariants.mjs
+          python3 scripts/v301-route-cache-fix.py final
+      - name: Restaurar API V30.1 si falla
+        if: failure() && steps.promote.outcome != 'skipped'
+        run: python3 scripts/v301-route-cache-fix.py rollback

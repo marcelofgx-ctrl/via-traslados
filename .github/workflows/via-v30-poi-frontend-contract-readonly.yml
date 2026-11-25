@@ -1,0 +1,48 @@
+name: "Vía V30 — auditoría de selección POI en frontend real (GET únicamente)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-poi-frontend-contract-readonly.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Buscar contrato de selección en assets públicos V30 sin cambiarlos
+        run: |
+          node --input-type=module <<'NODE'
+          const assets=['address-autocomplete.js','app.js','store.js','geo-v2/core.mjs','reference.js','config.js'];
+          const targets=[/mode=places/g,/api\/direcciones/g,/\.results/g,/\.lat/g,/\.lng/g,/\.source/g,/\.placeId/g,/originLocation/g,/destinationLocation/g,/onSelect/g,/selectResult/g];
+          for(const filename of assets){
+            try {
+              const r=await fetch('https://viatraslados.com/'+filename,{signal:AbortSignal.timeout(13000)});
+              const content=r.ok?await r.text():'';
+              const contexts=[];
+              for(const re of targets){
+                const m=[...content.matchAll(re)].slice(0,3);
+                for(const hit of m){
+                  const start=Math.max(0,hit.index-105);
+                  contexts.push({term:re.source,snippet:content.slice(start,Math.min(content.length,hit.index+125)).replace(/\s+/g,' ').slice(0,230)});
+                }
+              }
+              console.log('VIA_V30_FRONTEND_POI_CONTRACT '+JSON.stringify({asset:filename,httpStatus:r.status,length:content.length,contexts:contexts.slice(0,20)}));
+            } catch(e) {console.log('VIA_V30_FRONTEND_READ_ERROR '+JSON.stringify({asset:filename,type:String(e.name)}))}
+          }
+          console.log('VIA_POI_FRONTEND_READONLY_OK');
+          NODE
+
+      - name: Inspeccionar decisiones de búsqueda y conservación de coordenadas en V30
+        run: |
+          node --input-type=module <<'NODE'
+          const r=await fetch('https://viatraslados.com/address-autocomplete.js',{signal:AbortSignal.timeout(13000)});
+          if(!r.ok)throw Error('No se pudo leer autocomplete actual');
+          const src=await r.text();
+          for(const phrase of ['const isPlaceQuery','const looksLikePlace','function apply','via:address','dataset.lat','function choose']){
+            let i=src.indexOf(phrase);
+            console.log('VIA_V30_AUTOCOMPLETE_SELECTION '+JSON.stringify({phrase,found:i!==-1,
+              excerpt:i===-1?'':src.slice(Math.max(0,i-950),Math.min(src.length,i+2200)).replace(/\\s+/g,' ').slice(0,3150)}));
+          }
+          NODE

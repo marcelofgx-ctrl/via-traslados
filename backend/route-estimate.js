@@ -178,7 +178,6 @@ async function publicPreview(req,env,respond){
  const source=req.headers.get('Origin')||'';
  if(!source.startsWith('https://'))return respond({error:'Origen no autorizado'},403);
  const ip=req.headers.get('CF-Connecting-IP')||'unknown';
- if(!await limit(env,'preview-ip:'+ip,8,3600))return respond({error:'Alcanzaste el límite de consultas de rutas. Probá más tarde.'},429);
  const op=locationPoint(body?.originLocation),dp=locationPoint(body?.destinationLocation);
  // Coordinates become part of the cache key; a shifted pin MUST get a new route.
  const hash=await previewKey(env,
@@ -186,6 +185,8 @@ async function publicPreview(req,env,respond){
   destination+'|'+(dp?neatCoords(dp):'legacy-text'));
  const cached=await env.DB.prepare('SELECT distance_m,duration_s,updated_at FROM route_preview_cache WHERE route_hash=? AND updated_at>unixepoch()-21600').bind(hash).first();
  if(cached)return respond(toOutput(cached,true));
+ // Cached previews never consume provider quota or the per-IP miss allowance.
+ if(!await limit(env,'preview-ip:'+ip,30,3600))return respond({error:'Alcanzaste el límite de consultas de rutas. Probá más tarde.'},429);
  const key=env.VIA_GEOAPIFY_API_KEY;
  if(typeof key!=='string'||key.length<10)return respond({error:'Distancia temporalmente no disponible'},503);
  if(!await limit(env,'free-budget',250,86400))return respond({error:'Servicio de rutas temporalmente sin disponibilidad'},429);

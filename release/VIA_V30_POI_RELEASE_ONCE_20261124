@@ -1,0 +1,6 @@
+VIA_V30_POI_SINGLE_USE_RELEASE
+Date: 2026-11-24
+Scope: Geoapify Places V30 on production API + web, no D1 migration, rollback pinned
+Validated dry-run: https://github.com/marcelofgx-ctrl/via-traslados/actions/runs/45412925782
+Release workflow is restricted to this exact path, branch and exact commit message.
+Approval: user initiated manual deploy twice and explicitly requested continuation.

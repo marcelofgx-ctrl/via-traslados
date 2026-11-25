@@ -1,0 +1,68 @@
+name: Vía V30 — Geoapify POI pruebas no destructivas
+on:
+  push:
+    branches:
+      - via-v30-geoapify-places-qa-20261124
+    paths:
+      - "addons/v30-geoapify-places.mjs"
+      - "scripts/v30-geoapify-integration.mjs"
+      - "tests/v30-geoapify-places.test.mjs"
+      - "tests/v30-geoapify-integration.test.mjs"
+      - "scripts/v30-poi-frontend-patch.mjs"
+      - "tests/v30-poi-frontend-patch.test.mjs"
+      - "tests/v30-poi-api-service.test.mjs tests/v30-poi-api-wrapper.test.mjs"
+      - "addons/v30-poi-api-proxy.mjs"
+      - "scripts/v30-poi-api-bundle-wrapper.mjs"
+      - "scripts/v30-poi-prod-package.py"
+      - ".github/workflows/via-v30-geoapify-places-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  statuses: write
+jobs:
+  test-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verificar sintaxis del complemento y el wrapper
+        run: |
+          node --check addons/v30-geoapify-places.mjs
+          node --check scripts/v30-geoapify-integration.mjs
+          node --check scripts/v30-poi-frontend-patch.mjs
+          node --check addons/v30-poi-api-proxy.mjs
+          node --check scripts/v30-poi-api-bundle-wrapper.mjs
+          python3 -m py_compile scripts/v30-poi-prod-package.py
+      - name: Comprobar fallback, lugares, coordenadas y contrato del Worker
+        run: |
+          node --test tests/v30-geoapify-places.test.mjs tests/v30-geoapify-integration.test.mjs tests/v30-poi-frontend-patch.test.mjs tests/v30-poi-api-service.test.mjs tests/v30-poi-api-wrapper.test.mjs
+      - name: Probar parche de UI contra el archivo efectivo V30 (solo descarga)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 'https://viatraslados.com/address-autocomplete.js' -o /tmp/via-autocomplete-v30-real.js
+          node scripts/v30-poi-frontend-patch.mjs /tmp/via-autocomplete-v30-real.js /tmp/via-autocomplete-v30-poi-qa.js
+          node --check /tmp/via-autocomplete-v30-poi-qa.js
+          test -s /tmp/via-autocomplete-v30-poi-qa.js
+          echo "VIA_POI_UI_PATCH_REAL_ASSET_PASS (NO DEPLOY)"
+      - name: Confirmar ninguna credencial ni despliegue
+        run: |
+          echo "V30_GEOAPIFY_POI_TEST_ONLY"
+          echo "No Wrangler, no Cloudflare writes, no D1, no production"
+      - name: Informar resultado de QA para auditoría externa
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_RESULT: ${{ job.status }}
+        run: |
+          state=success
+          if [ "$JOB_RESULT" != "success" ]; then state=failure; fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$state" \
+            -f context="via-v30-geoapify-places-test-only" \
+            -f description="V30 POI isolated tests (no deploy)" \
+            -f target_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -1,0 +1,79 @@
+name: "INCIDENTE V30 — Geoapify categoría vs nombre versión sin tráfico"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-category-only-real-provider.yml","scripts/v30-poi-categories-version-probe.py"]
+permissions:
+  contents: read
+jobs:
+  category-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Obtener candidato experimental sin modificar despliegue activo
+        run: |
+          python3 scripts/v30-poi-categories-version-probe.py
+          node --check v30-poi-category-probe/worker.mjs
+      - name: Verificar compilación sin publicar
+        run: npx --yes wrangler@4.160.1 deploy --config v30-poi-category-probe/wrangler.jsonc --dry-run --keep-vars
+      - name: Subir solamente versión y guardar ID de prueba
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.160.1 versions upload --config v30-poi-category-probe/wrangler.jsonc --keep-vars
+          python3 - <<'PY'
+          import json,os,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          api=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-api'
+          def get(path):
+            req=urllib.request.Request(api+path,headers={'Authorization':'Bearer '+t})
+            with urllib.request.urlopen(req,timeout=20) as r:return json.load(r)
+          vs=get('/deployments')['result']['deployments'][0]['versions']
+          assert len(vs)==1 and vs[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(vs[0]['percentage'])==100
+          result=get('/versions?per_page=1')['result']
+          items=result['items'] if isinstance(result,dict) else result
+          id=items[0]['id']
+          assert id!='5ee67d4a-a4c2-4b0a-9638-b9526e2870ae'
+          open('/tmp/version-id.txt','w').write(id)
+          print('VIA_CATEGORY_PREVIEW_NOT_DEPLOYED '+json.dumps({'version':id,'activeStillOriginal':True}))
+          PY
+      - name: Comparar respuesta de Geoapify con y sin nombre comercial
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const id=readFileSync('/tmp/version-id.txt','utf8').trim();
+          const base='https://'+id.slice(0,8)+'-via-traslados-api.marcelof-gx.workers.dev';
+          for(const name of ['ViaAllDiagnostic','ViaCategoryDiagnostic','Radisson',"McDonald's"]){
+            try{
+              const url=new URL(base+'/api/via-places');url.searchParams.set('q',name);
+              const r=await fetch(url,{signal:AbortSignal.timeout(16000)});
+              let j;try{j=await r.json()}catch{}
+              console.log('VIA_CATEGORY_LIVE_PROBE '+JSON.stringify({
+                query:name,http:r.status,error:j?.error||null,
+                raw:r.headers.get('X-Via-Poi-Raw'),
+                named:r.headers.get('X-Via-Poi-Named'),
+                countryUy:r.headers.get('X-Via-Poi-Uy'),
+                accepted:r.headers.get('X-Via-Poi-Accepted'),
+                results:j?.features?.length??null
+              }));
+            }catch(e){console.log('VIA_CATEGORY_LIVE_PROBE '+JSON.stringify({query:name,errorType:e?.name||'unknown'}))}
+          }
+          NODE
+      - name: Volver a comprobar despliegue original al 100 por ciento
+        run: |
+          python3 - <<'PY'
+          import os,urllib.request,json
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID'];t=os.environ['CLOUDFLARE_API_TOKEN']
+          u=f'https://api.cloudflare.com/client/v4/accounts/{a}/workers/scripts/via-traslados-api/deployments'
+          req=urllib.request.Request(u,headers={'Authorization':'Bearer '+t})
+          with urllib.request.urlopen(req,timeout=20) as r: d=json.load(r)
+          v=d['result']['deployments'][0]['versions']
+          assert len(v)==1 and v[0]['version_id']=='9349f01a-5824-4401-848f-edb4f3f7d5b0' and float(v[0]['percentage'])==100
+          print('VIA_PROD_API_PRESERVED_100_PERCENT')
+          PY

@@ -1,0 +1,42 @@
+name: "Vía V30.4 — V30.4.8 — relevancia, distancias y prueba de indicador QA"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v304-search-cache-qa.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: via-v304-search-cache-qa
+  cancel-in-progress: false
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Tests y paquete aislado
+        run: |
+          npm test
+          python3 scripts/v304-search-stage.py
+          npx --yes wrangler@4.160.1 deploy --config v304-search-stage/wrangler.jsonc --dry-run
+      - name: Publicar QA
+        run: npx --yes wrangler@4.160.1 deploy --config v304-search-stage/wrangler.jsonc
+      - name: Probar ayuda de ubicación en Android e iOS
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium webkit >/dev/null
+          node scripts/v304-location-hint-browser.mjs
+          node scripts/v304-search-distance-browser.mjs
+          node scripts/v304-number-info-browser.mjs
+          node scripts/v304-auth-isolation-browser.mjs
+      - name: Probar búsquedas y rutas reales
+        run: node scripts/v304-search-smoke.mjs
+      - name: Confirmar producción intacta
+        if: always()
+        run: python3 -c "import runpy;runpy.run_path('scripts/v304-search-stage.py')['baseline']();print('VIA_V304_PROD_UNCHANGED')"

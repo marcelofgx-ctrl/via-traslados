@@ -1,0 +1,34 @@
+name: "Vía POI QA — inspección de puente Geoapify sin cambios"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-poi-qa-bridge-readonly-check.yml"]
+permissions:
+  contents: read
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Comparar navegador QA, endpoint interno y API versionada
+        run: |
+          node --input-type=module <<'NODE'
+          const qa='https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev';
+          const api='https://a50f7a32-via-traslados-api.marcelof-gx.workers.dev';
+          for(const [name,u] of [
+            ['version-real',api+'/api/via-places?q=Radisson'],
+            ['stage-bridge',qa+'/__via-qa/poi-diagnostic'],
+            ['stage-places',qa+'/api/direcciones?mode=places&q=Radisson']]){
+              try{
+                const r=await fetch(u,{signal:AbortSignal.timeout(16000)});
+                const data=await r.json();
+                console.log('VIA_QA_BRIDGE_STATUS '+JSON.stringify({name,status:r.status,
+                  provider:data?.provider||null,keys:Object.keys(data||{}).slice(0,12),upstreamHttp:data?.upstreamHttp??null,bridgeErrorType:data?.bridgeErrorType||null,
+                  bridgeErrorMessage:data?.bridgeErrorMessage||null,
+                  featureCount:data?.featureCount??data?.features?.length??null,
+                  listCount:data?.results?.length??null,
+                  errorCode:data?.errorCode||data?.error||null}));
+              }catch(e){console.log('VIA_QA_BRIDGE_STATUS '+JSON.stringify({name,errorType:e?.name||'unknown'}))}
+          }
+          NODE
+      - run: echo "GET ONLY NO DEPLOY NO D1 WRITES NO BOOKING"

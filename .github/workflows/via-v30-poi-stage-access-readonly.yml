@@ -1,0 +1,103 @@
+name: "Vía V30 — diagnóstico QA 403 sin escritura"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-poi-stage-access-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Examinar respuestas HTTP de QA vs stage anterior (solo GET)
+        run: |
+          node --input-type=module <<'NODE'
+          for(const base of [
+           'https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev',
+           'https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev']){
+            for(const path of ['/index.html','/api/health']){
+              try{
+                const r=await fetch(base+path,{signal:AbortSignal.timeout(13000)});
+                const body=await r.text();
+                console.log('VIA_POI_QA_ACCESS '+JSON.stringify({
+                   host:new URL(base).hostname,path,status:r.status,
+                   length:body.length,snippet:body.slice(0,150),
+                   contentType:r.headers.get('content-type'),server:r.headers.get('server')
+                }));
+              }catch(e){console.log('VIA_POI_QA_ACCESS_ERROR '+JSON.stringify({
+                 host:new URL(base).hostname,path,error:String(e.name)
+              }))}
+            }
+          }
+          NODE
+
+      - name: Smoke de QA accesible con API aislada y fuente POI intacta
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://via-traslados-v30-poi-stage-20261124.marcelof-gx.workers.dev';
+          const get=async path=>{
+            for(let i=0;i<4;i++){
+              const r=await fetch(base+path,{signal:AbortSignal.timeout(16000)});
+              const body=await r.text();
+              if(r.status!==403||i===3)return {status:r.status,body};
+              await new Promise(ok=>setTimeout(ok,2000));
+            }
+          };
+          const [home,autocomplete,config,health,places]=await Promise.all([
+            get('/index.html'),get('/address-autocomplete.js'),get('/config.js'),
+            get('/api/health'),get('/api/direcciones?mode=places&q=Aeropuerto%20Internacional%20de%20Carrasco')
+          ]);
+          const placeJSON=places.status===200?JSON.parse(places.body):null;
+          const status={
+            home:home.status,qaBanner:home.body.includes('V30 QA GEOAPIFY'),
+            autocomplete:autocomplete.status,poigated:autocomplete.body.includes('looksLikeStreetInput'),
+            preservesSource:autocomplete.body.includes("source:chosen.source||'place_search'"),
+            config:config.status,configProdApi:config.body.includes('https://via-traslados-api.marcelof-gx.workers.dev'),
+            health:health.status,places:places.status,legacyResultsArray:Array.isArray(placeJSON?.results)
+          };
+          console.log('VIA_POI_QA_PUBLIC_SMOKE '+JSON.stringify(status));
+          if(!(status.home===200&&status.qaBanner&&status.autocomplete===200&&
+            status.poigated&&status.preservesSource&&status.config===200&&!status.configProdApi&&
+            status.health===503&&status.places===200&&status.legacyResultsArray))
+            throw Error('QA no cumple smoke de aislamiento y contrato');
+          console.log('VIA_POI_QA_PUBLIC_SMOKE_PASS');
+          NODE
+
+      - name: Certificar producción V30 sin cambios y QA sin bindings D1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const a=process.env.CLOUDFLARE_ACCOUNT_ID,t=process.env.CLOUDFLARE_API_TOKEN;
+          if(!/^[0-9a-f]{32}$/i.test(a||'')||!t)throw Error('Cloudflare read credentials missing');
+          const root='https://api.cloudflare.com/client/v4/accounts/'+a;
+          async function cf(p){
+            const r=await fetch(root+p,{headers:{Authorization:'Bearer '+t},signal:AbortSignal.timeout(20000)});
+            if(!r.ok)throw Error('Cloudflare HTTP '+r.status);
+            const json=await r.json();
+            if(json.success!==true)throw Error('Cloudflare unsuccessful read');
+            return json.result;
+          }
+          const names=['via-traslados-web-prod','via-traslados-api','via-traslados-v30-poi-stage-20261124'];
+          const rows=[];
+          for(const name of names){
+            const [d,s]=await Promise.all([
+              cf('/workers/scripts/'+name+'/deployments'),
+              cf('/workers/scripts/'+name+'/settings')
+            ]);
+            const bindings=s.bindings||s.settings?.bindings||[];
+            rows.push({name,versions:d.deployments?.[0]?.versions?.map(x=>({id:x.version_id,traffic:x.percentage}))||[],
+              hasGeoapify:bindings.some(x=>x.name==='VIA_GEOAPIFY_API_KEY'),
+              hasD1:bindings.some(x=>x.type==='d1'||x.type==='d1_database'),
+              placesFlag:bindings.find(x=>x.name==='VIA_PLACES_ENABLED')?.text??'not present'});
+          }
+          console.log('VIA_POI_CF_FINAL_INVENTORY '+JSON.stringify(rows));
+          const prod=rows[0],api=rows[1],qa=rows[2];
+          if(prod.versions.length!==1||prod.versions[0].id!=='ac8e0a7e-a032-47f8-8328-bd7b716a4342'||
+            Number(prod.versions[0].traffic)!==100||!api.hasGeoapify||
+            qa.hasGeoapify||qa.hasD1||qa.placesFlag!=='false')
+            throw Error('Invariante crítico de QA / PROD no confirmado');
+          console.log('VIA_POI_CF_FINAL_INVARIANTS_PASS');
+          NODE

@@ -1,0 +1,53 @@
+name: "Vía V30 — diagnosticar estructura API Cloudflare (SOLO LECTURA)"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v30-poi-api-structure-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Leer únicamente metadatos de módulos API activos (sin código, secretos ni deploy)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,re,urllib.request
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID']; t=os.environ['CLOUDFLARE_API_TOKEN']
+          assert re.fullmatch(r'[0-9a-fA-F]{32}',a) and t
+          u='https://api.cloudflare.com/client/v4/accounts/'+a+'/workers/scripts/via-traslados-api'
+          req=urllib.request.Request(u,headers={'Authorization':'Bearer '+t})
+          with urllib.request.urlopen(req,timeout=30) as response:
+            mime=response.headers.get('Content-Type',''); raw=response.read()
+          sections=[]
+          if 'multipart/' in mime.lower():
+            boundary=re.search(r'boundary="?([^";]+)',mime)
+            assert boundary, 'multipart without boundary'
+            for p in raw.split(b'--'+boundary.group(1).encode()):
+              if b'Content-Disposition' not in p or b'\r\n\r\n' not in p: continue
+              head,body=p.split(b'\r\n\r\n',1)
+              name=re.search(rb'name="([^"]+)"',head)
+              fname=(name.group(1).decode('utf8','replace') if name else 'unknown')[:100]
+              js=(b'.js' in head or b'.mjs' in head)
+              code=body.rstrip(b'\r\n').decode('utf8','replace') if js else ''
+              sections.append((fname,code))
+          else:
+            sections.append(('single',raw.decode('utf8','replace')))
+          candidates=[(n,s) for n,s in sections if '/api/health' in s and ('export{' in s or 'export default' in s)]
+          summaries=[]
+          for n,s in sections:
+            imports=re.findall(r'\bimport\s+[^;]+from\s+["\'](\.[^"\']+)["\']',s)
+            dynamic=len(re.findall(r'\bimport\s*\(',s))
+            from_rel=re.findall(r'\bimport\s+[^;\n]{0,500}?\s+from\s*(["\x27])\.[^"\x27]+\1',s)
+            side_rel=re.findall(r'\bimport\s*(["\x27])\.[^"\x27]+\1',s)
+            dynamic_rel=re.findall(r'\bimport\s*\(\s*(["\x27])\.[^"\x27]+\1',s)
+            summaries.append({'module':n,'code_bytes':len(s),'has_api_health':'/api/health' in s,'has_default_export':('export default' in s or 'as default' in s),'guard_matches':len(imports),'relative_import_paths':sorted(set(imports))[:25],'dynamic_import_count':dynamic,'from_rel_count':len(from_rel),'side_rel_count':len(side_rel),'dynamic_rel_count':len(dynamic_rel)})
+          print('VIA_POI_API_STRUCTURE_READONLY '+json.dumps({'multipart':('multipart/' in mime.lower()),'section_count':len(sections),'candidate_count':len(candidates),'modules':summaries},ensure_ascii=False))
+          PY
+      - name: Finalizar sin escribir en Cloudflare
+        run: echo "NO DEPLOY NO D1 NO SECRETS"
