@@ -27,11 +27,12 @@
  const tip=document.createElement('div');tip.id='via-location-hint';tip.hidden=true;tip.setAttribute('role','tooltip');
  tip.innerHTML='<strong>Usá tu ubicación actual</strong><small>Podés ajustarla luego en el mapa.</small>';
  document.body.appendChild(tip);
- const key='via-location-hint-seen-v2';let seen=false,shown=false,timer=0,frame=0,settle=0,blurTimer=0,started=0,editing=false;
+ const key='via-location-hint-seen-v2';let seen=false,shown=false,timer=0,frame=0,settle=0,blurTimer=0,started=0,editing=false,open=false,closeTimer=0,armed=false,restHeight=0,restWidth=0;
  try{seen=sessionStorage.getItem(key)==='1'}catch{}
  const view=()=>{const v=window.visualViewport;return {left:v?.offsetLeft||0,top:v?.offsetTop||0,width:v?.width||innerWidth,height:v?.height||innerHeight}};
  const active=()=>ids.has(document.activeElement?.id)?document.activeElement:null;
  const mobile=()=>matchMedia('(max-width:650px)').matches;
+ restHeight=view().height;restWidth=view().width;
  function markSeen(){if(!shown)return;seen=true;try{sessionStorage.setItem(key,'1')}catch{}}
  function hide(done=false){if(done)markSeen();clearTimeout(timer);timer=0;shown=false;tip.hidden=true;tip.classList.remove('show')}
  function place(){
@@ -52,16 +53,45 @@
   if(main&&main.scrollHeight>main.clientHeight)main.scrollTop+=delta;
   else el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
  }
+ function restore(){
+  if(editing){
+   document.body.classList.remove('via-address-editing');
+   document.body.style.removeProperty('--via-keyboard-space');
+   const main=document.querySelector('.premium-main');if(main)main.scrollTop=0;
+   editing=false;
+  }
+ }
+ function stop(el){
+  clearTimeout(closeTimer);closeTimer=0;clearInterval(settle);
+  armed=false;open=false;hide(shown);restore();
+  if(el&&document.activeElement===el){
+   el.dispatchEvent(new CustomEvent('via:keyboard-dismiss',{bubbles:true}));
+   el.blur();
+  }
+ }
  function update(){
-  frame=0;const el=active();
-  if(!el)return;
+  frame=0;const el=active(),v=view();
+  if(!el){
+   if(v.height>restHeight||Math.abs(v.width-restWidth)>60){restHeight=v.height;restWidth=v.width}
+   return;
+  }
+  if(!armed)return;
   if(mobile()){
-   const v=view();
-   if(el.id.startsWith('home-')){
+   if(Math.abs(v.width-restWidth)>60){stop(el);restHeight=v.height;restWidth=v.width;return}
+   const reduction=restHeight-v.height;
+   if(reduction>=100){open=true;clearTimeout(closeTimer);closeTimer=0}
+   if(open&&reduction<=60){
+    if(!closeTimer)closeTimer=setTimeout(()=>{
+     closeTimer=0;
+     if(active()===el&&restHeight-view().height<=60)stop(el);
+    },140);
+    return;
+   }
+   if(el.id.startsWith('home-')&&(open||Date.now()-started<550)){
     document.body.classList.add('via-address-editing');editing=true;
     document.body.style.setProperty('--via-keyboard-space',Math.max(0,innerHeight-v.height-v.top+24)+'px');
-   }
-   keepVisible(el);
+   }else if(editing){restore()}
+   if(open||editing)keepVisible(el);
   }
   if(el!==input||input.value.trim()||seen){if(shown)hide(true);return}
   if(Date.now()-started<220)return;
@@ -71,18 +101,19 @@
  }
  function schedule(){if(!frame)frame=requestAnimationFrame(update)}
  function begin(){
-  clearTimeout(blurTimer);started=Date.now();schedule();
-  clearInterval(settle);let ticks=0;settle=setInterval(()=>{schedule();if(++ticks>=12)clearInterval(settle)},100);
+  clearTimeout(blurTimer);clearTimeout(closeTimer);closeTimer=0;
+  if(!armed){const v=view();restHeight=Math.max(restHeight,v.height);restWidth=v.width;open=restHeight-v.height>=100;armed=true;started=Date.now()}
+  schedule();clearInterval(settle);let ticks=0;
+  settle=setInterval(()=>{schedule();if(++ticks>=16)clearInterval(settle)},100);
  }
  function finish(){
-  clearInterval(settle);hide(shown);clearTimeout(blurTimer);
-  blurTimer=setTimeout(()=>{
-   if(active())return;
-   if(editing){document.body.classList.remove('via-address-editing');document.body.style.removeProperty('--via-keyboard-space');editing=false}
-  },120);
+  clearTimeout(closeTimer);closeTimer=0;clearInterval(settle);hide(shown);clearTimeout(blurTimer);
+  blurTimer=setTimeout(()=>{if(!active())stop(null)},120);
  }
  document.addEventListener('focusin',e=>{if(ids.has(e.target.id))begin()});
  document.addEventListener('focusout',e=>{if(ids.has(e.target.id))finish()});
+ document.addEventListener('pointerdown',e=>{if(ids.has(e.target.id)&&e.target===document.activeElement&&!armed)begin()});
+ window.addEventListener('pageshow',()=>{if(!active())stop(null)});
  input.addEventListener('input',()=>{hide(shown);if(input.value.trim())seen=true});
  button.addEventListener('click',()=>hide(shown));
  window.addEventListener('resize',schedule);window.addEventListener('scroll',schedule,{passive:true});

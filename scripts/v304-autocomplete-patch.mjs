@@ -61,4 +61,10 @@ const old="fetch(endpoint+'&mode=places',{signal:abort.signal}).then(r=>{if(!r.o
 if(s.split(old).length!==2)throw Error('Unknown POI fetch contract');
 s=s.replace(old,"fetchPlaces(endpoint,abort.signal)");
 s=s.replace("window.addEventListener('resize',()=>active&&position(active));","window.addEventListener('resize',relayout);");
+// Android Back can hide the keyboard without a blur; invalidate only pending suggestions, never selected data.
+const anchor="const clear=()=>";
+if(!s.includes(anchor))throw Error('Autocomplete clear contract changed');
+const endClear=s.indexOf(';\n',s.indexOf(anchor))+1;
+if(endClear<1)throw Error('Autocomplete clear anchor');
+s=s.slice(0,endClear)+"\ndocument.addEventListener('via:keyboard-dismiss',()=>{++seq;clearTimeout(timer);abort?.abort();clear()});"+s.slice(endClear);
 await writeFile(path,s);

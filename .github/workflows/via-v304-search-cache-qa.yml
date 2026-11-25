@@ -1,4 +1,4 @@
-name: "Vía V30.4 — V30.4.2 — teclado y ayuda de ubicación QA"
+name: "Vía V30.4 — V30.4.3 — teclado y ayuda de ubicación QA"
 on:
   push:
     branches: [via-v30-geoapify-places-qa-20261124]

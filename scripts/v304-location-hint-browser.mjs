@@ -17,7 +17,25 @@ for(const [os,engine] of [['Android',chromium],['iOS',webkit]]){
  await p.waitForTimeout(350);
  const bounds=await p.evaluate(()=>{const r=document.activeElement.closest('.reference-field').getBoundingClientRect(),s=document.querySelector('#address-suggestions').getBoundingClientRect(),v=window.visualViewport;return {rowTop:r.top,rowBottom:r.bottom,panelTop:s.top,panelBottom:s.bottom,top:v?.offsetTop||0,bottom:(v?.offsetTop||0)+(v?.height||innerHeight),visible:getComputedStyle(document.querySelector('#address-suggestions')).visibility}});
  assert(bounds.visible==='visible'&&bounds.panelBottom<=bounds.bottom+2&&bounds.panelTop>=bounds.top-2&&(bounds.panelBottom<=bounds.rowTop-8||bounds.panelTop>=bounds.rowBottom+8),JSON.stringify(bounds));
- await input.blur();await p.waitForTimeout(250);assert.equal(await p.locator('body').evaluate(e=>e.classList.contains('via-address-editing')),false);
+ // Native Android Back is modeled by restoring visual height while focus is retained.
+ assert.equal(await input.evaluate(e=>document.activeElement===e),true);
+ await p.setViewportSize({width:390,height:844});
+ await p.waitForFunction(()=>!document.body.classList.contains('via-address-editing')&&document.activeElement?.id!=='home-origin',undefined,{timeout:4000});
+ assert.equal(await input.inputValue(),'Shopping');
+ assert(await p.locator('.home-intro').isVisible());
+ assert(await p.locator('.home-highlights').isVisible());
+ // Reopen, choose a real suggestion, then dismiss keyboard. Selected coordinates must survive.
+ await input.click();await p.setViewportSize({width:390,height:440});
+ await input.fill('Nuevocentro');
+ await p.waitForFunction(()=>[...document.querySelectorAll('#address-suggestions .address-choice')].some(e=>/nuevocentro/i.test(e.textContent)),undefined,{timeout:30000});
+ await p.locator('#address-suggestions .address-choice').filter({hasText:/nuevocentro/i}).first().click();
+ const selected=await p.evaluate(()=>({value:ViaAddress.get('home-origin'),selected:document.querySelector('#home-origin').dataset.addressSelected}));
+ assert.equal(selected.selected,'true');assert(Number.isFinite(selected.value.lat)&&Number.isFinite(selected.value.lng));assert(/nuevocentro/i.test(selected.value.label));
+ await p.setViewportSize({width:390,height:844});
+ await p.waitForFunction(()=>!document.body.classList.contains('via-address-editing'),undefined,{timeout:4000});
+ assert.deepEqual(await p.evaluate(()=>ViaAddress.get('home-origin')),selected.value);
+ assert(await p.locator('.home-intro').isVisible());
+ console.log('VIA_KEYBOARD_BACK_PASS '+JSON.stringify({os,restored:true,selectionPreserved:true}));
  console.log('VIA_HINT_KEYBOARD_PASS '+JSON.stringify({os,field:m,suggestions:bounds}));
  }finally{await b.close()}
 }
