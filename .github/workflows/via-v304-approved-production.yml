@@ -1,0 +1,72 @@
+name: "Vía V30.4.8 — promover mejoras aprobadas con rollback"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v304-approved-production.yml"]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  release:
+    if: "github.event.head_commit.message == 'release: promote approved V30.4.8 with production authentication intact'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Exigir QA aprobada
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 72); do
+            status=$(gh api repos/${{ github.repository }}/actions/runs/45599888559 --jq '.status')
+            if [ "$status" = completed ]; then
+              test "$(gh api repos/${{ github.repository }}/actions/runs/45599888559 --jq '.conclusion')" = success
+              exit $?
+            fi
+            sleep 5
+          done
+          exit 1
+      - name: Construir candidato desde V30.2 activa
+        run: |
+          npm test
+          python3 scripts/v304-prod-release.py build
+          npx --yes wrangler@4.160.1 deploy --config v304-prod-release/wrangler.jsonc --dry-run --keep-vars
+      - name: Subir sin tráfico y verificar contrato
+        run: |
+          npx --yes wrangler@4.160.1 versions upload --config v304-prod-release/wrangler.jsonc --keep-vars
+          python3 scripts/v304-prod-release.py candidate
+          python3 scripts/v304-prod-release.py preview
+      - name: Probar candidato antes de publicar
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium webkit >/dev/null
+          node scripts/v304-prod-browser.mjs preview
+      - name: Promover WEB V30.4.8
+        id: promote
+        run: python3 scripts/v304-prod-release.py promote
+      - name: Verificación real de producción
+        run: |
+          node tests/prod-core-invariants.mjs
+          node scripts/v304-prod-browser.mjs prod
+          python3 scripts/v304-prod-release.py final
+      - name: Rollback automático a V30.2
+        if: failure() && steps.promote.outcome != 'skipped'
+        run: python3 scripts/v304-prod-release.py rollback
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v304-production-manifest
+          path: |
+            v304-prod-release/manifest.json
+            v304-prod-release/candidate.txt
+          if-no-files-found: ignore
+          retention-days: 30
