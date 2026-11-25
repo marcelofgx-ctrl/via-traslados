@@ -1,0 +1,31 @@
+name: "V31 — prototipo aislado de conductor a disposición"
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ["hourly-preview/**", ".github/workflows/via-v31-hourly-preview.yml"]
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Verificar base activa y desplegar sólo preview
+        run: |
+          python3 -c "import runpy;m=runpy.run_path('scripts/v304-prod-release.py');assert m['M']['version'](m['STAGE'])=='d29d5304-db8d-48bb-a082-44b336454ed6';assert m['M']['version'](m['M']['API'])==m['M']['BASE_API']"
+          npx --yes wrangler@4.160.1 deploy --config hourly-preview/wrangler.jsonc
+      - name: Probar simulación
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+          node hourly-preview/smoke.mjs
+      - name: Confirmar producción intacta
+        if: always()
+        run: python3 -c "import runpy;m=runpy.run_path('scripts/v304-prod-release.py');assert m['M']['version'](m['STAGE'])=='d29d5304-db8d-48bb-a082-44b336454ed6';assert m['M']['version'](m['M']['API'])==m['M']['BASE_API'];print('HOURLY_PROD_UNCHANGED')"

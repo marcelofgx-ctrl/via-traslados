@@ -1,0 +1,1 @@
+export default {async fetch(request,env){const u=new URL(request.url);if(!['GET','HEAD'].includes(request.method)||!['/','/index.html'].includes(u.pathname))return new Response('Solo vista previa',{status:404});return env.ASSETS.fetch(request)}};
