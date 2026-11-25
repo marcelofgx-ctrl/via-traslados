@@ -1,0 +1,52 @@
+name: "Vía V30.4.8 — activar candidato exacto ya verificado"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v304-resume-production.yml"]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  release:
+    if: "github.event.head_commit.message == 'release: resume exact approved V30.4.8 candidate'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v304-production-manifest
+          run-id: 45600307825
+          github-token: ${{ github.token }}
+          path: v304-prod-release
+      - name: Verificar candidato exacto y QA aprobada
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45599888559 --jq '.conclusion')" = success
+          python3 scripts/v304-resume-prod.py verify
+      - name: Probar candidato sin tráfico
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium webkit >/dev/null
+          node scripts/v304-prod-browser.mjs preview
+      - name: Activar candidato exacto
+        id: promote
+        run: python3 scripts/v304-resume-prod.py promote
+      - name: Comprobar producción real
+        run: |
+          node tests/prod-core-invariants.mjs
+          node scripts/v304-prod-browser.mjs prod
+          python3 scripts/v304-resume-prod.py final
+      - name: Rollback automático
+        if: failure() && steps.promote.outcome != 'skipped'
+        run: python3 scripts/v304-resume-prod.py rollback

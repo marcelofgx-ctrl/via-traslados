@@ -13,7 +13,11 @@ for(const [os,engine] of [['Android',chromium],['iOS',webkit]]){
  page.on('request',r=>{if(r.method()==='POST'&&new URL(r.url()).pathname==='/api/public/route-preview')routes++});
  await page.goto(base+'/index.html',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.ViaAddress&&window.ViaStore&&window.ViaSearchLocation);
- assert((await page.locator('body').innerText()).includes('v30.4.8'));
+ // Version is encoded in the actual script URL; the menu's version label may be hidden.
+ const scriptVersion=await page.evaluate(()=>[...document.scripts].some(s=>{const u=new URL(s.src,location.href);return u.pathname==='/address-autocomplete.js'&&u.searchParams.get('v')==='30.4.8'}));
+ assert(scriptVersion,'Wrong autocomplete asset version');
+ assert.equal(await page.locator('#via-search-distance-style').count(),1);
+ assert.equal(await page.locator('#via-location-hint-script').count(),1);
  assert.equal(await page.locator('#via-qa-auth-script').count(),0);
  await page.evaluate(()=>ViaSearchLocation.update(-34.85,-56.02));
  const input=page.locator('#home-origin'),tip=page.locator('#via-location-hint');
