@@ -1,0 +1,77 @@
+name: Vía Traslados — vista de oferta V30 (solo QA visual)
+on:
+  push:
+    branches: [via-v30-oferta-visual-preview-qa-20261118]
+    paths: [".github/workflows/via-v30-offer-visual-qa.yml", "tests/v30_offer_visual_browser.cjs"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-oferta-visual-qa
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Bloquear datos o API de producción en la maqueta
+        run: |
+          set -euo pipefail
+          test -f qa/v30-oferta/assets/index.html
+          grep -F 'V30 · QA VISUAL' qa/v30-oferta/assets/index.html
+          grep -F 'Conductor de ejemplo' qa/v30-oferta/assets/index.html
+          ! grep -F 'https://via-traslados-api.marcelof-gx.workers.dev' qa/v30-oferta/assets/index.html
+          ! grep -E -i '<script[^>]*src=|fetch\(|XMLHttpRequest|localStorage|Roque Sáenz Peña 1711|Marcelo Fernández' qa/v30-oferta/assets/index.html
+          test ! -f qa/v30-oferta/wrangler.prod.jsonc
+          grep -F '"name": "via-v30-oferta-visual-qa"' qa/v30-oferta/wrangler.jsonc
+          echo 'Preview visual sin datos reales, API ni D1.'
+      - name: Compilación seca de Worker QA, sin modificar producción
+        working-directory: qa/v30-oferta
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler.jsonc --dry-run
+      - name: Publicar exclusivamente la maqueta aislada en Cloudflare QA
+        working-directory: qa/v30-oferta
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler.jsonc
+      - name: Verificar vista pública QA sin operación real
+        run: |
+          set -euo pipefail
+          BASE=https://via-v30-oferta-visual-qa.marcelof-gx.workers.dev
+          for i in $(seq 1 18); do
+            if curl -fsSL --max-time 12 "$BASE/" -o /tmp/v30-visual.html; then break; fi
+            sleep 3
+          done
+          grep -F 'V30 · QA VISUAL' /tmp/v30-visual.html
+          grep -F 'Aceptar oferta' /tmp/v30-visual.html
+          grep -F 'Esta demostración usa datos ficticios' /tmp/v30-visual.html
+          echo 'V30_VISUAL_QA_LIVE_OK_URL='$BASE
+      - name: Instalar Playwright y Chromium para QA móvil
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verificar cuatro vistas móviles y capturar pantallas
+        run: node tests/v30_offer_visual_browser.cjs
+      - name: Guardar capturas visuales de la maqueta, sin datos reales
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-v30-visual-qa-mobile-screenshots
+          path: v30-visual-shots/*.png
+          retention-days: 30
+          if-no-files-found: error
+      - name: Comprobar que producción y API reales siguen vivos, sin leer reservas
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://viatraslados.com/ -o /tmp/v30-prod-home.html
+          grep -F 'review-compact-v29.css?v=29' /tmp/v30-prod-home.html
+          curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health -o /tmp/v30-prod-health.json
+          node -e 'if(!require("/tmp/v30-prod-health.json").ok)process.exit(1)'
+          echo 'V29_PROD_WEB_AND_V35_API_UNCHANGED'

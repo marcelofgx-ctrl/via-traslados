@@ -1,0 +1,52 @@
+<!doctype html><html lang="es-UY"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#112820"><title>Vía Traslados · Oferta V30 · Diseño QA</title><style>
+:root{--bg:#11231c;--card:#1e2a23;--line:#466254;--light:#eefbf3;--muted:#b1c8b9;--green:#07816e;color-scheme:dark;font-family:system-ui,-apple-system,Roboto,sans-serif}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;width:100%}body{color:var(--light);background:radial-gradient(ellipse at top,#203a2e,#11231c 68%)}
+button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #8bdfbb;outline-offset:2px}
+.shell{width:min(100%,680px);margin:auto;min-height:100dvh;padding:0 14px calc(76px + env(safe-area-inset-bottom))}
+header{height:67px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:800;letter-spacing:-.6px}.mark{background:#004237;border-radius:12px;width:39px;height:39px;display:grid;place-items:center;font-size:22px}
+.qa{font-size:10px;color:#b4dec6;border:1px solid #6e9a7e;border-radius:8px;padding:5px 7px}
+main{padding-top:12px;display:grid;gap:11px}
+.heading{display:flex;justify-content:space-between;align-items:start;gap:8px}
+.overline{font-size:10px;letter-spacing:1.1px;color:#93c2aa;font-weight:800}.heading h1{font-size:22px;line-height:1.13;letter-spacing:-.6px;margin:3px 0 4px}.heading p{font-size:12px;color:var(--muted);margin:0}
+.status{background:#d8f3e6;color:#095b43;font-weight:800;border-radius:999px;padding:7px 10px;font-size:10px;white-space:nowrap}
+.trip,.offer{border:1px solid var(--line);background:linear-gradient(135deg,#1b392b,var(--card));border-radius:17px;padding:12px 13px}
+.metrics{display:flex;align-items:center;gap:9px;color:#b6d4c1;font-size:11px;margin-bottom:11px}
+.point{display:flex;gap:10px;align-items:start}
+.ball{flex:none;width:27px;height:27px;border-radius:50%;background:var(--green);display:grid;place-items:center;font-weight:800;font-size:12px}
+.ball.b{background:#e9f6ef;color:#135a43}
+.point .text{min-width:0;flex:1}.point label{display:block;color:#a4c6b4;font-size:10px;font-weight:800;letter-spacing:.5px}
+.point strong{font-size:13px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dash{border-left:2px dashed #558b75;height:9px;margin:3px 0 3px 12px}
+.routefoot{margin-top:11px;border-top:1px solid #3b5d4a;padding-top:7px;display:flex;align-items:center;justify-content:space-between;gap:5px;font-size:10px;color:#b3cbbd}
+.link{border:0;background:none;color:#94e0bf;text-decoration:underline;font-weight:700;font-size:11px}
+.offer{background:#182b21;border-color:#6a9f83;padding:12px 14px}
+.offer-top{display:flex;justify-content:space-between;gap:8px}
+.offer .price{font-size:37px;line-height:1.2;font-weight:850;letter-spacing:-1px;margin:6px 0;color:#f6fff8}
+.price small{font-size:12px;letter-spacing:0;color:#bcdbca}
+.offer .bottom{display:flex;align-items:center;justify-content:space-between;gap:9px;border-top:1px solid #425d4b;padding-top:9px}
+.person{display:flex;align-items:center;gap:8px;min-width:0}
+.avatar{width:31px;height:31px;border-radius:10px;background:#346c52;display:grid;place-items:center;font-weight:800}
+.person strong{font-size:12px;display:block}.person small{font-size:10px;color:#a3c5b2;display:block}
+.more{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.more p{font-size:11px;color:var(--muted);margin:0}
+.details{display:none;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 12px;color:#c4d9c9;font-size:12px}
+.details.open{display:block}
+footer{position:fixed;bottom:0;left:0;right:0;background:#122820;border-top:1px solid #476a55;padding:10px max(14px,calc((100vw - 650px)/2)) calc(10px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 2fr;gap:9px}
+footer button{min-height:49px;border-radius:12px;font-weight:800}
+.secondary{border:1px solid #729182;background:none;color:#daeee0}
+.primary{border:1px solid #23ab8d;background:#007d6b;color:white}
+.backdrop{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;background:#000b;z-index:9}
+.backdrop.show{display:flex}
+.dialog{background:#233b2e;padding:22px 18px calc(22px + env(safe-area-inset-bottom));width:min(100%,580px);border-radius:19px 19px 0 0;border:1px solid #719d81}
+.dialog h2{margin:0 0 8px;font-size:19px}.dialog p{color:#d3e4d6;line-height:1.5}.dialog button{border:0;border-radius:11px;background:#007d6b;color:white;width:100%;min-height:47px}
+@media(max-height:700px){header{height:55px}main{gap:7px;padding-top:8px}.heading h1{font-size:20px}.trip{padding:10px}.metrics{margin-bottom:7px}.offer{padding:9px 12px}.offer .price{font-size:31px;margin:3px 0}}
+@media(max-width:340px){.brand{font-size:20px}.heading h1{font-size:19px}.point strong{font-size:12px}}
+</style></head><body><div class="shell"><header><div class="brand"><span class="mark">V</span>vía traslados</div><span class="qa">V30 · QA VISUAL</span></header><main><section class="heading"><div><div class="overline">TU TRASLADO · VIA-DEMO-001</div><h1>Tenés una oferta</h1><p>Fecha y hora de ejemplo · Servicio programado</p></div><span class="status">Por aceptar</span></section><section class="trip" aria-label="Recorrido"><div class="metrics">⌁ Distancia estimada <span aria-hidden="true">·</span> ◷ Duración estimada <span aria-hidden="true">·</span> 1 pasajero</div><div class="point"><span class="ball">A</span><div class="text"><label>ORIGEN</label><strong>Punto de recogida de ejemplo, Canelones</strong></div></div><div class="dash" aria-hidden="true"></div><div class="point"><span class="ball b">B</span><div class="text"><label>DESTINO</label><strong>Aeropuerto Internacional de Carrasco, Canelones</strong></div></div><div class="routefoot"><span>El motor geográfico existente no se modifica</span><button type="button" class="link" id="map">Ver recorrido</button></div></section><section class="offer" aria-label="Oferta económica"><div class="offer-top"><span class="overline">OFERTA RECIBIDA</span><span class="overline">SERVICIO PRIVADO</span></div><div class="price">$ 850 <small>UYU</small></div><div class="bottom"><div class="person"><span class="avatar">CE</span><div><strong>Conductor de ejemplo</strong><small>Proponente del traslado</small></div></div><span style="font-size:10px;color:#b7d5c4">Vehículo por verificar</span></div></section><div class="more"><p>Revisá la oferta antes de aceptar.</p><button type="button" class="link" id="expand" aria-expanded="false" aria-controls="details">Más detalles ▾</button></div><div class="details" id="details">Esta demostración usa datos ficticios y no se conecta a la base de datos. Las condiciones reales se mostrarán únicamente cuando estén disponibles en la API.</div></main></div><footer><button type="button" class="secondary" id="back">Volver</button><button type="button" class="primary" id="accept">Aceptar oferta →</button></footer><div class="backdrop" id="backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="dialog"><h2 id="modalTitle">Diseño en pruebas</h2><p id="modalText">Esta pantalla no realiza operaciones reales.</p><button id="close">Entendido</button></div></div><script>
+const bd=document.querySelector('#backdrop');function modal(message){document.querySelector('#modalText').textContent=message;bd.classList.add('show');document.querySelector('#close').focus()}
+document.querySelector('#accept').onclick=()=>modal('En esta vista QA la aceptación no se envía. El contrato funcional se conectará y verificará en la siguiente fase, sin alterar reservas reales.');
+document.querySelector('#back').onclick=()=>modal('Esta pantalla es una vista visual aislada. La navegación real se conservará al integrar V30.');
+document.querySelector('#map').onclick=()=>modal('El cálculo de distancia y rutas se mantiene en el motor existente; no se usa ningún servicio geográfico en esta vista.');
+document.querySelector('#close').onclick=()=>bd.classList.remove('show');bd.onclick=e=>{if(e.target===bd)bd.classList.remove('show')};document.addEventListener('keydown',e=>{if(e.key==='Escape')bd.classList.remove('show')});
+document.querySelector('#expand').onclick=()=>{let d=document.querySelector('#details'),open=d.classList.toggle('open');document.querySelector('#expand').setAttribute('aria-expanded',open);document.querySelector('#expand').textContent=open?'Ocultar detalles ▴':'Más detalles ▾'};
+</script></body></html>
