@@ -1,0 +1,43 @@
+<style id="via-location-hint-style">
+#location-shortcut.locate-btn{box-sizing:border-box!important;inline-size:44px!important;block-size:44px!important;width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;max-width:44px!important;max-height:44px!important;flex:0 0 44px!important;aspect-ratio:1!important;border-radius:50%!important;padding:0!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;align-self:center}
+#via-location-hint{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;max-width:calc(100vw - 24px);padding:11px 14px;border:1px solid #b6d7cd;border-radius:13px;background:#eaf6f1;color:#24554e;box-shadow:0 5px 18px rgba(32,72,64,.13);font:600 13px/1.35 system-ui,sans-serif;text-align:center;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .18s ease,transform .18s ease}
+#via-location-hint[hidden]{display:none!important}
+#via-location-hint.show{opacity:1;transform:translateY(0)}
+#via-location-hint small{display:block;margin-top:3px;font-size:11px;font-weight:400;color:#456d64}
+#via-location-hint:after{content:"";position:absolute;left:var(--via-arrow,50%);bottom:-6px;width:10px;height:10px;transform:translateX(-50%) rotate(45deg);background:#eaf6f1;border-right:1px solid #b6d7cd;border-bottom:1px solid #b6d7cd}
+@media(prefers-reduced-motion:reduce){#via-location-hint{transition:none}}
+</style>
+<script id="via-location-hint-script">
+(()=>{
+ const input=document.getElementById('home-origin'),button=document.getElementById('location-shortcut');
+ if(!input||!button)return;
+ const tip=document.createElement('div');tip.id='via-location-hint';tip.hidden=true;tip.setAttribute('role','tooltip');
+ tip.innerHTML='<strong>Usá tu ubicación actual</strong><small>Podés ajustarla luego en el mapa.</small>';
+ document.body.appendChild(tip);
+ const key='via-location-hint-seen-v1';let seen=false,timer,closing,frame;
+ try{seen=sessionStorage.getItem(key)==='1'}catch{}
+ function hide(){clearTimeout(timer);cancelAnimationFrame(frame);tip.classList.remove('show');if(!tip.hidden){clearTimeout(closing);closing=setTimeout(()=>{tip.hidden=true},180)}}
+ function position(){
+  if(tip.hidden)return false;
+  const b=button.getBoundingClientRect(),field=input.closest('.reference-field')?.getBoundingClientRect()||input.getBoundingClientRect(),v=window.visualViewport;
+  const left=v?.offsetLeft||0,top=v?.offsetTop||0,width=v?.width||innerWidth,height=v?.height||innerHeight;
+  const w=tip.offsetWidth,h=tip.offsetHeight,center=b.left+b.width/2;
+  const x=Math.max(left+12,Math.min(center-w/2,left+width-w-12)),y=Math.min(field.top,b.top)-h-12;
+  if(y<top+8||b.bottom>top+height-8||!w||!h)return false;
+  tip.style.left=x+'px';tip.style.top=y+'px';tip.style.setProperty('--via-arrow',Math.max(12,Math.min(w-12,center-x))+'px');return true;
+ }
+ function show(){
+  if(seen||input.value.trim()||document.activeElement!==input)return;
+  clearTimeout(closing);tip.hidden=false;
+  if(!position()){tip.hidden=true;return}
+  seen=true;try{sessionStorage.setItem(key,'1')}catch{}
+  frame=requestAnimationFrame(()=>{if(!tip.hidden)tip.classList.add('show')});
+  timer=setTimeout(hide,4000);
+ }
+ function adjust(){if(!tip.hidden&&!position())hide()}
+ input.addEventListener('focus',show);input.addEventListener('click',show);
+ input.addEventListener('input',hide);input.addEventListener('blur',hide);button.addEventListener('click',hide);
+ window.addEventListener('resize',adjust);window.addEventListener('scroll',adjust,{passive:true});
+ window.visualViewport?.addEventListener('resize',adjust);window.visualViewport?.addEventListener('scroll',adjust);
+})();
+</script>

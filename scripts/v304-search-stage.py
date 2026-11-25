@@ -53,6 +53,11 @@ def build():
  config.write_text(s.replace(API,URL))
  index=ASSETS/'index.html';s=index.read_text();assert 'v30.2' in s and s.count('</body>')==1
  index.write_text(s.replace('v30.2','v30.4').replace('</body>','<aside role="status" style="position:fixed;z-index:2147483647;bottom:0;left:0;right:0;background:#263f3b;color:white;padding:8px;text-align:center;font:600 12px sans-serif">V30.4 QA · CACHÉ Y TECLADO · SIN RESERVAS</aside></body>'))
+ # Visual-only hint; all underlying GPS handlers remain untouched.
+ html=index.read_text()
+ assert html.count('id="home-origin"')==1 and html.count('id="location-shortcut"')==1 and html.count('</body>')==1
+ hint=pathlib.Path('addons/v304-location-hint.html').read_text()
+ index.write_text(html.replace('v30.4','v30.4.1').replace('V30.4 QA','V30.4.1 QA').replace('</body>',hint+'</body>'))
  # The candidate's exact live WEB bundle is the latest upload, not an old branch.
  source=O['get_live_worker_source']()
  assert all(x in source for x in ('VIA_POI_API','__viaLegacyWorker','extendPlaceSearch'))
@@ -66,7 +71,7 @@ def build():
   if n.endswith('.html'):
    p=ASSETS/n
    p.write_text(re.sub(r'address-autocomplete\.js\?v=[^"\x27\s<>]+','address-autocomplete.js?v=30.4',p.read_text()))
- sw=ASSETS/'sw.js';sw.write_text(sw.read_text().replace('via-traslados-v30.2-route-cache','via-traslados-v30.4-search-cache'))
+ sw=ASSETS/'sw.js';sw.write_text(sw.read_text().replace('via-traslados-v30.2-route-cache','via-traslados-v30.4.1-search-cache'))
  dbid=ensure_db()
  cfg={'name':STAGE,'main':'./worker.mjs','compatibility_date':'2026-11-10','compatibility_flags':['global_fetch_strictly_public'],'workers_dev':True,'vars':{'VIA_PLACES_ENABLED':'true'},'d1_databases':[{'binding':'POI_CACHE','database_name':'via-poi-cache-qa','database_id':dbid}],'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
  (OUT/'wrangler.jsonc').write_text(json.dumps(cfg))
