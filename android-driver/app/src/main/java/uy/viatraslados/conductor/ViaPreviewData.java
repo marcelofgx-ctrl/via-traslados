@@ -131,8 +131,27 @@ public final class ViaPreviewData {
         return item;
     }
 
+    private static JSONObject hourlyDemoQuote;
+    public static void quoteHourlyDemo(int price, Integer km, String terms){
+        try { hourlyDemoQuote=new JSONObject().put("price",price).put("includedKm",km==null?JSONObject.NULL:km).put("terms",terms); }catch(Exception ignored){}
+    }
+    private static JSONObject hourlySample(){
+        JSONObject b=new JSONObject();
+        try{
+            b.put("id","VIA-HORAS-DEMO").put("serviceType","hourly").put("requestedDurationMinutes",240)
+              .put("date","2026-11-26").put("time","10:00").put("origin","Hotel de prueba, Montevideo")
+              .put("destination","").put("passengers",2).put("bags",0)
+              .put("notes","Dos reuniones y una parada para almorzar. Datos ficticios.")
+              .put("status",hourlyDemoQuote==null?"requested":"quoted").put("canQuote",hourlyDemoQuote==null)
+              .put("price",hourlyDemoQuote==null?0:hourlyDemoQuote.optInt("price"))
+              .put("assignedDriverName",hourlyDemoQuote==null?JSONObject.NULL:"Conductor de demostración");
+            if(hourlyDemoQuote!=null)b.put("hourlyQuote",hourlyDemoQuote);
+        }catch(Exception ignored){}
+        return b;
+    }
     public static JSONArray requests(){
         JSONArray rows=new JSONArray();
+        if(BuildConfig.VIA_HOURLY_PREVIEW)rows.put(hourlySample());
         rows.put(sample("VIA-DEMO-N001","2026-11-20","10:00",
             "Ruta 200, San José de Carrasco, Canelones",
             "Aeropuerto Internacional de Carrasco, Canelones",

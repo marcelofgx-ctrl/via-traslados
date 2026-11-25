@@ -8,3 +8,6 @@ Base estable: a6d1b893da5fe0da1cdd3319dd3c937976685ac1 (web V30.4.8, APK V35). E
 
 ## V31.0.1 — identidad comercial aprobada
 Nombre visible: «Tu conductor por hora». Subtítulo: «Tu tiempo, tus paradas, tu recorrido.» Se aplica también a la etiqueta de la vista conductor. Sin cambios de lógica ni de tarifas.
+
+## V36 — APK nativa preliminar y contrato de API
+La APK V36 usa una variante independiente del código Android actual con datos de demostración y cotización manual local; no usa cuentas reales ni API. El nuevo contrato horario no está conectado a handlers ni D1. El flujo existente asigna al conductor en el INSERT de la cotización, no en la aceptación: la futura migración debe preservar esa regla y actualizar tanto el trigger SQL como las comprobaciones de asignación/agenda. El bloque debe cubrir duración contratada más el margen existente de 30 min, tanto al cotizar como al reasignar. No usar ETA falsa. Las condiciones y límites propuestos son ajustables, no tarifas comerciales. Las vistas web y APK aún no comparten solicitudes.

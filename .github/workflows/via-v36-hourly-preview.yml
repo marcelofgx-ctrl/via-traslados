@@ -1,0 +1,35 @@
+name: "V36 — APK por horas aislada y contrato preliminar"
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ["android-driver/**","backend/hourly-contract.js","tests/hourly-contract.test.mjs",".github/workflows/via-v36-hourly-preview.yml"]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: node --test tests/hourly-contract.test.mjs tests/assignment-rules.test.mjs
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin,java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.9"}
+      - name: Compilar variante sin acceso a red
+        run: |
+          gradle -p android-driver :app:assembleDebug -PviaOperationPreview -PviaHourlyPreview --no-daemon
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-v36-horas-qa.apk
+          cd dist
+          sha256sum via-traslados-v36-horas-qa.apk > SHA256SUMS.txt
+          unzip -t via-traslados-v36-horas-qa.apk | tail -2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v36-horas-qa-apk
+          path: dist/*
+          retention-days: 30
+          if-no-files-found: error

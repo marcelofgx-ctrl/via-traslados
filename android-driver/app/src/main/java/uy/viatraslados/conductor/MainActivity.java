@@ -1406,7 +1406,7 @@ public final class MainActivity extends Activity {
             prod.setBackgroundColor(SOFT);
             root.addView(prod,new LinearLayout.LayoutParams(-1,-2));
         }else if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_OPERATION_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_HOURLY_PREVIEW ? "V36 · HORAS · DEMO AISLADA" : BuildConfig.VIA_OPERATION_PREVIEW ?
                 "V31 · FICHA OPERATIVA PREMIUM · DEMO AISLADA" :
                 BuildConfig.VIA_LAYOUT_PREVIEW ?
                 "V30 · DETALLE Y COTIZACIÓN · DEMO SIN PRODUCCIÓN" :
@@ -1803,7 +1803,65 @@ public final class MainActivity extends Activity {
         parent.addView(routeRow,new LinearLayout.LayoutParams(-1,-2));
     }
 
+    private boolean hourlyPreview(JSONObject item){
+        return BuildConfig.VIA_HOURLY_PREVIEW && "hourly".equals(item.optString("serviceType"));
+    }
+    private String hourlyWindow(JSONObject item){
+        try {
+            java.time.LocalDateTime start=java.time.LocalDateTime.parse(item.optString("date")+"T"+item.optString("time"));
+            java.time.LocalDateTime end=start.plusMinutes(item.optInt("requestedDurationMinutes"));
+            return item.optString("time")+" – "+end.toLocalTime().toString()+(end.toLocalDate().equals(start.toLocalDate())?"":" (+1 día)");
+        }catch(Exception e){return "Horario a verificar";}
+    }
+    private String hourlyDuration(JSONObject item){
+        int minutes=item.optInt("requestedDurationMinutes");
+        return minutes/60+" h"+(minutes%60==0?"":" "+minutes%60+" min");
+    }
+    private void hourlyCard(LinearLayout parent, JSONObject item){
+        LinearLayout tile=card();String status=item.optString("status");
+        addLine(tile,compactDate(item.optString("date"))+" · "+item.optString("time")+"     "+statusName(status),14,INK,true,6);
+        addLine(tile,item.optString("id"),11,MUTED,false,8);
+        addLine(tile,"Tu conductor por hora",15,TEAL_DARK,true,8);
+        compactRouteRow(tile,"A",item.optString("origin"),true);
+        spacer(tile,8);
+        LinearLayout facts=row();premiumFact(facts,"DURACIÓN SOLICITADA",hourlyDuration(item));spacer(facts,6);premiumFact(facts,"AGENDA PREVISTA",hourlyWindow(item));tile.addView(facts);
+        spacer(tile,8);addLine(tile,item.optInt("passengers")+" pax · "+item.optInt("bags")+" val. · "+item.optString("notes"),12,MUTED,false,7);
+        if("quoted".equals(status))addLine(tile,"$ "+item.optInt("price")+" UYU · propuesta enviada",14,TEAL_DARK,true,5);
+        LinearLayout actions=row();Button detail=button("Ver detalle",false,v->hourlyDetail(item,false));actions.addView(detail,new LinearLayout.LayoutParams(0,dp(44),1));
+        if(item.optBoolean("canQuote")){Button quote=button("Sugerir precio",true,v->hourlyDetail(item,true));actions.addView(quote,new LinearLayout.LayoutParams(0,dp(44),1));}
+        tile.addView(actions);appendCard(parent,tile,7);
+    }
+    private void hourlyDetail(JSONObject item, boolean quoting){
+        LinearLayout[] views=new LinearLayout[2];
+        Dialog panel=premiumPage(quoting?"PRESUPUESTO POR HORAS":"SERVICIO POR HORAS",quoting?"Cotizar servicio":"Tu conductor por hora",item.optString("id"),statusName(item.optString("status")),views);
+        LinearLayout body=views[0],footer=views[1],facts=card();
+        addLine(facts,"RECOGIDA",10,TEAL_DARK,true,5);
+        addLine(facts,item.optString("origin"),15,INK,true,10);
+        addLine(facts,hourlyDuration(item)+" · "+hourlyWindow(item),15,TEAL_DARK,true,8);
+        addLine(facts,item.optString("notes"),13,MUTED,false,0);appendCard(body,facts,10);
+        JSONObject old=item.optJSONObject("hourlyQuote");
+        if(old!=null){addLine(body,"$ "+old.optInt("price")+" UYU",21,TEAL_DARK,true,8);addLine(body,old.isNull("includedKm")?"Kilometraje a coordinar":old.optInt("includedKm")+" km incluidos",13,INK,true,6);addLine(body,old.optString("terms"),13,MUTED,false,7);}
+        if(!quoting||!item.optBoolean("canQuote"))return;
+        addLine(body,"PRECIO TOTAL · UYU",11,TEAL_DARK,true,4);
+        EditText price=new EditText(this);price.setInputType(InputType.TYPE_CLASS_NUMBER);price.setHint("$ 0");body.addView(price,new LinearLayout.LayoutParams(-1,dp(52)));
+        addLine(body,"KILÓMETROS INCLUIDOS (OPCIONAL)",11,TEAL_DARK,true,4);
+        EditText km=new EditText(this);km.setInputType(InputType.TYPE_CLASS_NUMBER);km.setHint("A coordinar");body.addView(km,new LinearLayout.LayoutParams(-1,dp(52)));
+        addLine(body,"CONDICIONES DE TIEMPO / KM ADICIONALES",11,TEAL_DARK,true,4);
+        EditText terms=new EditText(this);terms.setHint("Detallá qué incluye el presupuesto");terms.setMinLines(2);body.addView(terms);
+        addLine(body,"Al cotizar se reserva el bloque horario en la futura integración real. Esta APK sólo simula la operación, sin acceder a ninguna API.",12,MUTED,false,6);
+        Button send=button("Enviar propuesta de prueba",true,v->{
+            try{
+                int amount=Integer.parseInt(price.getText().toString().trim());
+                String raw=km.getText().toString().trim();Integer included=raw.isEmpty()?null:Integer.valueOf(raw);
+                if(amount<1||amount>10000000||included!=null&&(included<0||included>5000))throw new IllegalArgumentException();
+                ViaPreviewData.quoteHourlyDemo(amount,included,terms.getText().toString().trim());
+                bookings=ViaPreviewData.requests();subtab="ofertas";panel.dismiss();dashboard();
+                message("Propuesta simulada. Consultá Con ofertas.");
+            }catch(Exception e){message("Ingresá un importe y kilometraje válidos.");}
+        });footer.addView(send,new LinearLayout.LayoutParams(-1,dp(48)));
+    }
     private void bookingCard(LinearLayout parent,JSONObject item){
+        if(hourlyPreview(item)){hourlyCard(parent,item);return;}
         final String status=item.optString("status","");
         final String id=item.optString("id","");
         LinearLayout tile=column();
