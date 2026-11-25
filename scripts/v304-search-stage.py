@@ -57,7 +57,7 @@ def build():
  html=index.read_text()
  assert html.count('id="home-origin"')==1 and html.count('id="location-shortcut"')==1 and html.count('</body>')==1
  hint=pathlib.Path('addons/v304-location-hint.html').read_text()
- index.write_text(html.replace('v30.4','v30.4.5').replace('V30.4 QA','V30.4.5 QA').replace('</body>',hint+pathlib.Path('addons/v304-number-info.html').read_text()+'</body>'))
+ index.write_text(html.replace('v30.4','v30.4.6').replace('V30.4 QA','V30.4.6 QA').replace('</body>',hint+pathlib.Path('addons/v304-number-info.html').read_text()+pathlib.Path('addons/v304-auth-isolation.html').read_text()+'</body>'))
  # The candidate's exact live WEB bundle is the latest upload, not an old branch.
  source=O['get_live_worker_source']()
  assert all(x in source for x in ('VIA_POI_API','__viaLegacyWorker','extendPlaceSearch'))
@@ -72,8 +72,8 @@ def build():
  for n in hashes:
   if n.endswith('.html'):
    p=ASSETS/n
-   p.write_text(re.sub(r'reference\.js\?v=[^"\x27\s<>]+','reference.js?v=30.4.5',re.sub(r'address-autocomplete\.js\?v=[^"\x27\s<>]+','address-autocomplete.js?v=30.4.5',p.read_text())))
- sw=ASSETS/'sw.js';sw.write_text(sw.read_text().replace('via-traslados-v30.2-route-cache','via-traslados-v30.4.5-search-cache'))
+   p.write_text(re.sub(r'reference\.js\?v=[^"\x27\s<>]+','reference.js?v=30.4.6',re.sub(r'address-autocomplete\.js\?v=[^"\x27\s<>]+','address-autocomplete.js?v=30.4.6',p.read_text())))
+ sw=ASSETS/'sw.js';sw.write_text(sw.read_text().replace('via-traslados-v30.2-route-cache','via-traslados-v30.4.6-search-cache'))
  dbid=ensure_db()
  cfg={'name':STAGE,'main':'./worker.mjs','compatibility_date':'2026-11-10','compatibility_flags':['global_fetch_strictly_public'],'workers_dev':True,'vars':{'VIA_PLACES_ENABLED':'true'},'d1_databases':[{'binding':'POI_CACHE','database_name':'via-poi-cache-qa','database_id':dbid}],'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
  (OUT/'wrangler.jsonc').write_text(json.dumps(cfg))

@@ -14,7 +14,7 @@ for(const [os,engine] of [['Android',chromium],['iOS',webkit]]){
   });
   const p=await ctx.newPage();await p.goto(base+'/index.html',{waitUntil:'domcontentloaded'});
   await p.waitForFunction(()=>typeof window.__viaTestPanel==='function');
-  assert((await p.locator('body').innerText()).includes('V30.4.5 QA'));
+  assert((await p.locator('body').innerText()).includes('V30.4.6 QA'));
   await p.evaluate(()=>window.__viaTestPanel('Número orientativo','Es un número cercano, no necesariamente tu puerta. Verificá el punto.',[{label:'Ajustar en el mapa',go:()=>{window.__viaMapClicked=true;window.__viaTestMap()}}]));
   const card=p.locator('#via-number-info-native');await card.waitFor({state:'visible'});
   const m=await card.evaluate(el=>({h:el.getBoundingClientRect().height,after:!!el.previousElementSibling?.querySelector('#home-origin'),button:el.querySelector('button').getBoundingClientRect().height,color:getComputedStyle(el).backgroundColor}));

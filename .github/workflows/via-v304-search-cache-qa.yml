@@ -1,4 +1,4 @@
-name: "Vía V30.4 — V30.4.5 — renderizador real y teclado y ayuda de ubicación QA"
+name: "Vía V30.4 — V30.4.6 — aislamiento de identidad y regresión QA"
 on:
   push:
     branches: [via-v30-geoapify-places-qa-20261124]
@@ -33,6 +33,7 @@ jobs:
           npx playwright install --with-deps chromium webkit >/dev/null
           node scripts/v304-location-hint-browser.mjs
           node scripts/v304-number-info-browser.mjs
+          node scripts/v304-auth-isolation-browser.mjs
       - name: Probar búsquedas y rutas reales
         run: node scripts/v304-search-smoke.mjs
       - name: Confirmar producción intacta
