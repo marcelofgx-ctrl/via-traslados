@@ -10,59 +10,10 @@
 .reference-booking .via-number-info .via-number-copy{display:flex;align-items:center;gap:5px;min-width:0;font:600 11.5px/1.25 system-ui,sans-serif;color:#365c79}
 .via-number-copy svg{width:15px;height:15px;flex:0 0 15px}
 .reference-booking .via-number-info .via-number-action{display:inline-flex!important;align-items:center!important;justify-content:flex-end!important;flex:0 0 auto!important;width:auto!important;min-width:0!important;min-height:32px!important;height:auto!important;margin:0!important;padding:4px 0 4px 5px!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#315d80!important;font:700 11.5px/1.25 system-ui,sans-serif;white-space:nowrap!important}
-.reference-booking .via-number-info .via-number-original{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
+.reference-booking .via-number-info  .via-number-original{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
 .reference-route-fields:has(>.via-number-info)>.route-dash{display:none}
 @media(prefers-color-scheme:dark){
  .reference-booking .via-number-info{background:#233b4a!important;border-color:#3d5768!important;color:#c7e1f5!important}
  .reference-booking .via-number-info .via-number-copy,.reference-booking .via-number-info .via-number-action{color:#c7e1f5!important}
 }
 </style>
-<script id="via-number-info-script">
-(()=>{
- const booking=document.querySelector('.reference-booking'),origin=document.getElementById('home-origin')?.closest('.reference-field');
- if(!booking||!origin)return;
- const norm=s=>String(s||'').trim().replace(/\s+/g,' ').toLowerCase();
- const active=new Map();let frame=0;
- function restore(card,state){
-  card.classList.remove('via-number-info');state.action.classList.remove('via-number-action');
-  if(state.actionOriginal!==null)state.action.textContent=state.actionOriginal;
-  for(const node of state.originals)node.classList.remove('via-number-original');
-  state.copy.remove();
-  if(state.marker.isConnected){if(card.isConnected)state.marker.replaceWith(card);else state.marker.remove()}
-  active.delete(card);
- }
- function enhance(){
-  frame=0;
-  for(const [card,state] of active){
-   if(!card.isConnected||norm(state.heading.textContent)!=='número orientativo'||!card.contains(state.action)||!card.contains(state.heading)||card.hidden){restore(card,state)}
-  }
-  const headings=[...booking.querySelectorAll('strong,b,h2,h3,h4,div,p,span')].filter(e=>!e.children.length&&norm(e.textContent)==='número orientativo');
-  for(const heading of headings){
-   let card=heading.parentElement,action=null;
-   while(card&&card!==booking){
-    action=[...card.querySelectorAll('button,a,[role="button"]')].find(e=>/^ajustar en (el )?mapa$/i.test(e.textContent.trim()));
-    if(action)break;card=card.parentElement;
-   }
-   if(!card||card===booking||!action||active.has(card)||card.hidden||card.querySelector('input,select,textarea')||card.contains(origin))continue;
-   // Preserve the original DOM and action listener. Move only the existing notice, never clone controls.
-   const marker=document.createComment('via-number-original-position');card.before(marker);
-   const originals=[];
-   for(const child of [...card.children])if(child!==action&&!child.contains(action)){child.classList.add('via-number-original');originals.push(child)}
-   // The live notice uses a direct action; retain the original button even if nested.
-   if(action.parentElement!==card){
-    marker.remove();for(const child of originals)child.classList.remove('via-number-original');continue;
-   }
-   const copy=document.createElement('span');copy.className='via-number-copy';copy.setAttribute('aria-hidden','true');
-   copy.innerHTML='<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v5M10 6v.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>Número aproximado</span>';
-   const actionOriginal=action.children.length?null:action.textContent;
-   if(actionOriginal!==null)action.textContent='Ajustar en mapa ›';
-   action.classList.add('via-number-action');card.classList.add('via-number-info');card.prepend(copy);
-   active.set(card,{marker,heading,action,actionOriginal,originals,copy});
-   origin.after(card);
-  }
- }
- const queue=()=>{if(!frame)frame=requestAnimationFrame(enhance)};
- new MutationObserver(queue).observe(booking,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden']});
- queue();
-})();
-</script>
