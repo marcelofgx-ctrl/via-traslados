@@ -1,0 +1,12 @@
+/* Vía Traslados QA: resolver conflicto de !important en identidad del wizard.
+   Se aplica solo al entorno QA; no altera CSS productivo. */
+body.premium-page.in-booking #known-customer.hidden,
+body.premium-page.in-booking #phone-first.hidden,
+body.premium-page.in-booking #return-form.hidden,
+body.premium-page.in-booking #new-account.hidden,
+body.premium-page.in-booking #turnstile-box.hidden {
+ display:none!important;
+}
+body.premium-page.in-booking #known-customer:not(.hidden) {
+ display:grid!important;
+}

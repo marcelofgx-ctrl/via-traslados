@@ -1,0 +1,60 @@
+/* Sólo portada de Vía Traslados MAESTRO QA; no alterar buscador ni motor. */
+#via-home-account-invite[hidden]{display:none!important}
+#via-home-account-invite{
+ box-sizing:border-box;width:100%;max-width:100%;
+ margin:10px 0 1px;padding:10px 13px;
+ display:flex;align-items:center;justify-content:space-between;gap:10px;
+ border:1px solid rgba(92,185,170,.31);
+ border-radius:12px;background:linear-gradient(116deg,rgba(5,40,38,.92),rgba(10,67,61,.88));
+ color:#d5ebe5;box-shadow:0 2px 10px rgba(0,0,0,.08)
+}
+#via-home-account-invite .via-home-account-invite__copy{
+ display:flex;flex-direction:column;gap:2px;min-width:0;
+ font-size:11px;line-height:1.3;
+}
+#via-home-account-invite .via-home-account-invite__copy strong{
+ font-size:12px;line-height:1.25;font-weight:750;color:#f5fffb;
+}
+#via-home-account-invite .via-home-account-invite__link{
+ display:inline-flex;align-items:center;justify-content:center;
+ flex:0 0 auto;min-height:37px;padding:8px 10px;
+ background:rgba(102,206,183,.14);border:1px solid rgba(128,222,199,.42);
+ border-radius:9px;color:#b8f2e4;text-decoration:none;
+ font-size:11px;font-weight:760;white-space:nowrap;
+}
+#via-home-account-invite .via-home-account-invite__link:hover,
+#via-home-account-invite .via-home-account-invite__link:focus-visible{
+ background:#116f61;color:#fff;outline-offset:3px;
+}
+@media (max-width:355px){
+ #via-home-account-invite{padding:9px 10px;gap:6px;}
+ #via-home-account-invite .via-home-account-invite__copy strong{font-size:11px}
+ #via-home-account-invite .via-home-account-invite__link{padding:7px;font-size:10px;}
+}
+
+/* Saludo compacto bajo el encabezado, visible solo con sesión validada.
+   No modifica la cabecera, buscador, formularios ni las tarjetas de viaje. */
+body[data-page="passenger"] #via-home-user-greeting[hidden]{display:none!important}
+body[data-page="passenger"] #via-home-user-greeting{
+ display:inline-flex;align-items:center;justify-content:center;gap:7px;
+ max-width:min(100%,280px);box-sizing:border-box;
+ margin:0 auto 9px;padding:7px 13px;min-height:32px;
+ border:1px solid rgba(33,134,111,.27);
+ border-radius:999px;background:rgba(242,253,248,.89);
+ color:#245a4a;box-shadow:0 2px 10px rgba(5,77,62,.06);
+ font-size:12px;line-height:1.3;letter-spacing:.05px;
+}
+body[data-page="passenger"] #via-home-user-greeting::before{
+ content:"";width:6px;height:6px;flex:0 0 6px;border-radius:50%;
+ background:#168878;box-shadow:0 0 0 3px rgba(22,136,120,.11);
+}
+body[data-page="passenger"] #via-home-user-greeting strong{
+ color:#135a4b;font-size:12px;font-weight:790;overflow:hidden;
+ white-space:nowrap;text-overflow:ellipsis;max-width:190px;
+}
+@media (max-width:359px){
+ body[data-page="passenger"] #via-home-user-greeting{
+  padding:6px 11px;margin-bottom:8px;font-size:11px;
+ }
+ body[data-page="passenger"] #via-home-user-greeting strong{font-size:11px;max-width:155px;}
+}

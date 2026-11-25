@@ -1,0 +1,17 @@
+name: Vía Maestra — revisar cierre de sesión V29 públicamente (solo lectura)
+on:
+  push:
+    branches: [via-maestro-integracion-real-qa-20261118]
+    paths: ["scripts/maestro-mine-live-readonly.mjs", ".github/workflows/via-maestro-mine-readonly.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Identificar bytes públicos y código específico de logout sin cuentas
+        run: node scripts/maestro-mine-live-readonly.mjs

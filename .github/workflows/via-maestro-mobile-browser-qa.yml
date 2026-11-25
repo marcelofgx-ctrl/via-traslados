@@ -1,0 +1,25 @@
+name: Vía Maestra — QA navegador móvil real 320/360/390/412
+on:
+  push:
+    branches: [via-maestro-integracion-real-qa-20261118]
+    paths:
+      - "scripts/maestro-browser-mobile-qa.mjs"
+      - ".github/workflows/via-maestro-mobile-browser-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Instalar motor Playwright sin modificar dependencias del proyecto
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock playwright-core@1.58.2
+          command -v google-chrome || test -x /opt/google/chrome/chrome
+      - name: Probar web MAESTRO QA real con cuatro anchos y dos cuentas falsas
+        run: node scripts/maestro-browser-mobile-qa.mjs

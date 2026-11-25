@@ -1,0 +1,63 @@
+name: Vía Maestra — compilar APK V36 QA segregada
+on:
+  push:
+    branches: [via-maestro-integracion-real-qa-20261118]
+    paths:
+      - "android-driver/**"
+      - "tests/android-session-generation.test.mjs"
+      - ".github/workflows/via-maestro-apk-qa.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Comprobar reglas de identidad y compatibilidad previas
+        run: |
+          set -euo pipefail
+          node --test tests/android-session-generation.test.mjs tests/assignment-rules.test.mjs
+          node --check backend/worker.js
+          grep -Fq 'API_MASTER_QA = "https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev"' android-driver/app/src/main/java/uy/viatraslados/conductor/MainActivity.java
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.9"}
+      - name: Instalar plataforma Android 35
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compilar APK de pruebas con paquete único y validar firma debug
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaMasterQa=true --no-daemon
+          APK=android-driver/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='uy.viatraslados.conductor.maestroqa'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "versionCode='36'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+          unzip -t "$APK" | tail -2
+          mkdir -p dist
+          cp "$APK" dist/via-traslados-conductor-maestro-qa-v36.apk
+          (cd dist && sha256sum via-traslados-conductor-maestro-qa-v36.apk > SHA256SUMS-MAESTRO.txt)
+      - name: Compilar V34 QA anterior y variante V35 prod-candidata sin firmar release
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleDebug -PviaCatalogQa=true --no-daemon
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging android-driver/app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='uy.viatraslados.conductor.v34catalogqa'"
+          gradle -p android-driver :app:assembleDebug -PviaProduction=true --no-daemon
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging android-driver/app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='uy.viatraslados.conductor.productionrc'"
+      - name: Conservar instalador MAESTRO QA como artefacto privado; nunca distribución productiva
+        uses: actions/upload-artifact@v4
+        with:
+          name: via-maestro-apk-v36-qa-privada
+          path: dist/*
+          retention-days: 14
+          if-no-files-found: error

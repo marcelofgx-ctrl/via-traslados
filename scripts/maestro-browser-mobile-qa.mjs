@@ -1,0 +1,160 @@
+// Prueba real Chromium solo sobre QA pública, sin crear reservas en producción.
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright-core';
+const QA_WEB_URL='https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev/';
+const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-sandbox']});
+try{
+ for(const width of [320,360,390,412]){
+  const context=await browser.newContext({viewport:{width,height:780},isMobile:true,hasTouch:true,deviceScaleFactor:2});
+  const page=await context.newPage();
+  const errors=[],network=[];
+  page.on('pageerror',err=>errors.push(String(err.message).slice(0,140)));
+  page.on('response',resp=>{if(resp.url().includes('via-traslados-maestro-api-qa'))network.push({path:new URL(resp.url()).pathname,status:resp.status()});});
+  page.on('requestfailed',req=>{if(req.url().includes('via-traslados-maestro-api-qa'))network.push({path:new URL(req.url()).pathname,failed:req.failure()?.errorText});});
+  const response=await page.goto(QA_WEB_URL,{waitUntil:'domcontentloaded',timeout:30000});
+  assert.equal(response?.status(),200,'home QA '+width);
+  const panel=page.locator('#via-maestro-qa-access');
+  await panel.waitFor({state:'visible',timeout:20000});
+  assert.equal(await page.locator('#via-qa-toggle').getAttribute('aria-expanded'),'false');
+  assert.equal(await page.locator('#via-qa-panel').isVisible(),false,'Panel de pruebas debe iniciar plegado');
+  const cardDisplay=await page.evaluate(()=>{
+    document.body.classList.add('in-booking');
+    const card=document.getElementById('known-customer');
+    card.classList.add('hidden');
+    return {display:getComputedStyle(card).display,qa:window.VIA_QA_WIZARD};
+  });
+  assert.equal(cardDisplay.display,'none','La cuenta anterior sigue visible por CSS');
+  assert.equal(cardDisplay.qa,true,'Sin marca del wizard QA');
+  if(width===390){
+    const api='https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev';
+    const health=await (await page.request.get(api+'/api/health')).json();
+    const preview=await page.request.post(api+'/api/public/route-preview',{
+      headers:{Origin:'https://via-traslados-maestro-web-qa.marcelof-gx.workers.dev'},
+      data:{origin:'Montevideo Shopping',destination:'Aeropuerto Internacional de Carrasco'}
+    });
+    const result=await preview.json();
+    if(health.routePreviewReady){
+      assert.equal(preview.status(),200,'Proveedor QA configurado pero la ruta vial no responde');
+      assert(Number(result.distanceKm)>0&&Number(result.durationMinutes)>0,
+        'QA debe devolver kilómetros y minutos reales, no valores ficticios');
+      assert.equal(result.source,'Geoapify');
+      console.log('MAESTRO_QA_GEOAPIFY_ROUTE_OK',JSON.stringify({
+        distanceKm:result.distanceKm,durationMinutes:result.durationMinutes,source:result.source
+      }));
+    }else{
+      assert.equal(preview.status(),503,'QA sin credenciales debe fallar de forma explícita');
+      assert.equal(result.reason,'qa_geoapify_not_configured');
+      console.log('MAESTRO_QA_GEOAPIFY_PENDING: secretos QA independientes aún no configurados');
+    }
+  }
+  const invite=page.locator('#via-home-account-invite');
+  const greeting=page.locator('#via-home-user-greeting');
+  const nameSlot=page.locator('#via-home-user-name');
+  await invite.waitFor({state:'visible',timeout:16000});
+  await greeting.waitFor({state:'hidden',timeout:15000});
+  assert.match(await invite.innerText(),/Creá tu cuenta/,'Falta invitación sin sesión');
+  assert.equal(await invite.locator('a').getAttribute('href'),'./mis-reservas.html?accion=registro');
+  // El botón de reservas y el buscador principal deben sobrevivir sin cambios.
+  assert.equal(await page.locator('#start-booking').count(),1);
+  assert.equal(await page.locator('.reference-reservations').count(),1);
+  await invite.locator('a').click();
+  // Chrome puede seguir esperando scripts externos del sitio tras navegar.
+  // Validar DOM y URL efectiva, no el evento "load" del navegador.
+  console.log('HOME_CTA_NAV_CHECK',JSON.stringify({width,url:page.url()}));
+  await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:20000});
+  assert.match(page.url(),/mis-reservas(?:\.html)?\?accion=registro/,
+    'El CTA no abre el registro independiente');
+  await page.locator('#mine-signup-card').waitFor({state:'visible',timeout:18000});
+  assert.equal(await page.locator('#mine-login-card').isVisible(),false,
+   'CTA no seleccionó registro nuevo');
+  if(width===390){
+    // Registrar usuario nuevo solo en D1 QA y sin solicitar un viaje.
+    await page.locator('#mine-signup-name').fill('Persona CTA QA');
+    await page.locator('#mine-signup-phone').fill('099654321');
+    await page.locator('#mine-signup-email').fill('cta.registro.test@qa.invalid');
+    await page.locator('#mine-signup-send').click();
+    await page.locator('#mine-signup-verify').waitFor({state:'visible',timeout:15000});
+    await page.locator('#mine-signup-code').fill('123456');
+    await page.locator('#mine-signup-confirm').click();
+    await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='cta.registro.test@qa.invalid',null,{timeout:20000});
+    const rows=await page.evaluate(()=>window.ViaStore.mine());
+    assert.equal(rows.length,0,'El alta autónoma QA creó o recuperó reservas inesperadas');
+    console.log('HOME_CTA_REGISTRATION_E2E_OK',JSON.stringify({width,registered:true,bookings:0}));
+  }
+  await page.goto(QA_WEB_URL,{waitUntil:'domcontentloaded',timeout:30000});
+  if(width===390)await page.locator('#via-home-account-invite').waitFor({state:'hidden',timeout:15000});
+  await page.locator('#via-maestro-qa-access').waitFor({state:'visible',timeout:20000});
+  await page.locator('#via-qa-toggle').click();
+  assert.match(await panel.innerText(),/ENTORNO DE PRUEBAS/);
+  await page.locator('button[data-via-qa="A"]').click();
+  await page.locator('#via-qa-panel').waitFor({state:'hidden',timeout:15000});
+  try{
+    await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid',null,{timeout:8000});
+    await invite.waitFor({state:'hidden',timeout:15000});
+    await greeting.waitFor({state:'visible',timeout:15000});
+    assert.equal(await nameSlot.textContent(),'Ana');
+  }catch(err){
+    const state=await page.evaluate(()=>({store:!!window.ViaStore,config:window.VIA_CONFIG?.apiUrl,
+      customer:window.ViaStore?.customer()?.profile?.email||null,
+      qaStatus:document.querySelector('#via-qa-active')?.textContent,
+      selected:document.querySelector('button[data-via-qa="A"]')?.disabled}));
+    console.error('MAESTRO_BROWSER_DIAG',JSON.stringify({width,state,network,errors}));
+    throw err;
+  }
+  await page.locator('#via-qa-toggle').click();
+  await page.locator('button[data-via-qa="B"]').click();
+  await page.locator('#via-qa-panel').waitFor({state:'hidden',timeout:15000});
+  await page.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.b@qa.invalid',null,{timeout:20000});
+  await page.waitForFunction(()=>document.getElementById('via-home-user-name')?.textContent==='Bruno',null,{timeout:15000});
+  const metrics=await page.evaluate(()=>({
+    width:window.innerWidth,scrollWidth:document.documentElement.scrollWidth,
+    email:window.ViaStore.customer().profile.email,
+    qa:window.VIA_CONFIG.apiUrl.includes('via-traslados-maestro-api-qa')
+  }));
+  assert(metrics.qa,'store QA apunta a producción');
+  assert.equal(metrics.email,'pasajero.b@qa.invalid');
+  assert(metrics.scrollWidth<=metrics.width+2,'Scroll horizontal '+JSON.stringify(metrics));
+  await page.locator('#via-qa-toggle').click();
+  await page.locator('button[data-via-qa="out"]').click();
+  await page.waitForFunction(()=>window.ViaStore?.customer()===null,null,{timeout:20000});
+  await invite.waitFor({state:'visible',timeout:15000});
+  await greeting.waitFor({state:'hidden',timeout:15000});
+  const intro=await page.evaluate(()=>({
+    width:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,
+    hasVisiblePrompt:!!document.querySelector('#via-home-account-invite:not([hidden])')
+  }));
+  assert(intro.hasVisiblePrompt,'No reaparece la invitación al salir');
+  assert(intro.scrollWidth<=intro.width+2,'La invitación genera scroll horizontal '+JSON.stringify(intro));
+  console.log('MAESTRO_BROWSER_QA_OK',JSON.stringify({width,horizontalScroll:false,loginAB:true,logout:true,pageErrors:errors}));
+  await context.close();
+ }
+ // Regresión exacta reportada en Samsung: paso de identidad y cambio A/B.
+ const c=await browser.newContext({viewport:{width:390,height:810},isMobile:true,hasTouch:true});
+ const w=await c.newPage();
+ await w.goto(QA_WEB_URL,{waitUntil:'domcontentloaded'});
+ await w.locator('#via-qa-toggle').click();
+ await w.locator('button[data-via-qa="A"]').click();
+ await w.waitForFunction(()=>window.ViaStore?.customer()?.profile?.email==='pasajero.a@qa.invalid');
+ await w.locator('#start-booking').click();
+ await w.evaluate(()=>{
+  document.getElementById('origin').value='Centro de Montevideo';
+  document.getElementById('destination').value='Aeropuerto de Carrasco';
+  document.getElementById('date').value=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+ });
+ await w.locator('#to-contact').click();
+ await w.locator('#known-customer').waitFor({state:'visible'});
+ assert.equal(await w.locator('#phone-first').isVisible(),false,'Cuenta reconocida y teléfono visibles a la vez');
+ await w.locator('#via-qa-toggle').click();
+ await w.locator('button[data-via-qa="B"]').click();
+ await w.waitForFunction(()=>document.getElementById('known-customer-title')?.textContent==='Hola, Bruno');
+ await w.locator('#via-qa-toggle').click();
+ await w.locator('button[data-via-qa="out"]').click();
+ await w.locator('#known-customer').waitFor({state:'hidden'});
+ await w.locator('#phone-first').waitFor({state:'visible'});
+ await w.locator('#account-phone').fill('099000091');
+ await w.locator('#phone-lookup').click();
+ await w.waitForFunction(()=>document.getElementById('form-result')?.textContent?.includes('QA · Cuentas'));
+ console.log('MAESTRO_IDENTITY_WIZARD_QA_OK: A/B/Salir, sin cuenta fantasma ni CAPTCHA erróneo');
+ await c.close();
+
+}finally{await browser.close()}

@@ -12,7 +12,20 @@ const adminHeaders={'X-Operator-Key':operatorSecret};
 const ORIGIN='https://viatraslados.com';
 function db(){
  const bookings=[],cache=new Map(),rates=new Map();let apiRequests=0;
- return {bookings,cache,rates,get apiRequests(){return apiRequests},prepare(sql){
+ return {bookings,cache,rates,get apiRequests(){return apiRequests},
+  // El Worker usa D1.batch para evitar reservas sin evento; el mock debe
+  // conservar el mismo contrato transaccional sin recurrir a producción.
+  async batch(statements){
+   const oldLength=bookings.length;
+   try{
+    for(const statement of statements)await statement.run();
+    return statements.map(()=>({success:true}));
+   }catch(error){
+    bookings.length=oldLength;
+    throw error;
+   }
+  },
+  prepare(sql){
   let args=[];
   const q={bind(...x){args=x;return q},async first(){
    if(sql.startsWith('INSERT INTO otp_rate_limits')){
