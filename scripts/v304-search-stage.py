@@ -72,7 +72,7 @@ def build():
  for n in hashes:
   if n.endswith('.html'):
    p=ASSETS/n
-   p.write_text(re.sub(r'reference\.js\?v=[^"\x27\s<>]+','reference.js?v=30.4.5',re.sub(r'address-autocomplete\.js\?v=[^"\x27\s<>]+','address-autocomplete.js?v=30.4.3',p.read_text()))
+   p.write_text(re.sub(r'reference\.js\?v=[^"\x27\s<>]+','reference.js?v=30.4.5',re.sub(r'address-autocomplete\.js\?v=[^"\x27\s<>]+','address-autocomplete.js?v=30.4.5',p.read_text())))
  sw=ASSETS/'sw.js';sw.write_text(sw.read_text().replace('via-traslados-v30.2-route-cache','via-traslados-v30.4.5-search-cache'))
  dbid=ensure_db()
  cfg={'name':STAGE,'main':'./worker.mjs','compatibility_date':'2026-11-10','compatibility_flags':['global_fetch_strictly_public'],'workers_dev':True,'vars':{'VIA_PLACES_ENABLED':'true'},'d1_databases':[{'binding':'POI_CACHE','database_name':'via-poi-cache-qa','database_id':dbid}],'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}
