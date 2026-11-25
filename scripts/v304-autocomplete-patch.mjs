@@ -7,7 +7,7 @@ const patch=String.raw`let layoutFrame=0;
 function viewport(){const v=window.visualViewport;return {top:v?.offsetTop||0,left:v?.offsetLeft||0,width:v?.width||window.innerWidth,height:v?.height||window.innerHeight}}
 function position(input){
  const v=viewport(),r=input.getBoundingClientRect(),gap=12,edge=8;
- const keyboard=window.innerHeight-v.height>100||v.offsetTop>20;
+ const keyboard=window.innerHeight-v.height>100||v.top>20;
  if(keyboard&&document.activeElement===input&&(r.bottom>v.top+v.height-16||r.top<v.top+16)){
   input.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
  }
