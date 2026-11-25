@@ -1,3 +1,5 @@
+> **Referencia vigente (25/11/2026):** [V30.4.8 / APK V35](PRODUCCION_ESTABLE_V30.4.8_2026-11-25.md). Las entradas de abajo son históricas.
+
 # Vía Traslados — Congelamiento de producción y rollback (21/11/2026)
 
 ## ESTADO PRODUCTIVO VIGENTE — v29.1.11 (22/11/2026, Uruguay)

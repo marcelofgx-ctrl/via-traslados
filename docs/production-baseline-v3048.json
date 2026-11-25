@@ -1,0 +1,41 @@
+{
+  "consolidated_on": "2026-11-25",
+  "web": {
+    "version": "30.4.8",
+    "worker": "via-traslados-web-prod",
+    "worker_version": "d29d5304-db8d-48bb-a082-44b336454ed6",
+    "activated_at": "2026-11-25T11:07:05Z",
+    "verified_assets": 39,
+    "url": "https://viatraslados.com"
+  },
+  "api": {
+    "worker": "via-traslados-api",
+    "worker_version": "5ad845a7-beeb-44e5-9e52-6459bd1fbb8b"
+  },
+  "apk": {
+    "version": 35,
+    "environment": "production"
+  },
+  "rollback": {
+    "scope": "web_only",
+    "version": "30.2",
+    "worker_version": "9e2dac8c-6d6f-4921-b425-99b6a71d525d"
+  },
+  "source_commit": "d61600e465fd635efaec8d80e15e88459cb425de",
+  "stable_branch": "via-stable-v3048-prod-20261125",
+  "evidence": {
+    "qa": 45599888559,
+    "build": 45600307825,
+    "manifest_artifact": 15014789208,
+    "production": 45601161049
+  },
+  "pending": [
+    "POI deduplication",
+    "initial distance pending display",
+    "real OTP delivery",
+    "physical iOS",
+    "complete commercial flow"
+  ],
+  "no_deploy": true,
+  "no_database_changes": true
+}
