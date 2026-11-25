@@ -1,0 +1,51 @@
+name: Vía Traslados — diagnóstico correo QA solo lectura
+on:
+  push:
+    branches: [via-web-v29-1-rc1-20261119]
+    paths: [".github/workflows/via-v291-mail-readiness.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      VIA_QA_RESEND_KEY: ${{ secrets.VIA_QA_RESEND_KEY }}
+      VIA_QA_TURNSTILE_SECRET: ${{ secrets.VIA_QA_TURNSTILE_SECRET }}
+      VIA_QA_EMAIL_PEPPER: ${{ secrets.VIA_QA_EMAIL_PEPPER }}
+      VIA_QA_FROM: ${{ secrets.VIA_QA_FROM }}
+      VIA_QA_TEST_EMAIL_HASH: ${{ secrets.VIA_QA_TEST_EMAIL_HASH }}
+    steps:
+      - name: Verificar configuración de proveedor sin revelar valores
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const names=['VIA_QA_RESEND_KEY','VIA_QA_TURNSTILE_SECRET','VIA_QA_EMAIL_PEPPER','VIA_QA_FROM','VIA_QA_TEST_EMAIL_HASH'];
+          const present=Object.fromEntries(names.map(n=>[n,Boolean(process.env[n]?.trim())]));
+          console.log('VIA_QA_MAIL_GITHUB_SECRET_READINESS '+JSON.stringify(present));
+          const token=process.env.CLOUDFLARE_API_TOKEN,account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          if(!account||!token)throw Error('Credenciales de auditoría ausentes');
+          const name='via-traslados-maestro-api-qa';
+          const endpoint='https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/scripts/'+name+'/secrets';
+          let cf={available:false,listed_names:[],reason:'not inspected'};
+          try{
+           const res=await fetch(endpoint,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
+           if(res.ok){
+             const json=await res.json();
+             const available=(json.result||[]).map(s=>s.name);
+             cf={available:true,listed_names:available.filter(n=>names.includes(n)||['RESEND_API_KEY','RESEND_FROM','OTP_PEPPER','TURNSTILE_SECRET_KEY'].includes(n)),reason:'metadata only'};
+           }else cf={available:false,listed_names:[],reason:'HTTP '+res.status};
+          }catch(e){cf={available:false,listed_names:[],reason:String(e.name||'network')}};
+          console.log('VIA_QA_MAIL_CLOUDFLARE_SECRET_METADATA '+JSON.stringify(cf));
+          const q=await fetch('https://via-traslados-maestro-api-qa.marcelof-gx.workers.dev/api/health');
+          const qj=await q.json();
+          if(!q.ok||qj.qa!==true||qj.production!==false)throw Error('QA health incorrecto');
+          const p=await fetch('https://via-traslados-api.marcelof-gx.workers.dev/api/health');
+          const pj=await p.json();
+          if(!p.ok||pj.ok!==true)throw Error('API producción no saludable');
+          console.log('VIA_MAIL_HEALTH_READONLY '+JSON.stringify({qa:true,prodOtpConfigured:pj.otpAvailable===true}));
+          console.log('VIA_MAIL_READONLY_COMPLETE — no sent emails, no D1 updates');
+          NODE
