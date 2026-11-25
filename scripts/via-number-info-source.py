@@ -4,7 +4,7 @@ paths=[p.removeprefix('pages/') for p in subprocess.check_output(['git','ls-tree
 paths+=['flow-premium.js','flow-premium.css','via-refinement.css']
 def get(p):
  try:
-  with urllib.request.urlopen(url+'/'+p,timeout=25) as r:s=r.read().decode()
+  with urllib.request.urlopen(urllib.request.Request(url+'/'+p,headers={'User-Agent':'ViaTrasladosV35SignedRelease','Cache-Control':'no-cache','Accept-Encoding':'identity'}),timeout=35) as r:s=r.read().decode()
   for m in re.finditer(r'Número orientativo|número cercano|Ajustar en el mapa|Mejorando precisión',s,re.I):
    print('VIA_NOTICE_SOURCE '+p+' '+s[max(0,m.start()-650):m.end()+900].replace('\n',' '),flush=True)
  except Exception as e:print('VIA_NOTICE_FETCH '+p+' '+str(e),flush=True)
