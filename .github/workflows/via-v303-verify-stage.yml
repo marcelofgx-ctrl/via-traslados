@@ -1,0 +1,22 @@
+name: "Vía V30.3 — verificar QA publicada"
+on:
+  push:
+    branches: [via-v30-geoapify-places-qa-20261124]
+    paths: [".github/workflows/via-v303-verify-stage.yml"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: node scripts/v303-search-smoke.mjs
+      - if: always()
+        run: python3 -c "import runpy;runpy.run_path('scripts/v303-search-stage.py')['baseline']();print('VIA_V303_PROD_UNCHANGED')"
