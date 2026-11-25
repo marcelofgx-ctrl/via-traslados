@@ -1,0 +1,4 @@
+# Centro de descargas CD1.0
+Worker independiente via-traslados-descargas, sin D1 ni cambios en la web de pasajeros/API. Se publican exclusivamente la V35 firmada (hash fijo) y V36 QA offline (artifact de compilación validada). No se descarga ni publica ningún keystore. No publicar APK conectadas a QA real en un sitio público: configurar acceso restringido primero.
+URL inicial https://via-traslados-descargas.marcelof-gx.workers.dev . Subdominio propuesto descargas.viatraslados.com se asocia sólo si zona y DNS permiten, sin sustituir registros existentes.
+Cada nueva versión se añade al catálogo mediante un release explícito y un artefacto verificado, conservando binarios anteriores. El workflow actual fija los dos runs originales; todavía no es un publicador automático de cualquier nueva compilación. Mantener archivo duradero separado de artifacts con retención limitada en una siguiente etapa.

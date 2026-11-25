@@ -1,0 +1,55 @@
+name: "Vía — centro independiente de descargas V35 y V36"
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ["download-center/**",".github/workflows/via-download-center.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-download-center
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Recuperar APK V35 firmada existente (no clave)
+        uses: actions/download-artifact@v4
+        with:
+          name: VIA_V35_PROD_APK_SIGNED
+          run-id: 44217589953
+          github-token: ${{ github.token }}
+          path: apk-v35
+      - name: Recuperar APK V36 aislada compilada
+        uses: actions/download-artifact@v4
+        with:
+          name: via-v36-horas-qa-apk
+          run-id: 45686170483
+          github-token: ${{ github.token }}
+          path: apk-v36
+      - name: Preparar catálogo y verificar integridad
+        run: |
+          python3 download-center/build.py
+          unzip -t download-center/assets/apk/via-traslados-conductor-v35.apk | tail -2
+          unzip -t download-center/assets/apk/via-traslados-v36-horas-qa.apk | tail -2
+      - name: Publicar sitio independiente
+        run: npx --yes wrangler@4.160.1 deploy --config download-center/wrangler.jsonc
+      - name: Verificar descargas directas
+        run: python3 download-center/check.py https://via-traslados-descargas.marcelof-gx.workers.dev
+      - name: Asociar subdominio sólo si libre y autorizado
+        continue-on-error: true
+        run: |
+          python3 download-center/domain.py
+          python3 download-center/check.py https://descargas.viatraslados.com
+      - name: Verificar web y API de producción sin cambios
+        if: always()
+        run: python3 -c "import runpy;m=runpy.run_path('scripts/v304-prod-release.py');assert m['M']['version'](m['STAGE'])=='d29d5304-db8d-48bb-a082-44b336454ed6';assert m['M']['version'](m['M']['API'])==m['M']['BASE_API'];print('VIA_DOWNLOAD_PROD_UNCHANGED')"
