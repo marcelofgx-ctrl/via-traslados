@@ -18,7 +18,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {persist-credentials: false,fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Require exact approved candidate and previous rollback
