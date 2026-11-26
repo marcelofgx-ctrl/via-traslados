@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium,firefox,webkit} from 'playwright';
 import {mkdirSync} from 'node:fs';
-const root='https://via-traslados-gps-icon-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-gps-compact-qa.marcelof-gx.workers.dev';
 const old='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev';
 mkdirSync('gps-premium-evidence',{recursive:true});
 for(const n of ['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-picker.js','app.js','store.js','via-visual-compat.css']){
@@ -30,9 +30,10 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut')?.dataset.viaGpsState==='idle');
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.12 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.13 QA');
  const button=p.locator('#location-shortcut'),state=s=>p.waitForFunction(x=>document.querySelector('#location-shortcut')?.dataset.viaGpsState===x,s,{timeout:12000});
- const box=await button.boundingBox();assert(box.width>=47&&box.width<=49&&box.height>=47&&box.height<=49);assert.equal(await button.getAttribute('aria-label'),'Mi ubicación');assert.equal(await button.getAttribute('title'),'Mi ubicación');
+ assert.equal(await p.locator('#home-origin').getAttribute('placeholder'),'¿Dónde te recogemos?');
+ const box=await button.boundingBox();assert(box.width>=43.9&&box.width<=45&&box.height>=43.9&&box.height<=45);assert.equal(await button.getAttribute('aria-label'),'Mi ubicación');assert.equal(await button.getAttribute('title'),'Mi ubicación');
  const visual=await button.evaluate(e=>({icon:getComputedStyle(e,'::before').backgroundImage,label:getComputedStyle(e,'::after').content,scroll:document.documentElement.scrollWidth,width:innerWidth}));
  assert(visual.icon.includes('data:image/svg+xml'));assert.equal(visual.label,'none');assert(visual.scroll<=visual.width);
  await p.screenshot({path:'gps-premium-evidence/'+name+'-idle.png',animations:'disabled'});
