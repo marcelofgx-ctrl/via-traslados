@@ -4,9 +4,12 @@ m=runpy.run_path('scripts/v30410-visual-build.py')
 out=m['OUT'];assets=m['ASSETS'];P=m['P']
 manifest=json.loads((out/'manifest.json').read_text())
 p=assets/'index.html';s=p.read_text();assert 'V30.4.10.7 QA' in s
-p.write_text(s.replace('V30.4.10.7 QA','V30.4.10.7').replace('Versión 30.4.10.7 QA','Versión 30.4.10.7'))
+p.write_text(s.replace('30.4.10.7 QA','30.4.10.8').replace('30.4.10.7','30.4.10.8'))
+# One reviewed paint-only delta from approved QA: deeper green at the bright end.
+p=assets/'via-visual-compat.css';s=p.read_text();assert s.count('#19766b 0%,#08665d 42%,#004d47 100%')==1
+p.write_text(s.replace('#19766b 0%,#08665d 42%,#004d47 100%','#09645b 0%,#08665d 42%,#004d47 100%'))
 p=assets/'sw.js';s=p.read_text();assert 'via-traslados-v30.4.9-session' in s
-p.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.7-visual'))
+p.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.8-visual'))
 # QA experiment remains an explicit comparison; production always uses approved finish.
 p=assets/'via-visual-profile.js';s=p.read_text();needle="new URLSearchParams(location.search).get('acabado')==='original'?'reference':'premium'";assert needle in s
 p.write_text(s.replace(needle,"'premium'"))

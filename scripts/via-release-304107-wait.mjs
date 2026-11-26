@@ -22,7 +22,7 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut'));
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.7');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.8');
  const button=p.locator('#location-shortcut'),note=p.locator('#via-gps-feedback');
  await button.click();
  await p.waitForFunction(()=>document.querySelector('#via-gps-feedback')?.dataset.viaWait==='gps'||[...document.querySelectorAll('#via-gps-feedback button')].some(b=>b.textContent==='Permitir ubicación'));

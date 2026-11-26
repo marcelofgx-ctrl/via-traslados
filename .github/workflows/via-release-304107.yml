@@ -1,4 +1,4 @@
-name: Vía V30.4.10.7 — authorized graphics and GPS retry production validation
+name: Vía V30.4.10.8 — authorized graphics and GPS retry production validation
 on:
   push:
     branches: [via-v30410-visual-compat-qa-20261125]
@@ -7,33 +7,11 @@ permissions:
   contents: read
   actions: read
 jobs:
-  retire-stalled-install:
-    if: "github.event.head_commit.message == 'release: streamline V30.4.10.7 without repeating approved QA'"
-    runs-on: ubuntu-24.04
-    timeout-minutes: 3
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - name: Cancel only the known old run if still installing browsers, before any upload
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          repo='${{ github.repository }}'
-          old=45797262909
-          jobs=$(gh api "repos/$repo/actions/runs/$old/jobs")
-          if printf '%s' "$jobs" | jq -e '.jobs[] | select(.id==139831011660) | (.steps | any(.name=="Install browser engines" and .status=="in_progress")) and (.steps | any(.name=="Upload immutable version without traffic" and .status as $status | ($status=="queued" or $status=="pending")) )' >/dev/null; then
-            echo 'Retiring stalled pre-upload install; no production traffic was changed by that run.'
-            gh api --method POST "repos/$repo/actions/runs/$old/cancel"
-          else
-            echo 'Old run not in verified pre-upload install state; do not cancel. Serialized release and baseline guard remain.'
-          fi
   release:
-    needs: retire-stalled-install
     concurrency:
       group: via-v30-poi-prod-api-web-atomic
       cancel-in-progress: false
-    if: "github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125' && github.event.head_commit.message == 'release: streamline V30.4.10.7 without repeating approved QA'"
+    if: "github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125' && github.event.head_commit.message == 'release: V30.4.10.8 with contrast margin preflight and verified GPS'"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -44,7 +22,7 @@ jobs:
         with: {persist-credentials: false,fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Require successful exact V30.4.10.7 isolated QA
+      - name: Require successful V30.4.10.7 base QA
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -57,7 +35,8 @@ jobs:
         timeout-minutes: 2
         run: npm install --no-save --no-audit --no-fund playwright@1.56.1
       - name: Restore pinned browser cache
-        uses: actions/cache@v4
+        id: browser-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-1.56.1-ubuntu-24.04-chromium-webkit
@@ -67,11 +46,19 @@ jobs:
       - name: Install only Chromium and WebKit, with visible download logs
         timeout-minutes: 4
         run: npx playwright install chromium webkit
+      - name: Save browser cache immediately after successful install
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.56.1-ubuntu-24.04-chromium-webkit
       - name: Build exact production package and bindings
         run: |
           python3 scripts/via-release-304107-build.py
           python3 scripts/via-release-304107-candidate.py prepare
           mkdir -p v30410-visual/evidence
+      - name: Local contrast preflight, before upload
+        run: node scripts/via-release-304107-contrast.mjs local
       - name: Upload immutable version without traffic
         run: npx --yes wrangler@4.160.1 versions upload --config v30410-visual/wrangler-prod.jsonc --keep-vars
       - name: Verify exact assets and unchanged binding contract
@@ -107,7 +94,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: via-v304107-production-evidence
+          name: via-v304108-production-evidence
           path: |
             v30410-visual/evidence
             v30410-visual/manifest.json
