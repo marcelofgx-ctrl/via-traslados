@@ -1,4 +1,4 @@
-name: Vía V30.4.10.11 — GPS premium isolated QA
+name: Vía V30.4.10.12 — GPS premium isolated QA
 on:
   push:
     branches: [via-gps-premium-v3041011-qa-20261126]
@@ -25,16 +25,20 @@ jobs:
           node --check addons/via-gps-premium.js
           node tests/via-reverse-cache.test.mjs
           python3 scripts/via-gps-premium-build.py
-      - name: Deploy separate QA, preserve .10 rollback
+      - name: Deploy separate QA, preserve .11 rollback
         run: npx --yes wrangler@4.160.1 deploy --config v30410-visual/geo-integral/wrangler-premium.jsonc
       - name: Verify live version and blocked reservations
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          const u='https://via-traslados-gps-premium-qa.marcelof-gx.workers.dev';
-          const r=await fetch(u+'/index.html');assert(r.ok);assert((await r.text()).includes('V30.4.10.11 QA'));
-          assert.equal((await fetch(u+'/api/customer/me')).status,503);
-          assert.equal((await fetch(u+'/api/requests',{method:'POST',body:'{}'})).status,503);
+          const u='https://via-traslados-gps-icon-qa.marcelof-gx.workers.dev';
+          const get=async (p,opts={})=>fetch(u+p,{...opts,headers:{'User-Agent':'ViaTrasladosV35SignedRelease','Cache-Control':'no-cache',...(opts.headers||{})},signal:AbortSignal.timeout(12000)});
+          let ready=false;
+          for(let i=0;i<8;i++){try{const r=await get('/index.html');const h=await r.text();console.log('VIA_LIVE_CHECK',r.status,h.includes('V30.4.10.12 QA'));if(r.ok&&h.includes('V30.4.10.12 QA')){ready=true;break}}catch(e){console.log(e.name)}await new Promise(r=>setTimeout(r,2500));}
+          assert(ready,'Exact new QA not yet reachable');
+          const css=await get('/via-gps-premium.css');assert(css.ok);const style=await css.text();assert(style.includes('content:none!important'));assert(!style.includes('content:"Mi ubicación"'));
+          assert.equal((await get('/api/customer/me')).status,503);
+          assert.equal((await get('/api/requests',{method:'POST',body:'{}'})).status,503);
           console.log('VIA_GPS_PREMIUM_LIVE '+u);
           NODE
       - name: Verify production unchanged

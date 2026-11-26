@@ -3,6 +3,7 @@
  function init(){
   const button=document.getElementById('location-shortcut'),input=document.getElementById('home-origin'),host=button?.closest('.reference-booking');
   if(!button||!input||!host)return;
+  button.setAttribute('aria-label','Mi ubicación');button.setAttribute('title','Mi ubicación');
   let success=false,successTimer=null;
   const clearSuccess=()=>{success=false;clearTimeout(successTimer);successTimer=null};
   const permissionTitles=new Set(['Activá tu ubicación']);
