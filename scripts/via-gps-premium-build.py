@@ -8,8 +8,7 @@ critical=['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-
 hashes={}
 for name in critical:
  p=assets/name
- req=urllib.request.Request(old+'/'+name,headers={'Cache-Control':'no-cache'})
- with urllib.request.urlopen(req,timeout=20) as r:remote=r.read()
+ remote,_=m['m']['P']['get'](old+'/'+name)
  assert p.read_bytes()==remote,'Active QA source mismatch '+name
  hashes[name]=hashlib.sha256(remote).hexdigest()
 before={str(p.relative_to(assets)):hashlib.sha256(p.read_bytes()).hexdigest() for p in assets.rglob('*') if p.is_file()}
