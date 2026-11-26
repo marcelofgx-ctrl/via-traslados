@@ -1,0 +1,62 @@
+name: Vía V30.4.10.11 — GPS premium isolated QA
+on:
+  push:
+    branches: [via-gps-premium-v3041011-qa-20261126]
+    paths: ['.github/workflows/via-gps-premium-qa.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify previous QA and build presentation only
+        run: |
+          node --check addons/via-gps-premium.js
+          node tests/via-reverse-cache.test.mjs
+          python3 scripts/via-gps-premium-build.py
+      - name: Deploy separate QA, preserve .10 rollback
+        run: npx --yes wrangler@4.160.1 deploy --config v30410-visual/geo-integral/wrangler-premium.jsonc
+      - name: Verify live version and blocked reservations
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const u='https://via-traslados-gps-premium-qa.marcelof-gx.workers.dev';
+          const r=await fetch(u+'/index.html');assert(r.ok);assert((await r.text()).includes('V30.4.10.11 QA'));
+          assert.equal((await fetch(u+'/api/customer/me')).status,503);
+          assert.equal((await fetch(u+'/api/requests',{method:'POST',body:'{}'})).status,503);
+          console.log('VIA_GPS_PREMIUM_LIVE '+u);
+          NODE
+      - name: Verify production unchanged
+        if: always()
+        run: python3 -c "import runpy;m=runpy.run_path('scripts/v302-route-cache-qa.py');assert m['version'](m['WEB'])=='b23d68ea-5aae-4827-b808-3c4c3504a959' and m['version'](m['API'])=='5ad845a7-beeb-44e5-9e52-6459bd1fbb8b';print('VIA_PRODUCTION_UNCHANGED')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gps-premium-manifest
+          path: v30410-visual/geo-integral/gps-premium-manifest.json
+  browsers:
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Install matching Playwright package, engines already in image
+        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - name: Cross-browser real UI with simulated GPS and safe cancellation
+        run: node scripts/via-gps-premium-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gps-premium-browser-evidence
+          path: gps-premium-evidence
+          if-no-files-found: ignore
