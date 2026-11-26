@@ -1,0 +1,39 @@
+name: Vía V35.1 — notifications QA only
+on:
+  push:
+    branches: [via-notificaciones-v351-qa-20261126]
+    paths: ['.github/workflows/via-notifications-v351-qa.yml']
+permissions:
+  contents: read
+jobs:
+  mail:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: |
+          node --check backend/worker.js
+          node --test tests/booking-confirmation-mail.test.mjs
+          python3 scripts/via-confirmation-mail-sql-test.py
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Build offline QA APK with isolated package
+        run: |
+          gradle -p android-driver :app:assembleDebug -PviaAlertsPreview=true --no-daemon
+          mkdir -p qa-apk
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk qa-apk/via-traslados-v351-avisos-qa.apk
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)"
+          "$aapt" dump badging qa-apk/via-traslados-v351-avisos-qa.apk | grep -F "package: name='uy.viatraslados.conductor.alertsqa'"
+          sha256sum qa-apk/*.apk > qa-apk/sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v351-avisos-qa
+          path: qa-apk

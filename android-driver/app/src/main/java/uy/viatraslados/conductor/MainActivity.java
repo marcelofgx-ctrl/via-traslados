@@ -83,6 +83,8 @@ public final class MainActivity extends Activity {
     private boolean requestSearchVisible = false;
     private boolean loading = false;
     private boolean visible = false;
+    private Dialog newRequestDialog;
+    private String newRequestDialogId="";
     private Dialog acceptanceDialog;
     private String acceptanceDialogId = "";
     private final Runnable poll = new Runnable() {
@@ -123,6 +125,7 @@ public final class MainActivity extends Activity {
             bookings = ViaPreviewData.requests();
             tab = "solicitudes";
             dashboard();
+            if(BuildConfig.VIA_ALERTS_PREVIEW)handler.postDelayed(()->notifyNewRequests(bookings),500);
         } else {
             loginScreen();
         }
@@ -140,6 +143,7 @@ public final class MainActivity extends Activity {
         visible = false;
         handler.removeCallbacks(poll);
         if (acceptanceDialog != null) acceptanceDialog.dismiss();
+        if (newRequestDialog != null) newRequestDialog.dismiss();
         super.onPause();
     }
 
@@ -932,6 +936,7 @@ public final class MainActivity extends Activity {
     }
 
     private void loginScreen() {
+        if(newRequestDialog!=null)newRequestDialog.dismiss();
         authFlow = false;
         root.removeAllViews();
         operatorKey = null;
@@ -1061,7 +1066,7 @@ public final class MainActivity extends Activity {
         spacer(page, 14);
 
         TextView foot = text(BuildConfig.VIA_PRODUCTION
-            ? "V35 · PRODUCCIÓN · DATOS REALES" : "ACCESO SEGURO  ·  VÍA TRASLADOS",
+            ? "V"+BuildConfig.VERSION_NAME+" · PRODUCCIÓN · DATOS REALES" : "ACCESO SEGURO  ·  VÍA TRASLADOS",
             10, MUTED, true);
         foot.setGravity(Gravity.CENTER);
         foot.setLetterSpacing(0.10f);
@@ -1172,6 +1177,7 @@ public final class MainActivity extends Activity {
                         requestVisibleRoutes();
                     }
                     notifyAcceptedProposals(next);
+                    notifyNewRequests(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
                     if(login){
@@ -1210,6 +1216,7 @@ public final class MainActivity extends Activity {
     // Conserva solo el identificador de la aceptación ya anunciada, nunca las credenciales.
     private void notifyAcceptedProposals(JSONArray rows) {
         if (BuildConfig.VIA_PREVIEW) return;
+        if (newRequestDialog!=null) return;
         if (!visible || rows==null || (operatorKey==null && staffToken==null)) return;
         if (acceptanceDialog!=null) {
             boolean stillPending=false;
@@ -1327,6 +1334,139 @@ public final class MainActivity extends Activity {
         }
     }
 
+    // Foreground notification only. Use the authorized feed and server-side
+    // capability, never infer a right to quote or request new permissions.
+    private boolean newRequestEligible(JSONObject r){
+        return r!=null && "requested".equals(r.optString("status")) &&
+            r.optBoolean("canQuote",false) && !r.optString("id","").isEmpty();
+    }
+
+    private android.content.SharedPreferences newRequestPrefs(){
+        return getSharedPreferences("via_new_request_alerts_v351",MODE_PRIVATE);
+    }
+    private String newRequestKey(String id){
+        String who=BuildConfig.VIA_ALERTS_PREVIEW?"preview":
+            operatorKey!=null?"master":staffUserId;
+        return who.isEmpty()?"":"seen_"+who+"_"+id;
+    }
+
+    private void notifyNewRequests(JSONArray rows){
+        if(BuildConfig.VIA_PREVIEW&&!BuildConfig.VIA_ALERTS_PREVIEW)return;
+        if(!visible||isFinishing()||rows==null||authFlow||
+            (operatorKey==null&&staffToken==null))return;
+        if(newRequestDialog!=null){
+            boolean stillOpen=false;
+            for(int i=0;i<rows.length();i++){
+                JSONObject r=rows.optJSONObject(i);
+                if(newRequestEligible(r)&&newRequestDialogId.equals(r.optString("id")))stillOpen=true;
+            }
+            if(!stillOpen)newRequestDialog.dismiss();
+        }
+        if(newRequestDialog!=null||acceptanceDialog!=null||!hasWindowFocus())return;
+        JSONObject latest=null;
+        int pending=0;
+        for(int i=0;i<rows.length();i++){
+            JSONObject r=rows.optJSONObject(i);
+            if(!newRequestEligible(r))continue;
+            String key=newRequestKey(r.optString("id"));
+            if(key.isEmpty()||newRequestPrefs().getBoolean(key,false))continue;
+            pending++;
+            if(latest==null||r.optString("created_at").compareTo(latest.optString("created_at"))>0)latest=r;
+        }
+        if(latest!=null)showNewRequestDialog(latest,pending);
+    }
+
+    private GradientDrawable requestAlertSatin(int top,int bottom,int radius,int border){
+        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{top,bottom});
+        d.setCornerRadius(dp(radius));
+        d.setStroke(dp(1),border);
+        return d;
+    }
+
+    private void showNewRequestDialog(JSONObject booking,int pending){
+        if(!visible||isFinishing()||newRequestDialog!=null)return;
+        String id=booking.optString("id","");
+        String seenKey=newRequestKey(id);
+        if(seenKey.isEmpty())return;
+        Dialog dialog=new Dialog(this);
+        LinearLayout sheet=column();
+        sheet.setPadding(dp(20),dp(19),dp(20),dp(16));
+        sheet.setBackground(requestAlertSatin(Color.WHITE,Color.rgb(250,253,251),24,BORDER));
+        sheet.setElevation(dp(12));
+        LinearLayout header=row();
+        TextView symbol=text("+",27,TEAL_DARK,true);
+        symbol.setGravity(Gravity.CENTER);
+        symbol.setContentDescription("Nueva solicitud");
+        symbol.setBackground(requestAlertSatin(Color.rgb(250,255,252),SOFT,16,BORDER));
+        header.addView(symbol,new LinearLayout.LayoutParams(dp(52),dp(52)));
+        LinearLayout head=column();
+        LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1);
+        hp.leftMargin=dp(12);
+        addLine(head,"VÍA TRASLADOS",10,TEAL_DARK,true,4);
+        addLine(head,pending>1?"Nuevas solicitudes":"Nueva solicitud",21,INK,true,0);
+        header.addView(head,hp);
+        sheet.addView(header);
+        spacer(sheet,10);
+        addLine(sheet,pending>1?"Tenés "+pending+" solicitudes nuevas para revisar.":"Ingresó una nueva petición de traslado.",13,MUTED,false,13);
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(false);
+        LinearLayout content=column();
+        LinearLayout trip=column();
+        trip.setPadding(dp(14),dp(14),dp(14),dp(14));
+        trip.setBackground(requestAlertSatin(Color.rgb(249,253,250),Color.rgb(232,244,237),16,BORDER));
+        addLine(trip,"RECORRIDO SOLICITADO",10,TEAL_DARK,true,10);
+        routePoint(trip,"●","Origen",booking.optString("origin"),true);
+        spacer(trip,12);
+        routePoint(trip,"◆","Destino",booking.optString("destination"),false);
+        spacer(trip,12);
+        addLine(trip,routeMetrics(booking.optJSONObject("route")),13,TEAL_DARK,true,0);
+        content.addView(trip,new LinearLayout.LayoutParams(-1,-2));
+        spacer(content,12);
+        LinearLayout facts=column();
+        facts.setPadding(dp(13),dp(12),dp(13),dp(12));
+        facts.setBackground(bg(Color.WHITE,14,BORDER));
+        addLine(facts,"FECHA Y HORA",10,MUTED,true,4);
+        addLine(facts,compactDate(booking.optString("date"))+" · "+booking.optString("time"),15,INK,true,9);
+        addLine(facts,"Pasajeros: "+booking.optInt("passengers",1)+"   ·   Valijas: "+booking.optInt("bags",0),12,INK,false,5);
+        addLine(facts,id,10,MUTED,false,0);
+        content.addView(facts,new LinearLayout.LayoutParams(-1,-2));
+        spacer(content,10);
+        addLine(content,"Revisá los datos antes de cotizar. La solicitud no es una reserva confirmada.",12,MUTED,false,0);
+        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
+        sheet.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        spacer(sheet,12);
+        Runnable acknowledge=()->newRequestPrefs().edit().putBoolean(seenKey,true).apply();
+        sheet.addView(button("Ver solicitud",true,v->{
+            JSONObject current=null;
+            for(int i=0;i<bookings.length();i++){
+                JSONObject r=bookings.optJSONObject(i);
+                if(newRequestEligible(r)&&id.equals(r.optString("id")))current=r;
+            }
+            acknowledge.run();dialog.dismiss();
+            tab="solicitudes";subtab="nuevas";dashboard();
+            if(current!=null)details(current);
+        }),new LinearLayout.LayoutParams(-1,dp(50)));
+        spacer(sheet,7);
+        sheet.addView(button("Ahora no",false,v->{acknowledge.run();dialog.dismiss();}),
+            new LinearLayout.LayoutParams(-1,dp(46)));
+        newRequestDialog=dialog;newRequestDialogId=id;
+        dialog.setCancelable(false);
+        dialog.setOnDismissListener(d->{if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}});
+        dialog.setContentView(sheet);
+        dialog.show();
+        Window w=dialog.getWindow();
+        if(w!=null){
+            w.setBackgroundDrawableResource(android.R.color.transparent);
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams p=w.getAttributes();
+            p.width=Math.min(dp(460),getResources().getDisplayMetrics().widthPixels-dp(28));
+            p.height=Math.min(dp(580),(int)(getResources().getDisplayMetrics().heightPixels*.85));
+            p.gravity=Gravity.CENTER;p.dimAmount=.26f;
+            w.setAttributes(p);
+        }
+    }
+
     private LinearLayout statTile(String value, String label, boolean featured) {
         LinearLayout tile = column();
         tile.setPadding(dp(15),dp(13),dp(15),dp(13));
@@ -1400,7 +1540,7 @@ public final class MainActivity extends Activity {
             root.addView(qa,new LinearLayout.LayoutParams(-1,-2));
         }else if(BuildConfig.VIA_PRODUCTION){
             // Banner independiente del APK de demostración; evita confusiones en Samsung.
-            TextView prod=text("V35 · PRODUCCIÓN · API REAL",10,TEAL_DARK,true);
+            TextView prod=text("V"+BuildConfig.VERSION_NAME+" · PRODUCCIÓN · API REAL",10,TEAL_DARK,true);
             prod.setGravity(Gravity.CENTER);
             prod.setPadding(dp(7),dp(8),dp(7),dp(8));
             prod.setBackgroundColor(SOFT);
@@ -4174,8 +4314,8 @@ public final class MainActivity extends Activity {
         LinearLayout info=card();
         addLine(info,"INFORMACIÓN",11,MUTED,true,9);
         addLine(info,"Vía Traslados",17,INK,true,7);
-        addLine(info,"Versión 0.9.0 · Rutas Geoapify",13,MUTED,false,5);
-        addLine(info,"Actualización de viajes: cada 30 segundos",13,MUTED,false,12);
+        addLine(info,"Versión "+BuildConfig.VERSION_NAME+" · Rutas Geoapify",13,MUTED,false,5);
+        addLine(info,"Actualización de viajes: cada 20 segundos con la app abierta",13,MUTED,false,12);
         info.addView(button("Comprobar conexión",false,v->fetchBookings(true)),
             new LinearLayout.LayoutParams(-1,dp(46)));
         appendCard(body,info,13);

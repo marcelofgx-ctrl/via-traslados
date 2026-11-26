@@ -5,6 +5,7 @@ import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js'
 import {customerSession,customerRoutes} from './customer-auth.js';
 import {customerPasskeyRoutes} from './customer-passkeys.js';
 import {allowedOriginsFor} from './origins.js';
+import {queueConfirmationDelivery} from './booking-confirmation-mail.js';
 import {driverPolicy,visibilityFor,quoteBooking,releaseBooking,guideForBooking} from './dispatch-ops.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
@@ -92,7 +93,9 @@ async function transition(env,id,from,to,actor,price){
  await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,from,to,actor).run();
  return true;
 }
-export default {async fetch(req,env,ctx){
+export default {
+ scheduled(_event,env,ctx){queueConfirmationDelivery(env,ctx)},
+ async fetch(req,env,ctx){
  const url=new URL(req.url),origin=req.headers.get('Origin');
   const allowed=allowedOriginsFor(env,url.pathname);
  const cors={'Access-Control-Allow-Origin':origin&&allowed.includes(origin)?origin:'null','Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Booking-Token,X-Operator-Key,X-Verification-Token,Authorization','Vary':'Origin'};
@@ -219,6 +222,7 @@ export default {async fetch(req,env,ctx){
    }
    if(!validTransition(row.status,to)||to==='accepted')return err('Cambio no permitido',409);
    if(!await transition(env,id,row.status,to,'operator',null))return err('Reserva modificada',409);
+   if(to==='confirmed')queueConfirmationDelivery(env,ctx);
    const updated=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings WHERE id=?`).bind(id).first();
    return send(operatorRow(updated))
   }
