@@ -1,0 +1,61 @@
+name: Vía V35.1 — direct QA APK download only
+on:
+  push:
+    branches: [via-notificaciones-v351-qa-20261126]
+    paths: ['.github/workflows/via-v351-qa-direct-apk.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify approved source and successful build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45817807051 --jq .head_sha)" = cba23a2086c4f269ed2112f6236bec8b0dc476d9
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45817807051 --jq .conclusion)" = success
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v351-avisos-qa
+          run-id: 45817807051
+          github-token: ${{ github.token }}
+          path: qa-apk
+      - name: Verify exact APK and isolated package
+        run: |
+          cd qa-apk
+          sha256sum -c <(sed 's|qa-apk/||g' sha256.txt)
+          unzip -t via-traslados-v351-avisos-qa.apk | tail -2
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)"
+          "$aapt" dump badging via-traslados-v351-avisos-qa.apk | grep -F "package: name='uy.viatraslados.conductor.alertsqa'"
+      - name: Publish independent static-only QA download
+        run: |
+          mkdir -p direct-apk/assets
+          cp qa-apk/via-traslados-v351-avisos-qa.apk direct-apk/assets/
+          cat > direct-apk/assets/_headers <<'EOF'
+          /via-traslados-v351-avisos-qa.apk
+            Content-Type: application/vnd.android.package-archive
+            Content-Disposition: attachment; filename="via-traslados-v351-avisos-qa.apk"
+            X-Content-Type-Options: nosniff
+          EOF
+          cat > direct-apk/wrangler.jsonc <<'EOF'
+          {"name":"via-traslados-avisos-qa","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
+          EOF
+          npx --yes wrangler@4.160.1 deploy --config direct-apk/wrangler.jsonc
+      - name: Verify direct public APK equals compiled binary
+        run: |
+          url=https://via-traslados-avisos-qa.marcelof-gx.workers.dev/via-traslados-v351-avisos-qa.apk
+          curl -fLsS --retry 6 --retry-all-errors --retry-delay 3 -D /tmp/apk-headers "$url" -o /tmp/via-qa.apk
+          cmp qa-apk/via-traslados-v351-avisos-qa.apk /tmp/via-qa.apk
+          grep -i 'content-type: application/vnd.android.package-archive' /tmp/apk-headers
+          sha256sum /tmp/via-qa.apk
+          echo "VIA_DIRECT_APK_VERIFIED $url"
