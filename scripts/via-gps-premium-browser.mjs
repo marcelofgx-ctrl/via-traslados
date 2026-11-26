@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium,firefox,webkit} from 'playwright';
 import {mkdirSync} from 'node:fs';
-const root='https://via-traslados-type-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-route-card-qa.marcelof-gx.workers.dev';
 const old='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev';
 mkdirSync('gps-premium-evidence',{recursive:true});
 for(const n of ['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-picker.js','app.js','store.js','via-visual-compat.css']){
@@ -30,20 +30,30 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut')?.dataset.viaGpsState==='idle');
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.16 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.17 QA');
  const button=p.locator('#location-shortcut'),state=s=>p.waitForFunction(x=>document.querySelector('#location-shortcut')?.dataset.viaGpsState===x,s,{timeout:12000});
  assert.equal(await p.locator('#home-origin').getAttribute('placeholder'),'¿Dónde te recogemos?');
  for(const id of ['home-origin','home-destination']){
   const style=await p.locator('#'+id).evaluate(e=>({editable:getComputedStyle(e).fontSize,prompt:getComputedStyle(e,'::placeholder').fontSize,weight:getComputedStyle(e,'::placeholder').fontWeight}));
-  assert.equal(style.editable,'16px');assert.equal(style.prompt,'14px');assert.equal(style.weight,'400');
+  assert.equal(style.editable,'14px');assert.equal(style.prompt,'14px');assert.equal(style.weight,'400');
+  await p.locator('#'+id).focus();assert.equal(await p.locator('#'+id).evaluate(e=>getComputedStyle(e).fontSize),'16px');
+  await p.locator('#'+id).blur();
  }
+ const route=await p.locator('.reference-home .reference-route-fields').evaluate(e=>{
+  const a=e.querySelector('#home-origin').closest('.reference-field'),b=e.querySelector('#home-destination').closest('.reference-field'),d=e.querySelector('.route-dash');
+  const r=e.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),rd=d.getBoundingClientRect();
+  return {shared:a.parentElement===e&&b.parentElement===e,background:getComputedStyle(e).backgroundImage,rowBackgrounds:[getComputedStyle(a).backgroundImage,getComputedStyle(b).backgroundImage],gap:rb.top-ra.bottom,dividerHeight:rd.height,horizontal:getComputedStyle(d,'::after').height,vertical:getComputedStyle(d,'::before').borderLeftStyle,within:ra.left>=r.left&&rb.right<=r.right,controls:a.querySelectorAll('button').length+b.querySelectorAll('button').length};
+ });
+ assert(route.shared&&route.background.includes('linear-gradient')&&route.within&&route.controls>=3,JSON.stringify(route));
+ assert.deepEqual(route.rowBackgrounds,['none','none']);assert(route.gap>=0&&route.gap<=10,JSON.stringify(route));assert.equal(route.horizontal,'1px');assert.equal(route.vertical,'dotted');
+ console.log('VIA_JOURNEY_CARD_PASS '+JSON.stringify({name,...route}));
  const box=await button.boundingBox();assert(box.width>=43.9&&box.width<=45&&box.height>=43.9&&box.height<=45);assert.equal(await button.getAttribute('aria-label'),'Mi ubicación');assert.equal(await button.getAttribute('title'),'Mi ubicación');
  // Test actual autocomplete presentation with a synthetic response, preserving real selection logic.
  const searchPage=await c.newPage();
  await searchPage.goto(root+'/index.html',{waitUntil:'domcontentloaded'});
  await searchPage.waitForFunction(()=>window.ViaAddress&&document.querySelector('#address-suggestions'));
  const dest=searchPage.locator('#home-destination');
- assert.equal(await dest.evaluate(e=>getComputedStyle(e).fontSize),'16px');
+ await dest.focus();assert.equal(await dest.evaluate(e=>getComputedStyle(e).fontSize),'16px');
  // Intercept all geographic reads in this independent page; no reservation writes.
  await searchPage.route('**/api/direcciones?**',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:Array.from({length:6},(_,i)=>({street:'Aeropuerto de prueba '+i,label:'Aeropuerto de prueba '+i,city:'Canelones',department:'Canelones',lat:-34.8+i/1000,lng:-56.0,kind:'place',accuracy:'poi',distanceKm:i+1}))})}));
  await dest.fill('Aeropuerto');

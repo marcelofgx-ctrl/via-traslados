@@ -1,4 +1,4 @@
-/* Isolated GPS presentation V30.4.10.16; no changes to input or map actions. */
+/* Isolated GPS presentation V30.4.10.17; no changes to input or map actions. */
 html body .reference-home #location-shortcut#location-shortcut{
  --gps-ink:#fff;
  position:relative!important;display:inline-flex!important;flex-direction:row!important;
@@ -153,4 +153,55 @@ html body .reference-home :is(#home-origin,#home-destination)::placeholder{
 }
 html body .reference-home :is(#home-origin,#home-destination)::-webkit-input-placeholder{
  font-size:14px!important;font-weight:400!important;letter-spacing:-.1px!important;
+}
+
+
+/* One continuous journey card. Reuse the actual route container, labels and
+   connector, without moving any controls, changing IDs or binding listeners. */
+html[data-via-finish="premium"] body.premium-page:not(.in-booking) .reference-home .reference-route-fields{
+ position:relative!important;display:grid!important;gap:0!important;
+ border:1px solid #d1e2d9!important;border-radius:17px!important;
+ background:linear-gradient(155deg,rgba(253,255,252,.96),rgba(240,248,243,.91) 55%,rgba(230,241,234,.93))!important;
+ box-shadow:inset 0 1px 0 #ffffffd9,0 2px 7px #1842350e!important;
+ padding:2px 0!important;box-sizing:border-box!important;
+}
+html[data-via-finish="premium"] body.premium-page:not(.in-booking) .reference-home .reference-route-fields>.reference-field{
+ display:flex!important;position:relative!important;
+ min-height:54px!important;height:auto!important;gap:8px!important;
+ padding:5px 10px!important;margin:0!important;
+ border:1px solid transparent!important;border-radius:13px!important;
+ background:transparent!important;background-image:none!important;
+ box-shadow:none!important;
+}
+html[data-via-finish="premium"] body.premium-page:not(.in-booking) .reference-home .reference-route-fields>.reference-field:focus-within{
+ border-color:#a7cfc2!important;box-shadow:inset 0 0 0 1px #a7cfc22b!important;
+}
+html[data-via-finish="premium"] body.premium-page:not(.in-booking) .reference-home .reference-route-fields>.route-dash{
+ display:block!important;position:relative!important;left:auto!important;top:auto!important;
+ right:auto!important;bottom:auto!important;transform:none!important;
+ width:auto!important;height:8px!important;min-height:8px!important;margin:0!important;
+ background:none!important;border:0!important;box-shadow:none!important;
+ pointer-events:none!important;z-index:0!important;
+}
+html[data-via-finish="premium"] body.premium-page:not(.in-booking) .reference-home .reference-route-fields>.route-dash::before{
+ content:""!important;position:absolute!important;left:23px!important;
+ top:-8px!important;bottom:-8px!important;width:0!important;
+ border-left:1.5px dotted #659e90!important;
+ background:none!important;pointer-events:none!important;
+}
+html[data-via-finish="premium"] body.premium-page:not(.in-booking) .reference-home .reference-route-fields>.route-dash::after{
+ content:""!important;position:absolute!important;left:42px!important;right:10px!important;
+ top:50%!important;height:1px!important;background:#d3e3db!important;
+ pointer-events:none!important;
+}
+html[data-via-finish="premium"] body.premium-page:not(.in-booking) .reference-home .reference-route-fields .field-copy>strong{
+ margin-bottom:2px!important;
+}
+/* WebKit reports the inherited input font on placeholders. Use the same compact
+   idle font on the empty input itself; switch to 16px immediately on focus. */
+html body .reference-home :is(#home-origin,#home-destination):placeholder-shown:not(:focus){
+ font-size:14px!important;font-weight:400!important;
+}
+html body .reference-home :is(#home-origin,#home-destination):focus{
+ font-size:16px!important;font-weight:500!important;
 }
