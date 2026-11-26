@@ -66,6 +66,7 @@ public final class RequestMonitorService extends Service {
         NotificationManager nm=getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(ONGOING,"Disponibilidad de Vía Traslados",NotificationManager.IMPORTANCE_LOW));
         AlertSignal.ensureChannel(this);
+        NotificationChannel quiet=new NotificationChannel("via_requests_quiet_v2","Solicitudes ya avisadas",NotificationManager.IMPORTANCE_LOW);quiet.setSound(null,null);quiet.enableVibration(false);nm.createNotificationChannel(quiet);
         PendingIntent stop=PendingIntent.getService(this,3540,new Intent(this,RequestMonitorService.class).setAction(STOP),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
         Notification ongoing=new Notification.Builder(this,ONGOING).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("Vía Traslados · Disponible")
           .setContentText("Monitoreo de solicitudes activo").setContentIntent(open()).setOngoing(true).setVisibility(Notification.VISIBILITY_PRIVATE)
@@ -103,10 +104,9 @@ public final class RequestMonitorService extends Service {
                 if(posted.getBoolean(key,false)||emitted)continue;
                 NotificationChannel channel=nm.getNotificationChannel(ALERTS);
                 if(channel==null||channel.getImportance()==NotificationManager.IMPORTANCE_NONE)continue;
-                Notification.Builder builder=new Notification.Builder(this,ALERTS).setSmallIcon(R.drawable.driver_icon)
+                Notification.Builder builder=new Notification.Builder(this,AlertSignal.wasSounded(this,key)?"via_requests_quiet_v2":ALERTS).setSmallIcon(R.drawable.driver_icon)
                   .setContentTitle("Vía Traslados · Nueva solicitud").setContentText("Hay un traslado pendiente de revisar.")
                   .setCategory(Notification.CATEGORY_EVENT).setContentIntent(open()).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE);
-                if(AlertSignal.wasSounded(this,key))builder.setSilent(true);
                 nm.notify(tag(a,id),ALERT_ID,builder.build());posted.edit().putBoolean(key,true).apply();
                 AlertSignal.markSounded(this,key);emitted=true;
                 ui.post(()->showOverlay(a,id,key));

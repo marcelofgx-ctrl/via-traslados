@@ -1,4 +1,4 @@
-name: Vía Traslados V35.6 — production audible external alerts and rollback
+name: Vía Traslados V35.6 — production external alerts and verified rollback
 on:
   push:
     branches: [via-v356-prod-alertas-20261126]
