@@ -1,4 +1,4 @@
-/* Isolated GPS presentation V30.4.10.14; no changes to input or map actions. */
+/* Isolated GPS presentation V30.4.10.15; no changes to input or map actions. */
 html body .reference-home #location-shortcut#location-shortcut{
  --gps-ink:#fff;
  position:relative!important;display:inline-flex!important;flex-direction:row!important;
@@ -106,3 +106,41 @@ html body #address-suggestions[data-via-compact="true"] .address-choice :is([cla
  font-size:12px!important;line-height:1.2!important;white-space:nowrap!important;
 }
 html body #address-suggestions[data-via-compact="true"] .address-line{font-size:13px!important;line-height:1.35!important;padding:10px!important}
+
+
+/* Fine visual balance: 38px painted control, 44px hit target. */
+html body .reference-home #location-shortcut#location-shortcut{
+ border:3px solid transparent!important;border-radius:14px!important;
+ background-clip:padding-box!important;
+ box-shadow:inset 0 1px 0 #ffffff3d,inset 0 -1px 0 #002e2a35!important;
+}
+html body .reference-home #location-shortcut#location-shortcut:is([aria-busy="true"],[data-via-gps-state="success"],[data-via-gps-state="confirm"]){
+ border-color:transparent!important;background-clip:padding-box!important;
+}
+html body .reference-home #location-shortcut#location-shortcut::before{
+ width:20px!important;height:20px!important;flex-basis:20px!important;
+}
+html body .reference-home .reference-field .field-copy>strong{
+ font-size:12px!important;font-weight:600!important;line-height:1.25!important;
+}
+html body .reference-home .reference-field .via-selected-street{
+ font-size:13px!important;font-weight:600!important;line-height:1.25!important;
+}
+html body .reference-home .reference-field .via-selected-locality{
+ font-size:10.5px!important;font-weight:500!important;line-height:1.25!important;
+}
+html body .reference-home .via-selected-accuracy{
+ font-size:9.5px!important;font-weight:500!important;
+}
+html[data-via-finish="premium"] body .reference-home #start-booking#start-booking{
+ font-size:16px!important;font-weight:650!important;letter-spacing:-.12px!important;
+}
+html body .reference-home .reference-reservations{
+ font-size:14px!important;font-weight:600!important;
+}
+html body .reference-home #via-geography-credit{
+ display:block!important;font-size:9px!important;font-weight:400!important;
+ line-height:1.35!important;margin:0 0 4px!important;color:#315c53!important;
+ background:rgba(250,254,251,.94);border-radius:5px;padding:2px 5px;
+ text-align:center;white-space:normal;
+}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium,firefox,webkit} from 'playwright';
 import {mkdirSync} from 'node:fs';
-const root='https://via-traslados-search-compact-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-refined-qa.marcelof-gx.workers.dev';
 const old='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev';
 mkdirSync('gps-premium-evidence',{recursive:true});
 for(const n of ['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-picker.js','app.js','store.js','via-visual-compat.css']){
@@ -30,7 +30,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut')?.dataset.viaGpsState==='idle');
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.14 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.15 QA');
  const button=p.locator('#location-shortcut'),state=s=>p.waitForFunction(x=>document.querySelector('#location-shortcut')?.dataset.viaGpsState===x,s,{timeout:12000});
  assert.equal(await p.locator('#home-origin').getAttribute('placeholder'),'¿Dónde te recogemos?');
  const box=await button.boundingBox();assert(box.width>=43.9&&box.width<=45&&box.height>=43.9&&box.height<=45);assert.equal(await button.getAttribute('aria-label'),'Mi ubicación');assert.equal(await button.getAttribute('title'),'Mi ubicación');
@@ -50,8 +50,8 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
  assert(await dest.evaluate(e=>e===document.activeElement));
  await searchPage.screenshot({path:'gps-premium-evidence/'+name+'-search.png',animations:'disabled'});
  await searchPage.close();
- const visual=await button.evaluate(e=>({icon:getComputedStyle(e,'::before').backgroundImage,label:getComputedStyle(e,'::after').content,scroll:document.documentElement.scrollWidth,width:innerWidth}));
- assert(visual.icon.includes('data:image/svg+xml'));assert.equal(visual.label,'none');assert(visual.scroll<=visual.width);
+ const visual=await button.evaluate(e=>({border:parseFloat(getComputedStyle(e).borderLeftWidth),iconSize:parseFloat(getComputedStyle(e,'::before').width),clip:getComputedStyle(e).backgroundClip,icon:getComputedStyle(e,'::before').backgroundImage,label:getComputedStyle(e,'::after').content,scroll:document.documentElement.scrollWidth,width:innerWidth}));
+ assert.equal(visual.border,3);assert.equal(visual.iconSize,20);assert.equal(visual.clip,'padding-box');assert(visual.icon.includes('data:image/svg+xml'));assert.equal(visual.label,'none');assert(visual.scroll<=visual.width);
  await p.screenshot({path:'gps-premium-evidence/'+name+'-idle.png',animations:'disabled'});
  await button.click();await state('permission');await p.getByRole('button',{name:'Permitir ubicación',exact:true}).click();
  await state('gps');assert.equal(await p.locator('.via-wait-track:visible').count(),1);
@@ -59,6 +59,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
  await state('precision');await state('reverse');
  await p.screenshot({path:'gps-premium-evidence/'+name+'-reverse.png',animations:'allow'});
  await state('success');assert.equal(calls,1);assert.equal(await p.locator('.via-wait-track:visible').count(),0);
+ assert.equal(await p.locator('#via-geography-credit').count(),1);assert(await p.locator('#via-geography-credit').isVisible());
  const picked=await p.evaluate(()=>ViaAddress.get('home-origin'));assert.equal(picked.lat,lat);assert.equal(picked.lng,lng);assert.equal(picked.postalStatus,'suggested');
  await button.click();await state('permission');scenario='ambiguous';await p.getByRole('button',{name:'Permitir ubicación',exact:true}).click();await state('confirm');
  assert.equal((await p.evaluate(()=>ViaAddress.get('home-origin'))).postalStatus,'unknown');assert.equal(await p.locator('.via-wait-track:visible').count(),0);
