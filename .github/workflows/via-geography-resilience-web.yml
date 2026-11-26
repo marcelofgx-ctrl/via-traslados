@@ -1,4 +1,4 @@
-name: Vía — geographic redundancy web candidate, no traffic
+name: Vía — geographic redundancy web candidate, verified empty response
 on:
   push:
     branches: [via-geography-resilience-20261126]

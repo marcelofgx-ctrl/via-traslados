@@ -69,7 +69,7 @@ export async function addressRace(request,env,legacy,ctx,{lead=1800,deadline=740
    if(usable(first))return finish(first,'IDE');
    if(usable(second))return finish(second,'Geoapify');
    // Empty is definitive only when both providers actually responded normally.
-   if(first?.ok&&second?.ok)return finish(first,'empty');
+   if(first?.ok&&second?.ok)return finish({r:json({results:[],mode},200,'empty'),rows:[],ok:true},'empty');
    return finish(null,'unavailable');
   };
   decide=()=>{if(done)return;if(exact(first))return finish(first,'IDE');if(exact(second))return finish(second,'Geoapify');if(first)fallback();if(first&&second)conclude()};
