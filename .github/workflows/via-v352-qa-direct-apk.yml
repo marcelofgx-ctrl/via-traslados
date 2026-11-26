@@ -1,0 +1,54 @@
+name: Vía V35.2 — compact alert and external demo direct APK
+on:
+  push:
+    branches: [via-notificaciones-v351-qa-20261126]
+    paths: ['.github/workflows/via-v352-qa-direct-apk.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Compile isolated offline QA
+        run: |
+          gradle -p android-driver :app:assembleDebug -PviaAlertsPreview=true --no-daemon
+          mkdir -p direct-apk/assets
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk direct-apk/assets/via-traslados-v352-avisos-qa.apk
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)"
+          "$aapt" dump badging direct-apk/assets/*.apk | grep -F "package: name='uy.viatraslados.conductor.alertsqa2' versionCode='352'"
+          sha256sum direct-apk/assets/*.apk
+      - name: Publish direct APK only, independent host
+        run: |
+          cat > direct-apk/assets/_headers <<'EOF'
+          /via-traslados-v352-avisos-qa.apk
+            Content-Type: application/vnd.android.package-archive
+            Content-Disposition: attachment; filename="via-traslados-v352-avisos-qa.apk"
+            X-Content-Type-Options: nosniff
+          EOF
+          cat > direct-apk/wrangler.jsonc <<'EOF'
+          {"name":"via-traslados-avisos-compactos-qa","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
+          EOF
+          npx --yes wrangler@4.160.1 deploy --config direct-apk/wrangler.jsonc
+      - name: Verify public binary
+        run: |
+          url=https://via-traslados-avisos-compactos-qa.marcelof-gx.workers.dev/via-traslados-v352-avisos-qa.apk
+          curl -fLsS --retry 6 --retry-all-errors --retry-delay 3 -D /tmp/apk-headers "$url" -o /tmp/via-qa.apk
+          cmp direct-apk/assets/via-traslados-v352-avisos-qa.apk /tmp/via-qa.apk
+          grep -i 'content-type: application/vnd.android.package-archive' /tmp/apk-headers
+          echo "VIA_V352_DIRECT_VERIFIED $url"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v352-avisos-qa
+          path: direct-apk/assets/*.apk

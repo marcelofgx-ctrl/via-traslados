@@ -1386,85 +1386,131 @@ public final class MainActivity extends Activity {
 
     private void showNewRequestDialog(JSONObject booking,int pending){
         if(!visible||isFinishing()||newRequestDialog!=null)return;
-        String id=booking.optString("id","");
-        String seenKey=newRequestKey(id);
+        String id=booking.optString("id",""),seenKey=newRequestKey(id);
         if(seenKey.isEmpty())return;
         Dialog dialog=new Dialog(this);
         LinearLayout sheet=column();
-        sheet.setPadding(dp(20),dp(19),dp(20),dp(16));
-        sheet.setBackground(requestAlertSatin(Color.WHITE,Color.rgb(250,253,251),24,BORDER));
-        sheet.setElevation(dp(12));
+        sheet.setPadding(dp(15),dp(10),dp(15),dp(12));
+        sheet.setBackground(requestAlertSatin(Color.WHITE,Color.rgb(250,253,251),22,BORDER));
+        View grip=new View(this);grip.setBackground(bg(Color.rgb(196,212,204),4,0));
+        LinearLayout.LayoutParams gripParams=new LinearLayout.LayoutParams(dp(32),dp(4));
+        gripParams.gravity=Gravity.CENTER_HORIZONTAL;gripParams.bottomMargin=dp(8);sheet.addView(grip,gripParams);
         LinearLayout header=row();
-        TextView symbol=text("+",27,TEAL_DARK,true);
-        symbol.setGravity(Gravity.CENTER);
-        symbol.setContentDescription("Nueva solicitud");
-        symbol.setBackground(requestAlertSatin(Color.rgb(250,255,252),SOFT,16,BORDER));
-        header.addView(symbol,new LinearLayout.LayoutParams(dp(52),dp(52)));
         LinearLayout head=column();
-        LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1);
-        hp.leftMargin=dp(12);
-        addLine(head,"VÍA TRASLADOS",10,TEAL_DARK,true,4);
-        addLine(head,pending>1?"Nuevas solicitudes":"Nueva solicitud",21,INK,true,0);
-        header.addView(head,hp);
-        sheet.addView(header);
-        spacer(sheet,10);
-        addLine(sheet,pending>1?"Tenés "+pending+" solicitudes nuevas para revisar.":"Ingresó una nueva petición de traslado.",13,MUTED,false,13);
-        ScrollView scroll=new ScrollView(this);
-        scroll.setFillViewport(false);
-        LinearLayout content=column();
-        LinearLayout trip=column();
-        trip.setPadding(dp(14),dp(14),dp(14),dp(14));
-        trip.setBackground(requestAlertSatin(Color.rgb(249,253,250),Color.rgb(232,244,237),16,BORDER));
-        addLine(trip,"RECORRIDO SOLICITADO",10,TEAL_DARK,true,10);
-        routePoint(trip,"●","Origen",booking.optString("origin"),true);
-        spacer(trip,12);
-        routePoint(trip,"◆","Destino",booking.optString("destination"),false);
-        spacer(trip,12);
-        addLine(trip,routeMetrics(booking.optJSONObject("route")),13,TEAL_DARK,true,0);
-        content.addView(trip,new LinearLayout.LayoutParams(-1,-2));
-        spacer(content,12);
-        LinearLayout facts=column();
-        facts.setPadding(dp(13),dp(12),dp(13),dp(12));
-        facts.setBackground(bg(Color.WHITE,14,BORDER));
-        addLine(facts,"FECHA Y HORA",10,MUTED,true,4);
-        addLine(facts,compactDate(booking.optString("date"))+" · "+booking.optString("time"),15,INK,true,9);
-        addLine(facts,"Pasajeros: "+booking.optInt("passengers",1)+"   ·   Valijas: "+booking.optInt("bags",0),12,INK,false,5);
-        addLine(facts,id,10,MUTED,false,0);
-        content.addView(facts,new LinearLayout.LayoutParams(-1,-2));
-        spacer(content,10);
-        addLine(content,"Revisá los datos antes de cotizar. La solicitud no es una reserva confirmada.",12,MUTED,false,0);
-        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
-        sheet.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        spacer(sheet,12);
+        addLine(head,"VÍA TRASLADOS",10,TEAL_DARK,true,2);
+        addLine(head,pending>1?"Nueva solicitud · "+pending+" pendientes":"Nueva solicitud",18,INK,true,0);
+        header.addView(head,new LinearLayout.LayoutParams(0,-2,1));
         Runnable acknowledge=()->newRequestPrefs().edit().putBoolean(seenKey,true).apply();
-        sheet.addView(button("Ver solicitud",true,v->{
+        TextView close=text("×",24,MUTED,false);close.setGravity(Gravity.CENTER);
+        close.setContentDescription("Cerrar aviso");close.setOnClickListener(v->{acknowledge.run();dialog.dismiss();});
+        header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        sheet.addView(header);
+        // Use the name already present in the authorized request. No invented photo.
+        String name=booking.isNull("name")?"":booking.optString("name","").trim();
+        if(name.isEmpty())name="Pasajero";
+        LinearLayout passenger=row();
+        TextView initials=text(passengerInitials(name),15,TEAL_DARK,true);
+        initials.setGravity(Gravity.CENTER);initials.setBackground(bg(SOFT,24,BORDER));
+        initials.setContentDescription("Avatar con iniciales del pasajero");
+        passenger.addView(initials,new LinearLayout.LayoutParams(dp(42),dp(42)));
+        LinearLayout person=column();LinearLayout.LayoutParams personParams=new LinearLayout.LayoutParams(0,-2,1);personParams.leftMargin=dp(10);
+        TextView passengerName=text(name,15,INK,true);passengerName.setMaxLines(1);passengerName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        person.addView(passengerName);addLine(person,"Pasajero · "+booking.optInt("passengers",1)+" persona(s)",11,MUTED,false,0);
+        passenger.addView(person,personParams);sheet.addView(passenger);
+        spacer(sheet,9);
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout content=column(),trip=column();
+        trip.setPadding(dp(10),dp(8),dp(10),dp(8));
+        trip.setBackground(requestAlertSatin(Color.rgb(249,253,250),Color.rgb(232,244,237),13,BORDER));
+        compactAlertPoint(trip,"●",booking.optString("origin"),"Origen");
+        spacer(trip,5);compactAlertPoint(trip,"◆",booking.optString("destination"),"Destino");
+        spacer(trip,6);addLine(trip,routeMetrics(booking.optJSONObject("route")),12,TEAL_DARK,true,0);
+        content.addView(trip,new LinearLayout.LayoutParams(-1,-2));
+        spacer(content,7);addLine(content,compactDate(booking.optString("date"))+" · "+booking.optString("time")+"  ·  "+booking.optInt("bags",0)+" valija(s)",12,INK,true,0);
+        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
+        int maxBody=Math.max(dp(82),Math.min(dp(160),(int)(getResources().getDisplayMetrics().heightPixels*.22)));
+        scroll.measure(View.MeasureSpec.makeMeasureSpec(Math.max(dp(160),getResources().getDisplayMetrics().widthPixels-dp(50)),View.MeasureSpec.AT_MOST),View.MeasureSpec.makeMeasureSpec(maxBody,View.MeasureSpec.AT_MOST));
+        sheet.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(maxBody,scroll.getMeasuredHeight())));
+        spacer(sheet,9);LinearLayout actions=row();
+        actions.addView(button("Ahora no",false,v->{acknowledge.run();dialog.dismiss();}),new LinearLayout.LayoutParams(0,dp(48),1));
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(48),2);ap.leftMargin=dp(8);
+        actions.addView(button("Ver solicitud",true,v->{
             JSONObject current=null;
             for(int i=0;i<bookings.length();i++){
                 JSONObject r=bookings.optJSONObject(i);
                 if(newRequestEligible(r)&&id.equals(r.optString("id")))current=r;
             }
-            acknowledge.run();dialog.dismiss();
-            tab="solicitudes";subtab="nuevas";dashboard();
+            acknowledge.run();dialog.dismiss();tab="solicitudes";subtab="nuevas";dashboard();
             if(current!=null)details(current);
-        }),new LinearLayout.LayoutParams(-1,dp(50)));
-        spacer(sheet,7);
-        sheet.addView(button("Ahora no",false,v->{acknowledge.run();dialog.dismiss();}),
-            new LinearLayout.LayoutParams(-1,dp(46)));
+        }),ap);
+        sheet.addView(actions);
         newRequestDialog=dialog;newRequestDialogId=id;
-        dialog.setCancelable(false);
+        dialog.setCancelable(true);dialog.setCanceledOnTouchOutside(false);
         dialog.setOnDismissListener(d->{if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}});
-        dialog.setContentView(sheet);
-        dialog.show();
+        dialog.setContentView(sheet);dialog.show();
         Window w=dialog.getWindow();
         if(w!=null){
             w.setBackgroundDrawableResource(android.R.color.transparent);
             w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             WindowManager.LayoutParams p=w.getAttributes();
-            p.width=Math.min(dp(460),getResources().getDisplayMetrics().widthPixels-dp(28));
-            p.height=Math.min(dp(580),(int)(getResources().getDisplayMetrics().heightPixels*.85));
-            p.gravity=Gravity.CENTER;p.dimAmount=.26f;
+            p.width=Math.min(dp(460),getResources().getDisplayMetrics().widthPixels-dp(20));
+            p.height=WindowManager.LayoutParams.WRAP_CONTENT;
+            p.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;p.dimAmount=.12f;p.y=dp(8);
             w.setAttributes(p);
+            w.setWindowAnimations(android.R.style.Animation_InputMethod);
         }
+    }
+
+    private String passengerInitials(String name){
+        String[] parts=name.trim().split("\\s+");
+        String first=parts[0].isEmpty()?"P":parts[0].substring(0,parts[0].offsetByCodePoints(0,1));
+        String last=parts.length>1?parts[parts.length-1]:"";
+        return (first+(last.isEmpty()?"":last.substring(0,last.offsetByCodePoints(0,1)))).toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private void compactAlertPoint(LinearLayout parent,String marker,String address,String label){
+        LinearLayout line=row();
+        TextView pin=text(marker,13,TEAL_DARK,true);pin.setGravity(Gravity.CENTER);
+        line.addView(pin,new LinearLayout.LayoutParams(dp(22),dp(24)));
+        TextView name=text(prettyAddress(address),13,INK,true);
+        name.setContentDescription(label+": "+prettyAddress(address));
+        name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        line.addView(name,new LinearLayout.LayoutParams(0,-2,1));parent.addView(line);
+    }
+
+    // Offline explicit demonstration; remote background delivery is a separate feature.
+    private void testExternalAlert(){
+        if(!BuildConfig.VIA_ALERTS_PREVIEW)return;
+        if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},352);return;
+        }
+        android.app.NotificationManager nm=getSystemService(android.app.NotificationManager.class);
+        if(nm==null||!nm.areNotificationsEnabled()){
+            Toast.makeText(this,"Habilitá las notificaciones de Vía Traslados QA",Toast.LENGTH_LONG).show();return;
+        }
+        String channelId="via_demo_new_request_v352";
+        android.app.NotificationChannel channel=new android.app.NotificationChannel(channelId,"Nuevas solicitudes · DEMO",android.app.NotificationManager.IMPORTANCE_HIGH);
+        channel.enableVibration(true);nm.createNotificationChannel(channel);
+        Toast.makeText(this,"Abrí otra aplicación. Aviso de prueba en 8 segundos.",Toast.LENGTH_LONG).show();
+        handler.postDelayed(()->{
+            if(isFinishing()||isDestroyed()||!nm.areNotificationsEnabled())return;
+            Intent open=new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            android.app.PendingIntent pi=android.app.PendingIntent.getActivity(this,352,open,android.app.PendingIntent.FLAG_UPDATE_CURRENT|android.app.PendingIntent.FLAG_IMMUTABLE);
+            android.app.Notification n=new android.app.Notification.Builder(this,channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info).setColor(TEAL)
+                .setContentTitle("Nueva solicitud · Vía Traslados")
+                .setContentText("Tenés una petición de prueba para revisar.")
+                .setContentIntent(pi).addAction(new android.app.Notification.Action.Builder(android.R.drawable.ic_menu_view,"Ver solicitud",pi).build())
+                .setAutoCancel(true).setVisibility(android.app.Notification.VISIBILITY_PRIVATE)
+                .setCategory(android.app.Notification.CATEGORY_MESSAGE).build();
+            try{nm.notify(352,n);}catch(SecurityException ignored){}
+        },8000);
+        moveTaskToBack(true);
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){
+        super.onRequestPermissionsResult(requestCode,permissions,results);
+        if(requestCode==352&&BuildConfig.VIA_ALERTS_PREVIEW&&results.length>0&&results[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)testExternalAlert();
     }
 
     private LinearLayout statTile(String value, String label, boolean featured) {
@@ -1546,7 +1592,7 @@ public final class MainActivity extends Activity {
             prod.setBackgroundColor(SOFT);
             root.addView(prod,new LinearLayout.LayoutParams(-1,-2));
         }else if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_OPERATION_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_ALERTS_PREVIEW ? "V35.2 · AVISOS · DEMO SIN PRODUCCIÓN" : BuildConfig.VIA_OPERATION_PREVIEW ?
                 "V31 · FICHA OPERATIVA PREMIUM · DEMO AISLADA" :
                 BuildConfig.VIA_LAYOUT_PREVIEW ?
                 "V30 · DETALLE Y COTIZACIÓN · DEMO SIN PRODUCCIÓN" :
@@ -1560,6 +1606,7 @@ public final class MainActivity extends Activity {
             demo.setPadding(dp(8),dp(7),dp(8),dp(7));
             demo.setBackgroundColor(SOFT);
             root.addView(demo,new LinearLayout.LayoutParams(-1,-2));
+            if(BuildConfig.VIA_ALERTS_PREVIEW)root.addView(button("Probar aviso externo",false,v->testExternalAlert()),new LinearLayout.LayoutParams(-1,dp(48)));
         }
 
         ScrollView scroll = new ScrollView(this);
