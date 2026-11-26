@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    if: github.ref == 'refs/heads/via-v3049-session-maintenance-20261125' && github.event.head_commit.message == 'release: authorize exact V30.4.9 after reproducing back navigation defect'
+    if: "github.ref == 'refs/heads/via-v3049-session-maintenance-20261125' && github.event.head_commit.message == 'release: authorize exact V30.4.9 after reproducing back navigation defect'"
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
