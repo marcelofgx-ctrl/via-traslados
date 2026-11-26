@@ -66,7 +66,7 @@
    if(width<=0)return;
    const originalTop=parseFloat(panel.style.top);
    const y=Number.isFinite(originalTop)?originalTop:r.bottom;
-   const available=panel.dataset.placement==='above'?Math.max(42,r.top-top-12):Math.max(42,top+h-y-8);
+   const available=panel.dataset.placement==='above'?Math.max(42,Math.min(r.top-top-12,parseFloat(panel.style.maxHeight)||260)):Math.max(42,top+h-y-8);
    panel.style.setProperty('--via-suggest-left',x+'px');
    panel.style.setProperty('--via-suggest-width',width+'px');
    panel.style.setProperty('--via-suggest-height',Math.min(320,available)+'px');
