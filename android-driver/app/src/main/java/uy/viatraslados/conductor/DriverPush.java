@@ -17,6 +17,8 @@ final class DriverPush {
     }
     static boolean available(Context c,String actor){return actor!=null&&!actor.isEmpty()&&actor.equals(prefs(c).getString("actor",""))&&prefs(c).getBoolean("available",false);}
     static boolean active(Context c){return prefs(c).getBoolean("available",false);}
+    static boolean tokenDirty(Context c){return prefs(c).getBoolean("token_dirty",false);}
+    static void clearTokenDirty(Context c){prefs(c).edit().putBoolean("token_dirty",false).apply();}
     static void setAvailable(Context c,String actor,boolean on){
         prefs(c).edit().putString("actor",actor).putBoolean("available",on).apply();
         if(!on){NotificationManager nm=c.getSystemService(NotificationManager.class);if(nm!=null)nm.cancelAll();}

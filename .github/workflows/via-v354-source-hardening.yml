@@ -1,0 +1,21 @@
+name: V35.4 push source hardening compile only
+on:
+  push:
+    branches: [via-notificaciones-v354-push-qa-20261126]
+    paths: ['.github/workflows/via-v354-source-hardening.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - run: gradle -p android-driver :app:assembleDebug -PviaAlertsPreview=true --no-daemon
+      - run: |
+          node --test tests/driver-alerts.test.mjs
+          python3 tests/driver-alerts-sql.py

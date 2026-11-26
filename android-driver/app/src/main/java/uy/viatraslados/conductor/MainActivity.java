@@ -1375,6 +1375,7 @@ public final class MainActivity extends Activity {
     private void notifyNewRequests(JSONArray rows){
         if(BuildConfig.VIA_PREVIEW&&!BuildConfig.VIA_ALERTS_PREVIEW)return;
         if(!DriverPush.available(this,alertActor()))return;
+        if(!BuildConfig.VIA_PREVIEW&&(!alertsSynced||!alertActor().equals(syncedAlertActor)))return;
         if(!visible||isFinishing()||rows==null||authFlow||
             (operatorKey==null&&staffToken==null))return;
         if(newRequestDialog!=null){
@@ -1427,9 +1428,9 @@ public final class MainActivity extends Activity {
         Runnable acknowledge=()->{
             newRequestPrefs().edit().putBoolean(seenKey,true).apply();
             DriverPush.cancel(this,id);
-            if(!BuildConfig.VIA_PREVIEW&&alertsSynced){
-                JSONObject payload=new JSONObject();try{payload.put("bookingId",id);}catch(Exception ignored){}
-                api("POST","/api/operator/alerts/seen",payload,(status,response,error)->{});
+            if(!BuildConfig.VIA_PREVIEW){
+                getSharedPreferences("via_pending_alert_ack",MODE_PRIVATE).edit().putBoolean(seenKey,true).apply();
+                flushAlertAcks();
             }
         };
         TextView close=text("×",24,MUTED,false);close.setGravity(Gravity.CENTER);
@@ -1537,13 +1538,28 @@ public final class MainActivity extends Activity {
         api("POST","/api/operator/alerts/availability",p,(status,response,error)->{
             availabilityBusy=false;
             if(!actor.equals(alertActor()))return;
-            if(status==200){DriverPush.setAvailable(this,actor,on);alertsSynced=true;syncedAlertActor=actor;if(on)scheduleRequestAlerts();}
+            if(status==200){DriverPush.setAvailable(this,actor,on);if(on)DriverPush.clearTokenDirty(this);alertsSynced=true;syncedAlertActor=actor;flushAlertAcks();if(on)scheduleRequestAlerts();}
             else message(on?"No se activaron los avisos remotos.":"Avisos locales apagados; falta confirmar en el servidor.");
             dashboard();
         });
     }
+    private boolean alertAckBusy=false;
+    private void flushAlertAcks(){
+        if(alertAckBusy||BuildConfig.VIA_PREVIEW||staffToken==null||alertActor().isEmpty()||!alertsSynced||!alertActor().equals(syncedAlertActor))return;
+        final String actor=alertActor(),prefix="seen_"+actor+"_";
+        android.content.SharedPreferences pending=getSharedPreferences("via_pending_alert_ack",MODE_PRIVATE);
+        for(String key:pending.getAll().keySet()){
+            if(!key.startsWith(prefix))continue;
+            JSONObject p=new JSONObject();try{p.put("bookingId",key.substring(prefix.length()));}catch(Exception ignored){}
+            alertAckBusy=true;
+            api("POST","/api/operator/alerts/seen",p,(status,response,error)->{
+                alertAckBusy=false;
+                if(status==200){pending.edit().remove(key).apply();if(actor.equals(alertActor()))flushAlertAcks();}
+            });return;
+        }
+    }
     private void syncDriverAlerts(){
-        if(BuildConfig.VIA_PREVIEW||staffToken==null||alertActor().isEmpty()||alertsSyncBusy)return;
+        if(BuildConfig.VIA_PREVIEW||staffToken==null||alertActor().isEmpty()||alertsSyncBusy||availabilityBusy)return;
         final String actor=alertActor();
         alertsSyncBusy=true;
         api("GET","/api/operator/alerts",null,(status,response,error)->{
@@ -1555,6 +1571,8 @@ public final class MainActivity extends Activity {
                 DriverPush.setAvailable(this,actor,on);
                 alertsSynced=true;
                 if(!actor.equals(syncedAlertActor)){syncedAlertActor=actor;dashboard();}
+                flushAlertAcks();
+                if(on&&DriverPush.tokenDirty(this)&&!availabilityBusy)changeAvailability(true);
                 scheduleRequestAlerts();
             }catch(Exception ignored){}
         });
