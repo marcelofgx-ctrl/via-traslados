@@ -1,0 +1,74 @@
+name: Vía V31.1 — remote isolated QA API and D1 release
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ['.github/workflows/via-v311-remote-qa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: via-v311-remote-qa
+  cancel-in-progress: false
+jobs:
+  release-qa:
+    if: github.ref == 'refs/heads/via-hourly-service-v31-qa-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Recheck exact QA environment before any write
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node qa/hourly/runtime-preflight.mjs
+      - name: Verify regression and exact-schema rehearsal
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+          python3 qa/hourly/rehearse.py /tmp/via-qa-schema.sql
+          mkdir -p qa-hourly-migrations
+          cp qa/hourly/005_hourly_candidate.sql qa-hourly-migrations/0001_hourly.sql
+      - name: Test migration locally and build exact candidate
+        run: |
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-qa-db --local --config wrangler-v311-qa.jsonc --file /tmp/via-qa-schema.sql --persist-to /tmp/via-d1-local
+          npx --yes wrangler@4.160.1 d1 migrations apply via-traslados-qa-db --local --config wrangler-v311-qa.jsonc --persist-to /tmp/via-d1-local
+          npx --yes wrangler@4.160.1 deploy --config wrangler-v311-qa.jsonc --dry-run --outdir /tmp/via-v311-candidate
+      - name: Capture verifiable QA recovery point just before migration
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node qa/hourly/remote-gate.mjs before
+      - name: Apply exclusively the isolated QA D1 migration
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 d1 migrations apply via-traslados-qa-db --remote --config wrangler-v311-qa.jsonc
+      - name: Verify QA row preservation and schema
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node qa/hourly/remote-gate.mjs after-migration
+      - name: Deploy QA API only
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler-v311-qa.jsonc --keep-vars
+      - name: Verify active QA version and unchanged production
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node qa/hourly/remote-gate.mjs after-deploy
+      - name: Real concurrent QA end-to-end with synthetic authenticated accounts
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node qa/hourly/remote-e2e.mjs
+      - name: Verify active versions again
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node qa/hourly/remote-gate.mjs after-deploy
