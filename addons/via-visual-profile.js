@@ -11,4 +11,11 @@
  const chrome=/Chrome\/|CriOS\//i.test(ua);
  const profile=samsung?'samsung':ios?'ios':android&&firefox?'firefox-android':android&&edge?'edge-android':android&&opera?'opera-android':android&&webview?'android-webview':android&&chrome?'chrome-android':firefox?'firefox':chrome?'chromium':'default';
  document.documentElement.dataset.viaVisual=profile;
+ // Do not replace DOM text or attach functional listeners. Observe only the existing idle glyph.
+ function init(){
+  const button=document.getElementById('location-shortcut');if(!button)return;
+  const sync=()=>{const glyph=button.textContent.trim();const idle=!button.disabled&&button.getAttribute('aria-busy')!=='true'&&/^[◎⊙◉⦿◌○⨀]$/u.test(glyph);button.toggleAttribute('data-via-vector-idle',idle)};
+  new MutationObserver(sync).observe(button,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['disabled','aria-busy']});sync();
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();

@@ -39,7 +39,9 @@ for(const [profile,engine,ua] of cases){
  const measure=()=>page.evaluate(()=>{
   const b=document.getElementById('location-shortcut'),s=b.querySelector('svg'),r=b.getBoundingClientRect(),sr=s?.getBoundingClientRect(),cs=getComputedStyle(b);
   const title=document.querySelector('.home-intro h1')||document.querySelector('.home-intro');
-  return {button:[r.width,r.height],font:cs.fontSize,svg:sr?[sr.width,sr.height]:null,childTags:[...b.children].map(x=>x.tagName),titleFont:getComputedStyle(title).fontFamily,titleSize:getComputedStyle(title).fontSize,viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,overflow:document.documentElement.scrollWidth>innerWidth};
+  const pseudo=getComputedStyle(b,'::before');
+  const surfaces=[...document.querySelectorAll('.reference-home,.reference-booking,.home-intro,.home-highlights,.reference-field,.premium-main')].slice(0,12).map(el=>{const x=getComputedStyle(el);return {bg:x.backgroundImage,filter:x.filter,backdrop:x.backdropFilter,shadow:x.boxShadow}});
+  return {glyph:b.textContent.trim(),idle:b.hasAttribute('data-via-vector-idle'),pseudo:{content:pseudo.content,width:pseudo.width,height:pseudo.height,mask:pseudo.maskImage||pseudo.webkitMaskImage},fontReady:document.fonts.check('600 24px Manrope'),surfaces,button:[r.width,r.height],font:cs.fontSize,svg:sr?[sr.width,sr.height]:null,childTags:[...b.children].map(x=>x.tagName),titleFont:getComputedStyle(title).fontFamily,titleSize:getComputedStyle(title).fontSize,viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,overflow:document.documentElement.scrollWidth>innerWidth};
  });
  const active=await measure();
  const path='v30410-visual/evidence/'+(remote?'remote':'local')+'-'+profile+'-'+scheme;
@@ -49,12 +51,20 @@ for(const [profile,engine,ua] of cases){
  await page.screenshot({path:path+'-reference.png',animations:'disabled'});
  assert.deepEqual(active.button,reference.button,'Changed touch target geometry');
  if(profile!=='chrome-android')assert.deepEqual(active,reference,'Reference browser unexpectedly changed');
- else {assert.equal(active.font,'24px');if(active.svg)assert.deepEqual(active.svg,[24,24])}
+ else {assert(active.idle,'Unexpected GPS glyph: '+active.glyph);assert.equal(active.font,'0px');assert.equal(active.pseudo.width,'24px');assert.equal(active.pseudo.height,'24px');assert.match(active.pseudo.mask,/data:image\/svg\+xml/);assert.equal(reference.font,'24px');assert.deepEqual(active.surfaces,reference.surfaces);assert.equal(active.glyph,reference.glyph);
+  // Ensure progress/error glyph remains unchanged instead of drawing idle vector.
+  await page.evaluate(()=>{const b=document.getElementById('location-shortcut');b.setAttribute('aria-busy','true')});
+  await page.evaluate(()=>document.documentElement.dataset.viaVisual='chrome-android');
+  await page.waitForFunction(()=>!document.getElementById('location-shortcut').hasAttribute('data-via-vector-idle'));
+  assert.equal((await measure()).font,'24px');
+  await page.evaluate(()=>document.getElementById('location-shortcut').removeAttribute('aria-busy'));
+  await page.waitForFunction(()=>document.getElementById('location-shortcut').hasAttribute('data-via-vector-idle'));
+ }
  await page.evaluate(p=>document.documentElement.dataset.viaVisual=p,profile);
  await page.locator('#start-booking').click();
  assert.match(await page.locator('#to-contact').innerText(),/Continuar/);
  assert(!(await page.locator('#to-contact').isDisabled()));
- const row={profile,scheme,remote,active,reference};results.push(row);console.log('VIA_VISUAL_CHECK '+JSON.stringify(row));
+ const row={profile,scheme,remote,active,reference};results.push(row);console.log('VIA_VISUAL_CHECK '+JSON.stringify({profile,scheme,remote,active:{glyph:active.glyph,idle:active.idle,font:active.font,pseudo:active.pseudo.width,vector:active.pseudo.mask?.includes('data:image/svg'),fontReady:active.fontReady,button:active.button},textureUnchanged:JSON.stringify(active.surfaces)===JSON.stringify(reference.surfaces)}));
  await ctx.close();
  }
  }finally{await browser.close()}
