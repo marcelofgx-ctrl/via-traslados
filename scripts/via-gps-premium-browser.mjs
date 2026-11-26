@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium,firefox,webkit} from 'playwright';
 import {mkdirSync} from 'node:fs';
-const root='https://via-traslados-search-density-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-search-space-qa.marcelof-gx.workers.dev';
 const old='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev';
 mkdirSync('gps-premium-evidence',{recursive:true});
 for(const n of ['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-picker.js','app.js','store.js','via-visual-compat.css']){
@@ -30,7 +30,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut')?.dataset.viaGpsState==='idle');
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.19 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.20 QA');
  const button=p.locator('#location-shortcut'),state=s=>p.waitForFunction(x=>document.querySelector('#location-shortcut')?.dataset.viaGpsState===x,s,{timeout:12000});
  assert.equal(await p.locator('#home-origin').getAttribute('placeholder'),'¿Dónde te recogemos?');
  for(const id of ['home-origin','home-destination']){
@@ -56,7 +56,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
  const dest=searchPage.locator('#home-destination');
  await dest.focus();assert.equal(await dest.evaluate(e=>getComputedStyle(e).fontSize),'16px');
  // Intercept all geographic reads in this independent page; no reservation writes.
- await searchPage.route('**/api/direcciones?**',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:Array.from({length:6},(_,i)=>({street:'Aeropuerto de prueba '+i,label:'Aeropuerto de prueba '+i,city:'Canelones',department:'Canelones',lat:-34.8+i/1000,lng:-56.0,kind:'place',accuracy:'poi',distanceKm:i+1}))})}));
+ await searchPage.route('**/api/direcciones?**',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:Array.from({length:10},(_,i)=>({street:'Aeropuerto de prueba '+i,label:'Aeropuerto de prueba '+i,city:'Canelones',department:'Canelones',lat:-34.8+i/1000,lng:-56.0,kind:'place',accuracy:'poi',distanceKm:i+1}))})}));
  await dest.fill('Aeropuerto');
  const list=searchPage.locator('#address-suggestions');
  await searchPage.waitForFunction(()=>document.querySelector('#address-suggestions')?.dataset.viaCompact==='true'&&!document.querySelector('#address-suggestions')?.classList.contains('hidden'));
@@ -69,6 +69,30 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
  assert.equal(density.min,'44px');assert.equal(density.padding,'5px');assert.equal(density.gap,'4px');assert(density.height>=43.9);
  console.log('VIA_SUGGESTION_DENSITY_PASS '+JSON.stringify({name,...density}));
  assert(await list.isVisible());
+ // Verify expanded list stays inside the viewport, excludes the edited field and
+ // chooses the roomier side. Simulate viewport resize, not a physical keyboard.
+ const space=async()=>list.evaluate(e=>{
+  const f=document.querySelector('#home-destination').closest('.reference-field').getBoundingClientRect(),r=e.getBoundingClientRect(),v=window.visualViewport;
+  const t=v?.offsetTop||0,h=v?.height||innerHeight,n=document.querySelector('.reference-tabs')?.getBoundingClientRect();
+  const bottom=n&&n.height>0&&n.top>f.bottom&&n.top<t+h&&n.bottom>t?n.top:t+h;
+  const above=Math.max(0,f.top-t-8),below=Math.max(0,bottom-f.bottom-8);
+  const max=parseFloat(getComputedStyle(e).maxHeight);
+  return {side:e.dataset.viaSuggestSide,max,above,below,top:r.top,bottom:r.bottom,fieldTop:f.top,fieldBottom:f.bottom,viewportTop:t,viewportBottom:t+h,lower:bottom,visibleRows:[...e.querySelectorAll('.address-choice')].filter(x=>{const b=x.getBoundingClientRect();return b.top>=r.top-1&&b.bottom<=r.bottom+1}).length};
+ });
+ await searchPage.waitForFunction(()=>!!document.querySelector('#address-suggestions')?.dataset.viaSuggestSide);
+ for(const height of [720,540,820]){
+  await searchPage.setViewportSize({width,height});
+  await searchPage.waitForTimeout(150);
+  const s=await space();
+  assert(s.max>=0&&s.max<=Math.max(s.above,s.below)+1,JSON.stringify(s));
+  assert(s.top>=s.viewportTop-1&&s.bottom<=s.viewportBottom+1,JSON.stringify(s));
+  if(s.side==='above')assert(s.bottom<=s.fieldTop+1,JSON.stringify(s));
+  else assert(s.top>=s.fieldBottom-1&&s.bottom<=s.lower+1,JSON.stringify(s));
+  console.log('VIA_SEARCH_SPACE_PASS '+JSON.stringify({name,height,...s}));
+ }
+ await searchPage.setViewportSize({width,height:width===320?568:720});
+ await searchPage.waitForTimeout(150);
+ await searchPage.screenshot({path:'gps-premium-evidence/'+name+'-expanded-results.png',animations:'disabled'});
  await dest.focus();assert(await dest.evaluate(e=>e===document.activeElement));
  await searchPage.waitForFunction(()=>document.querySelectorAll('#address-suggestions .address-choice').length>0);
  await searchPage.waitForTimeout(650);

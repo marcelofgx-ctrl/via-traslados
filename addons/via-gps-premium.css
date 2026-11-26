@@ -1,4 +1,4 @@
-/* Isolated GPS presentation V30.4.10.19; no changes to input or map actions. */
+/* Isolated GPS presentation V30.4.10.20; no changes to input or map actions. */
 html body .reference-home #location-shortcut#location-shortcut{
  --gps-ink:#fff;
  position:relative!important;display:inline-flex!important;flex-direction:row!important;
@@ -222,4 +222,16 @@ html body #address-suggestions[data-via-compact="true"] .address-choice :is([cla
 }
 html body #address-suggestions[data-via-compact="true"][data-via-results-ready="true"]{
  top:var(--via-suggest-top)!important;bottom:auto!important;
+}
+
+
+/* Adaptive results viewport: fill available space, never cover the active field. */
+html body #address-suggestions[data-via-compact="true"][data-via-results-ready="true"]{
+ max-height:var(--via-suggest-height)!important;
+ overscroll-behavior:contain;
+ scrollbar-width:thin;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice :is([class*="distance"],[class*="Distance"]){
+ background:transparent!important;padding:0 1px!important;
+ box-shadow:none!important;
 }

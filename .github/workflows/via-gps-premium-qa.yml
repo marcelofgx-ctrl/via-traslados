@@ -1,4 +1,4 @@
-name: Vía V30.4.10.19 — GPS premium isolated QA
+name: Vía V30.4.10.20 — GPS premium isolated QA
 on:
   push:
     branches: [via-gps-premium-v3041011-qa-20261126]
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: via-gps-premium-qa-density
+  group: via-gps-premium-qa-space
   cancel-in-progress: true
 jobs:
   package:
@@ -25,16 +25,16 @@ jobs:
           node --check addons/via-gps-premium.js
           node tests/via-reverse-cache.test.mjs
           python3 scripts/via-gps-premium-build.py
-      - name: Deploy separate QA, preserve .18 rollback
+      - name: Deploy separate QA, preserve .19 rollback
         run: npx --yes wrangler@4.160.1 deploy --config v30410-visual/geo-integral/wrangler-premium.jsonc
       - name: Verify live version and blocked reservations
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          const u='https://via-traslados-search-density-qa.marcelof-gx.workers.dev';
+          const u='https://via-traslados-search-space-qa.marcelof-gx.workers.dev';
           const get=async (p,opts={})=>fetch(u+p,{...opts,headers:{'User-Agent':'ViaTrasladosV35SignedRelease','Cache-Control':'no-cache',...(opts.headers||{})},signal:AbortSignal.timeout(12000)});
           let ready=false;
-          for(let i=0;i<8;i++){try{const r=await get('/index.html');const h=await r.text();console.log('VIA_LIVE_CHECK',r.status,h.includes('V30.4.10.19 QA'));if(r.ok&&h.includes('V30.4.10.19 QA')){ready=true;break}}catch(e){console.log(e.name)}await new Promise(r=>setTimeout(r,2500));}
+          for(let i=0;i<8;i++){try{const r=await get('/index.html');const h=await r.text();console.log('VIA_LIVE_CHECK',r.status,h.includes('V30.4.10.20 QA'));if(r.ok&&h.includes('V30.4.10.20 QA')){ready=true;break}}catch(e){console.log(e.name)}await new Promise(r=>setTimeout(r,2500));}
           assert(ready,'Exact new QA not yet reachable');
           const css=await get('/via-gps-premium.css');assert(css.ok);const style=await css.text();assert(style.includes('content:none!important'));assert(!style.includes('content:"Mi ubicación"'));
           // A newly deployed workers.dev hostname can be partially propagated.
@@ -51,7 +51,7 @@ jobs:
           }
           assert(protectedQa,'QA health or explicit reservation denial not verified');
           const page=await get('/index.html');assert((await page.text()).includes('placeholder="¿Dónde te recogemos?"'));
-          assert(style.includes('width:44px!important'));assert(style.includes('--via-suggest-width'));assert(style.includes('38px painted control'));assert(style.includes('One continuous journey card'));assert(style.includes('Refined place results'));assert(style.includes('min-height:44px!important;padding:5px 10px!important;gap:4px!important'));assert(style.includes('font-size:14px!important;font-weight:400!important;letter-spacing:-.1px!important'));assert((await (await get('/index.html')).text()).includes('id="via-geography-credit"'));
+          assert(style.includes('width:44px!important'));assert(style.includes('--via-suggest-width'));assert(style.includes('38px painted control'));assert(style.includes('One continuous journey card'));assert(style.includes('Refined place results'));assert(style.includes('Adaptive results viewport'));assert(style.includes('min-height:44px!important;padding:5px 10px!important;gap:4px!important'));assert(style.includes('font-size:14px!important;font-weight:400!important;letter-spacing:-.1px!important'));assert((await (await get('/index.html')).text()).includes('id="via-geography-credit"'));
           console.log('VIA_GPS_PREMIUM_LIVE '+u);
           NODE
       - name: Verify production unchanged

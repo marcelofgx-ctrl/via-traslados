@@ -67,14 +67,23 @@
    const width=Math.min(r.width,w-16),x=Math.max(left+8,Math.min(r.left,left+w-width-8));
    if(width<=0)return;
    if(panel.dataset.viaResultsReady==='true'){
-    const below=Math.max(0,top+h-r.bottom-8),above=Math.max(0,r.top-top-8);
-    const useAbove=below<132&&above>below;
-    const available=Math.max(42,Math.min(360,useAbove?above:below));
+    const nav=document.querySelector('.reference-tabs');
+    const nr=nav?.getBoundingClientRect();
+    const navVisible=nr&&nr.height>0&&nr.top>r.bottom&&nr.top<top+h&&nr.bottom>top;
+    const lower=navVisible?nr.top:top+h;
+    const above=Math.max(0,r.top-top-8),below=Math.max(0,lower-r.bottom-8);
     panel.style.setProperty('--via-suggest-left',x+'px');
     panel.style.setProperty('--via-suggest-width',width+'px');
-    panel.style.setProperty('--via-suggest-height',available+'px');
-    const actual=Math.min(available,panel.scrollHeight+2);
+    // Measure actual content at its final width. Prefer below if every result fits;
+    // otherwise pick the roomier side. No fixed 360px ceiling after keyboard closes.
+    const content=panel.scrollHeight+Math.max(0,panel.offsetHeight-panel.clientHeight);
+    const useAbove=below<content&&above>below;
+    const available=Math.floor(useAbove?above:below);
+    const height=Math.max(0,available);
+    panel.style.setProperty('--via-suggest-height',height+'px');
+    const actual=Math.min(height,content);
     panel.style.setProperty('--via-suggest-top',Math.max(top+4,useAbove?r.top-4-actual:r.bottom+4)+'px');
+    panel.dataset.viaSuggestSide=useAbove?'above':'below';
     panel.dataset.viaCompact='true';return;
    }
    const originalTop=parseFloat(panel.style.top);
