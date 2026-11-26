@@ -45,7 +45,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
  const picked=await p.evaluate(()=>ViaAddress.get('home-origin'));assert.equal(picked.lat,lat);assert.equal(picked.lng,lng);assert.equal(picked.postalStatus,'suggested');
  await button.click();await state('permission');scenario='ambiguous';await p.getByRole('button',{name:'Permitir ubicación',exact:true}).click();await state('confirm');
  assert.equal((await p.evaluate(()=>ViaAddress.get('home-origin'))).postalStatus,'unknown');assert.equal(await p.locator('.via-wait-track:visible').count(),0);
- const nav=p.locator('.reference-tabs a').last();await nav.scrollIntoViewIfNeeded();assert(await nav.isInViewport());
+ const nav=p.locator('.reference-tabs a').last();await nav.scrollIntoViewIfNeeded();assert(await nav.evaluate(e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth}));
  await p.screenshot({path:'gps-premium-evidence/'+name+'-confirm.png',animations:'disabled'});
  // Manual input cancels the existing operation without new requests.
  await button.scrollIntoViewIfNeeded();await button.click();await state('permission');await p.getByRole('button',{name:'Permitir ubicación',exact:true}).click();await state('gps');
