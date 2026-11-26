@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {chromium,webkit} from 'playwright';
 import {readFileSync} from 'node:fs';
-const root='https://via-traslados-home-return-qa.marcelof-gx.workers.dev';
-const candidate='https://via-traslados-home-return-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-home-return-geo-qa.marcelof-gx.workers.dev';
+const candidate='https://via-traslados-home-return-geo-qa.marcelof-gx.workers.dev';
 const origins={baseline:'https://d29d5304-via-traslados-web-prod.marcelof-gx.workers.dev',candidate,prod:root};
 const mode='prod';assert(origins[mode]);
 const a={label:'Avenida Italia 4206, Montevideo',lat:-34.88,lng:-56.12,source:'map',postalStatus:'unknown',numberIsApproximate:true,accuracy:'gps'};

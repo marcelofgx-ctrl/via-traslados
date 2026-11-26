@@ -1,4 +1,4 @@
-name: Vía V30.4.10.25 — landing return QA only
+name: Vía V30.4.10.26 — landing return QA only
 on:
   push:
     branches: [via-home-return-v3041025-qa-20261126]
@@ -30,10 +30,22 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          const u='https://via-traslados-home-return-qa.marcelof-gx.workers.dev';
-          let ok=false;for(let i=0;i<8;i++){try{const r=await fetch(u+'/index.html');if(r.ok&&(await r.text()).includes('V30.4.10.25 QA')){ok=true;break}}catch{}await new Promise(r=>setTimeout(r,2000))}
+          const u='https://via-traslados-home-return-geo-qa.marcelof-gx.workers.dev';
+          let ok=false;for(let i=0;i<8;i++){try{const r=await fetch(u+'/index.html');if(r.ok&&(await r.text()).includes('V30.4.10.26 QA')){ok=true;break}}catch{}await new Promise(r=>setTimeout(r,2000))}
           assert(ok);assert.equal((await fetch(u+'/api/requests',{method:'POST',body:'{}'})).status,503);
+          assert.equal((await fetch(u+'/api/customer/me')).status,503);
           console.log('VIA_HOME_RETURN_QA_LIVE '+u)
+          for(const q of ["McDonald's","McDonalds","Costa Urbana"]){
+            const params=new URLSearchParams({mode:'places',q,lat:'-34.884',lng:'-56.174'});
+            for(const [tag,host] of [['prod','https://viatraslados.com'],['qa',u]]){
+              const r=await fetch(host+'/api/direcciones?'+params,{headers:{Accept:'application/json','User-Agent':'ViaTrasladosV35SignedRelease'},signal:AbortSignal.timeout(20000)});
+              const j=await r.json(),rows=j.results||[];
+              const wanted=q.startsWith('Mc')?/mc\s*donald/i:/costa urbana/i;
+              const matches=rows.filter(x=>wanted.test([x.name,x.label,x.street].join(' '))).length;
+              console.log('VIA_POI_COMPARE '+JSON.stringify({tag,q,http:r.status,count:rows.length,matches}));
+              assert(r.ok&&matches>0,tag+' '+q+' no matching POI');
+            }
+          }
           NODE
   browser:
     needs: package

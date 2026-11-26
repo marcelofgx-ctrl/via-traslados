@@ -28,11 +28,11 @@ new="""// Home is a single viewport. Do not align the hero below the header.
    requestAnimationFrame(()=>{resetHomePosition();requestAnimationFrame(resetHomePosition)});"""
 p.write_text(s.replace(old,new));subprocess.run(['node','--check',str(p)],check=True)
 p=assets/'index.html';s=p.read_text();assert 'V30.4.10.24' in s
-s=s.replace('30.4.10.24','30.4.10.25').replace('>V30.4.10.25</span>','>V30.4.10.25 QA</span>')
-s=re.sub(r'app\.js\?v=[^"\x27\s<>]+','app.js?v=30.4.10.25',s);p.write_text(s)
-p=assets/'sw.js';s=p.read_text();assert '30.4.10.24' in s;p.write_text(s.replace('30.4.10.24-prod','30.4.10.25-home-qa'))
+s=s.replace('30.4.10.24','30.4.10.26').replace('>V30.4.10.26</span>','>V30.4.10.26 QA</span>')
+s=re.sub(r'app\.js\?v=[^"\x27\s<>]+','app.js?v=30.4.10.26',s);p.write_text(s)
+p=assets/'sw.js';s=p.read_text();assert '30.4.10.24' in s;p.write_text(s.replace('30.4.10.24-prod','30.4.10.26-home-qa'))
 p=assets/'config.js';s=p.read_text();assert s.count('https://via-traslados-api.marcelof-gx.workers.dev')==1
-p.write_text(s.replace('https://via-traslados-api.marcelof-gx.workers.dev','https://via-traslados-home-return-qa.marcelof-gx.workers.dev'))
-(out/'worker.mjs').write_text("""export default {async fetch(r,env){const u=new URL(r.url);if(u.pathname==='/api/health'&&r.method==='GET')return Response.json({ok:true,environment:'home-return-qa'});if(u.pathname==='/api/direcciones'&&r.method==='GET'){try{return await fetch(new URL(u.pathname+u.search,'https://viatraslados.com'),{signal:AbortSignal.timeout(12000)})}catch{return Response.json({error:'Buscador no disponible',results:[]},{status:503})}}if(u.pathname.startsWith('/api/')||!['GET','HEAD'].includes(r.method))return Response.json({error:'QA sin reservas'},{status:503});return env.ASSETS.fetch(r)}};""")
-(out/'wrangler.jsonc').write_text(json.dumps({'name':'via-traslados-home-return-qa','main':'./worker.mjs','compatibility_date':'2026-11-10','workers_dev':True,'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}))
+p.write_text(s.replace('https://via-traslados-api.marcelof-gx.workers.dev','https://via-traslados-home-return-geo-qa.marcelof-gx.workers.dev'))
+(out/'worker.mjs').write_text("""export default {async fetch(r,env){const u=new URL(r.url);if(u.pathname==='/api/health'&&r.method==='GET')return Response.json({ok:true,environment:'home-return-qa'});if(u.pathname==='/api/direcciones'&&r.method==='GET'){try{const h=new Headers({Accept:'application/json'});const ip=r.headers.get('CF-Connecting-IP');if(ip)h.set('CF-Connecting-IP',ip);return await env.GEO_WEB.fetch(new Request(new URL(u.pathname+u.search,'https://viatraslados.com'),{headers:h,signal:AbortSignal.timeout(12000)}))}catch{return Response.json({error:'Buscador no disponible',results:[]},{status:503})}}if(u.pathname.startsWith('/api/')||!['GET','HEAD'].includes(r.method))return Response.json({error:'QA sin reservas'},{status:503});return env.ASSETS.fetch(r)}};""")
+(out/'wrangler.jsonc').write_text(json.dumps({'name':'via-traslados-home-return-geo-qa','main':'./worker.mjs','compatibility_date':'2026-11-10','workers_dev':True,'services':[{'binding':'GEO_WEB','service':'via-traslados-web-prod'}],'assets':{'directory':'./assets','binding':'ASSETS','run_worker_first':['/api/*']}}))
 guard();print('VIA_HOME_RETURN_QA_READY')
