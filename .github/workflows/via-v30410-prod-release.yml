@@ -1,4 +1,4 @@
-name: Vía V30.4.10.4 — authorized graphics-only production consolidation
+name: Vía V30.4.10.5 — authorized graphics-only production consolidation
 on:
   push:
     branches: [via-v30410-visual-compat-qa-20261125]
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    if: "github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125' && github.event.head_commit.message == 'release: authorize V30.4.10.4 graphics only with functional regression and rollback'"
+    if: "github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125' && github.event.head_commit.message == 'release: authorize V30.4.10.5 graphics only with functional regression and rollback'"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -28,15 +28,19 @@ jobs:
         run: |
           test "$(gh api repos/${{ github.repository }}/actions/runs/45747925955 --jq .conclusion)" = success
           test "$(gh api repos/${{ github.repository }}/actions/runs/45747925955 --jq .head_sha)" = a3eaefc4a2a217640a2bedc9dd522967260c6956
-      - name: Build production-only exact package and bindings
+      - name: Build visual correction from exact active production
+        run: python3 scripts/v30410-visual-build.py
+      - name: Install browser engines
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium firefox webkit >/dev/null
+      - name: Revalidate updated visual QA before any upload
+        run: node scripts/v30410-visual-browser.mjs
+      - name: Build exact production package and bindings
         run: |
           python3 scripts/v30410-prod-build.py
           python3 scripts/v30410-prod-candidate.py prepare
           mkdir -p v30410-visual/evidence
-      - name: Install browser engines
-        run: |
-          npm install --no-save --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium webkit >/dev/null
       - name: Upload immutable version without traffic
         run: npx --yes wrangler@4.160.1 versions upload --config v30410-visual/wrangler-prod.jsonc --keep-vars
       - name: Verify exact assets and unchanged binding contract
@@ -64,7 +68,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: via-v304104-production-evidence
+          name: via-v304105-production-evidence
           path: |
             v30410-visual/evidence
             v30410-visual/manifest.json

@@ -22,7 +22,7 @@
    font replacement, blur changes, zoom, or new compositing layers. */
 
 
-/* V30.4.10.4 QA. Premium finish on landing only. Keep reference geometry and behavior. */
+/* V30.4.10.5 QA. Premium finish on landing only. Keep reference geometry and behavior. */
 html[data-via-finish="premium"] body .reference-home .reference-booking {
  background-image:linear-gradient(153deg,rgba(250,254,251,.95),rgba(230,242,235,.86) 53%,rgba(209,229,219,.92))!important;
  box-shadow:0 14px 34px rgba(19,61,49,.24),inset 0 1px 0 rgba(255,255,255,.85),inset 0 0 0 1px rgba(255,255,255,.49),inset 0 -2px 0 rgba(58,111,91,.12)!important;
@@ -35,8 +35,8 @@ html[data-via-finish="premium"] body .reference-home .reference-reservations {
  box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(59,111,91,.14),0 2px 7px rgba(24,66,53,.085)!important;
 }
 html[data-via-finish="premium"] body #start-booking#start-booking {
- background-image:linear-gradient(174deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,0) 39%),linear-gradient(113deg,#128d7e 0%,#087568 46%,#004d47 100%)!important;
- background-color:#086f65!important;
+ background-image:linear-gradient(174deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,0) 39%),linear-gradient(113deg,#08665d 0%,#075f57 46%,#004d47 100%)!important;
+ background-color:#08665d!important;
  color:#fff!important;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.41),inset 0 -2px 0 rgba(0,46,41,.26),0 6px 14px rgba(0,79,67,.25)!important;
 }
@@ -53,25 +53,7 @@ html[data-via-finish="premium"] body .reference-tabs a.selected {
 }
 html[data-via-finish="premium"] body .reference-home svg {stroke-linecap:round;stroke-linejoin:round}
 html[data-via-finish="premium"] body #via-visible-release {font-size:9px!important;opacity:.78!important;line-height:11px!important}
-@media(prefers-color-scheme:dark) {
- html[data-via-finish="premium"] body .reference-home .reference-booking {
-  background-image:linear-gradient(145deg,rgba(35,61,56,.98),rgba(19,42,38,.96) 60%,rgba(12,31,29,.98))!important;
-  box-shadow:0 14px 34px rgba(0,0,0,.34),inset 0 1px 0 rgba(203,241,222,.19),inset 0 -1px 0 rgba(0,0,0,.3)!important;
- }
- html[data-via-finish="premium"] body .reference-home .highlight,
- html[data-via-finish="premium"] body .reference-home .reference-field,
- html[data-via-finish="premium"] body .reference-home .reference-option,
- html[data-via-finish="premium"] body .reference-home .reference-reservations {
-  background-image:linear-gradient(150deg,rgba(55,82,74,.94),rgba(28,54,47,.94))!important;
-  box-shadow:inset 0 1px 0 rgba(203,241,222,.13),0 2px 8px rgba(0,0,0,.19)!important;
- }
- html[data-via-finish="premium"] body .reference-tabs {
-  background-image:linear-gradient(150deg,#304b43,#182f2b)!important;
-  box-shadow:inset 0 1px 0 rgba(203,241,222,.18),0 -3px 14px rgba(0,0,0,.2)!important;
- }
- html[data-via-finish="premium"] body .reference-tabs a.selected {
-  background-image:linear-gradient(145deg,#315f50,#22483e)!important;
-  box-shadow:inset 0 1px 0 rgba(203,241,222,.20)!important;
- }
-}
+/* A dark OS preference is not an actual dark application theme. Preserve the
+   verified light pearl palette and original foregrounds in either system scheme.
+   A separate dark theme needs coordinated foreground/background testing. */
 /* Original photo, text colors, blur radius, input geometry, navigation and logic untouched. */

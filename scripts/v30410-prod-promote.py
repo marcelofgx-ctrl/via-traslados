@@ -6,7 +6,7 @@ r=json.loads((out/'release-candidate.json').read_text());TARGET=r['candidate'];u
 assert r['rollback']==BASE and r['api']==API_BASE and r['assets']==42
 def activate(target,expected):
  assert v(WEB)==expected and v(API)==API_BASE,'Concurrent release'
- cf(WEB,'/deployments',{'strategy':'percentage','versions':[{'version_id':target,'percentage':100}],'annotations':{'workers/message':'V30.4.10.4 approved visual-only release or rollback'}})
+ cf(WEB,'/deployments',{'strategy':'percentage','versions':[{'version_id':target,'percentage':100}],'annotations':{'workers/message':'V30.4.10.5 approved visual-only release or rollback'}})
  for _ in range(14):
   if v(WEB)==target:return
   time.sleep(2)

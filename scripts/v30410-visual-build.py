@@ -25,7 +25,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
   p=ASSETS/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b);hashes[n]=P['sha'](b)
 assert len(hashes)==40 and P['NEEDED'].issubset(hashes)
 p=ASSETS/'index.html';s=p.read_text();assert s.count('</head>')==1 and s.count('</body>')==1 and 'via-visible-release' in s
-p.write_text(s.replace('</head>','<script src="/via-visual-profile.js?v=30.4.10.4"></script></head>').replace('</body>','<link rel="stylesheet" href="/via-visual-compat.css?v=30.4.10.4"></body>').replace('>V30.4.9</span>','>V30.4.10.4 QA</span>').replace('aria-label="Versión 30.4.9"','aria-label="Versión 30.4.10.4 QA"'))
+p.write_text(s.replace('</head>','<script src="/via-visual-profile.js?v=30.4.10.5"></script></head>').replace('</body>','<link rel="stylesheet" href="/via-visual-compat.css?v=30.4.10.5"></body>').replace('>V30.4.9</span>','>V30.4.10.5 QA</span>').replace('aria-label="Versión 30.4.9"','aria-label="Versión 30.4.10.5 QA"'))
 for n in ['via-visual-profile.js','via-visual-compat.css']:shutil.copyfile('addons/'+n,ASSETS/n)
 changed=[n for n,h in hashes.items() if P['sha']((ASSETS/n).read_bytes())!=h]
 assert changed==['index.html'],changed
@@ -35,7 +35,7 @@ preview=OUT/'preview';shutil.copytree(ASSETS,preview,dirs_exist_ok=True)
 cfg=preview/'config.js';s=cfg.read_text();old='https://via-traslados-api.marcelof-gx.workers.dev';assert s.count(old)==1
 cfg.write_text(s.replace(old,'https://via-traslados-v30410-visual-qa.marcelof-gx.workers.dev'))
 sw=preview/'sw.js';s=sw.read_text();assert 'via-traslados-v30.4.9-session' in s
-sw.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.4-visual-qa'))
+sw.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.5-visual-qa'))
 (OUT/'worker.mjs').write_text("export default {async fetch(r,env){const u=new URL(r.url);if(u.pathname.startsWith('/api/')||!['GET','HEAD'].includes(r.method))return Response.json({error:'Vista visual QA aislada; sin reservas'},{status:503});return env.ASSETS.fetch(r)}}")
 (OUT/'wrangler.jsonc').write_text(json.dumps({'name':'via-traslados-v30410-visual-qa','main':'./worker.mjs','compatibility_date':'2026-11-10','workers_dev':True,'assets':{'directory':'./preview','binding':'ASSETS','run_worker_first':True}}))
 guard();print('VIA_VISUAL_CANDIDATE_READY 40 base assets; only index + independent visual layer; no production changes',flush=True)

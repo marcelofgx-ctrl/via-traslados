@@ -14,12 +14,15 @@ def hashes():
  assert expected==actual,(expected-actual,actual-expected)
  for n,h in manifest['source_assets'].items():
   if n not in manifest['changed']:assert P['sha']((ASSETS/n).read_bytes())==h,'Unchanged asset differs '+n
- assert b'V30.4.10.4' in (ASSETS/'index.html').read_bytes()
+ assert b'V30.4.10.5' in (ASSETS/'index.html').read_bytes()
  assert b'via-route-preview-cache-v1' in (ASSETS/'store.js').read_bytes()
  return {n:P['sha']((ASSETS/n).read_bytes()) for n in expected}
 def prepare():
  baseline()
- assert P['latest_uploaded_version'](WEB)==BASE,'Latest uploaded worker differs from active; re-audit'
+ latest=P['latest_uploaded_version'](WEB)
+ assert latest in {BASE,'64457902-c17e-407e-a7a5-78e0aa9d28bb'},'Unknown uploaded worker; re-audit'
+ assert contract(latest)==contract(BASE),'Known rejected candidate binding drift'
+ assert all(metadata(latest)['resources']['script_runtime'].get(k)==metadata(BASE)['resources']['script_runtime'].get(k) for k in ['compatibility_date','compatibility_flags']),'Runtime changed'
  b=contract(BASE);v=metadata(BASE)['resources']['script_runtime']
  assert set(b)=={'ASSETS','VIA_POI_API','POI_CACHE','VIA_PLACES_ENABLED'},'Unexpected active bindings: '+','.join(sorted(b))
  assert b['VIA_POI_API'].get('service')==API
@@ -37,7 +40,7 @@ def prepare():
  print('VIA_30410_EXACT_PACKAGE_READY 42 assets; no production deployment',flush=True)
 def verify():
  baseline()
- new=P['latest_uploaded_version'](WEB);assert new!=BASE
+ new=P['latest_uploaded_version'](WEB);assert new not in {BASE,'64457902-c17e-407e-a7a5-78e0aa9d28bb'}
  assert contract(BASE)==contract(new),'Binding contract changed'
  a=metadata(BASE)['resources']['script_runtime'];b=metadata(new)['resources']['script_runtime']
  assert all(a.get(k)==b.get(k) for k in ['compatibility_date','compatibility_flags'])
@@ -53,9 +56,9 @@ def verify():
     time.sleep(2*(i+1))
  with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(check,hashes()))
  baseline()
- report={'version':'30.4.10.4','candidate':new,'preview':url,'rollback':BASE,'api':API_BASE,'assets':42,'activeProductionUnchanged':True}
+ report={'version':'30.4.10.5','candidate':new,'preview':url,'rollback':BASE,'api':API_BASE,'assets':42,'activeProductionUnchanged':True}
  (OUT/'release-candidate.json').write_text(json.dumps(report,indent=2))
  print('VIA_30410_CANDIDATE_VERIFIED '+json.dumps(report),flush=True)
  if os.getenv('GITHUB_STEP_SUMMARY'):
-  with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## V30.4.10.4 candidate (not promoted)\n'+json.dumps(report,indent=2)+'\n')
+  with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('## V30.4.10.5 candidate (not promoted)\n'+json.dumps(report,indent=2)+'\n')
 if __name__=='__main__':{'prepare':prepare,'verify':verify}[sys.argv[1]]()

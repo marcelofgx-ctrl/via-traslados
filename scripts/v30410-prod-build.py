@@ -3,10 +3,10 @@ import runpy,pathlib,json
 m=runpy.run_path('scripts/v30410-visual-build.py')
 out=m['OUT'];assets=m['ASSETS'];P=m['P']
 manifest=json.loads((out/'manifest.json').read_text())
-p=assets/'index.html';s=p.read_text();assert 'V30.4.10.4 QA' in s
-p.write_text(s.replace('V30.4.10.4 QA','V30.4.10.4').replace('Versión 30.4.10.4 QA','Versión 30.4.10.4'))
+p=assets/'index.html';s=p.read_text();assert 'V30.4.10.5 QA' in s
+p.write_text(s.replace('V30.4.10.5 QA','V30.4.10.5').replace('Versión 30.4.10.5 QA','Versión 30.4.10.5'))
 p=assets/'sw.js';s=p.read_text();assert 'via-traslados-v30.4.9-session' in s
-p.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.4-visual'))
+p.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.5-visual'))
 # QA experiment remains an explicit comparison; production always uses approved finish.
 p=assets/'via-visual-profile.js';s=p.read_text();needle="new URLSearchParams(location.search).get('acabado')==='original'?'reference':'premium'";assert needle in s
 p.write_text(s.replace(needle,"'premium'"))

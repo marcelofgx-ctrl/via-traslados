@@ -15,11 +15,11 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
  const arr=selectors.map(s=>{const e=document.querySelector(s);if(!e)return null;let a=e;while(a&&getComputedStyle(a).backgroundImage==='none')a=a.parentElement;const st=getComputedStyle(e),bg=a?getComputedStyle(a).backgroundImage:'none';return {s,color:st.color,bg,visible:e.getBoundingClientRect().width>0}});
  return {version:document.getElementById('via-visible-release')?.textContent.trim(),width:innerWidth,scroll:document.documentElement.scrollWidth,items:arr};
  });
- assert.equal(m.version,'V30.4.10.4');assert(m.scroll<=m.width);assert(m.items.every(x=>x&&x.visible));console.log('VIA_VISUAL_CONTRAST_DIAGNOSTIC '+JSON.stringify({name,scheme,mode,...m}));
+ assert.equal(m.version,'V30.4.10.5');assert(m.scroll<=m.width);assert(m.items.every(x=>x&&x.visible));console.log('VIA_VISUAL_CONTRAST_DIAGNOSTIC '+JSON.stringify({name,scheme,mode,...m}));
  // Contrast against opaque representative gradient stops (conservative: every listed stop).
  const rgb=s=>{const x=s.match(/rgba?\(([^)]+)\)/);return x?x[1].split(/,\s*/).map(Number):null};
  const lum=a=>a.slice(0,3).map(x=>{x/=255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4}).reduce((s,x,i)=>s+x*[.2126,.7152,.0722][i],0);
- for(const item of m.items){const fg=rgb(item.color);const stops=[...item.bg.matchAll(/rgba?\([^)]*\)/g)].map(x=>rgb(x[0])).filter(x=>x&&((x[3]??1)>=.65));assert(fg&&stops.length,'Unmeasured contrast '+item.s);const min=Math.min(...stops.map(x=>{const a=lum(fg),b=lum(x);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05)}));assert(min>=4.5,'Potential text contrast below 4.5:1 '+scheme+' '+item.s+' '+min.toFixed(2))}
+ for(const item of m.items){const fg=rgb(item.color);const stops=[...item.bg.matchAll(/rgba?\([^)]*\)/g)].map(x=>rgb(x[0])).filter(x=>x&&((x[3]??1)>=.65));assert(fg&&stops.length,'Unmeasured contrast '+item.s);const candidates=item.s==='#start-booking'?stops.flatMap(x=>[x,x.slice(0,3).map(c=>c*.90+255*.10)]):stops;const min=Math.min(...candidates.map(x=>{const a=lum(fg),b=lum(x);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05)}));console.log('VIA_CONTRAST_RATIO '+JSON.stringify({name,scheme,mode,element:item.s,minimum:Number(min.toFixed(2))}));assert(min>=4.5,'Potential text contrast below 4.5:1 '+scheme+' '+item.s+' '+min.toFixed(2))}
  await p.screenshot({path:'v30410-visual/evidence/'+mode+'-'+name+'-'+scheme+'.png',animations:'disabled'});await c.close();
  }}finally{await b.close()}
 }
