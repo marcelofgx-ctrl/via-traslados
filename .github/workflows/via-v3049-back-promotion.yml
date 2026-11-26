@@ -1,0 +1,63 @@
+name: Vía V30.4.9 — exact back navigation regression and authorized promotion
+on:
+  push:
+    branches: [via-v3049-session-maintenance-20261125]
+    paths: ['.github/workflows/via-v3049-back-promotion.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/via-v3049-session-maintenance-20261125' && github.event.head_commit.message == 'release: authorize exact V30.4.9 after reproducing back navigation defect'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require both previously approved test runs and exact candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45742509326 --jq .conclusion)" = success
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45743548096 --jq .conclusion)" = success
+          gh run download 45743548096 --repo "${{ github.repository }}" --name via-v3049-release-candidate --dir v3049-maintenance
+      - name: Browser dependencies
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium webkit >/dev/null
+      - name: Reproduce exact old defect using synthetic sessions only
+        run: node scripts/v3049-back-regression.mjs baseline
+      - name: Verify candidate exact sequence, repeated and interrupted
+        run: node scripts/v3049-back-regression.mjs candidate
+      - name: Promote immutable approved candidate
+        id: promote
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v3049-back-promote.py promote
+      - name: Production browser regression (synthetic session responses)
+        run: node scripts/v3049-back-regression.mjs prod
+      - name: Production real geography smoke
+        run: node scripts/v3049-final-geography.mjs prod
+      - name: Verify production exact package and unchanged API
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v3049-back-promote.py final
+      - name: Rollback on any post-promotion failure
+        if: failure() && steps.promote.outcome != 'skipped'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v3049-back-promote.py rollback
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: via-v3049-production-confirmed
+          path: v3049-maintenance/production-confirmed.json
+          retention-days: 30
