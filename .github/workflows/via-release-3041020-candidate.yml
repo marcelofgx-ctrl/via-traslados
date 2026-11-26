@@ -1,0 +1,81 @@
+name: Vía V30.4.10.20 — immutable production candidate, zero traffic
+on:
+  push:
+    branches: [via-release-v3041020-20261126]
+    paths: ['.github/workflows/via-release-3041020-candidate.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    concurrency:
+      group: via-v30-poi-prod-api-web-atomic
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact successful six-profile QA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45808783239 --jq .head_sha)" = d8a4b4f5705e57e05ba3bab6e8e758a3f6749743
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45808783239 --jq .conclusion)" = success
+          git diff --exit-code d8a4b4f5705e57e05ba3bab6e8e758a3f6749743 HEAD -- addons scripts/via-gps-premium-build.py scripts/via-geo-integral-build.py scripts/via-release-304107-build.py
+      - name: Build verified production assets and binding contract
+        run: |
+          python3 scripts/via-release-3041020-build.py
+          python3 scripts/via-release-3041020-candidate.py prepare
+      - name: Upload candidate without changing active traffic
+        run: npx --yes wrangler@4.160.1 versions upload --config v30410-visual/wrangler-prod.jsonc --keep-vars
+      - name: Verify candidate assets and unchanged active production
+        run: python3 scripts/via-release-3041020-candidate.py verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          path: |
+            v30410-visual/release-candidate.json
+            v30410-visual/exact-hashes.json
+            v30410-visual/manifest.json
+            v30410-visual/assets
+  regression:
+    needs: package
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    timeout-minutes: 10
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          path: v30410-visual
+      - name: Install matching Playwright library
+        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - name: Candidate visual contrast
+        run: |
+          mkdir -p v30410-visual/evidence
+          node scripts/via-release-3041020-contrast.mjs candidate
+      - name: Real POI and route distance with persistent cache regression
+        run: node scripts/v30410-prod-geography.mjs candidate
+      - name: Session and wizard regression, no real reservations
+        run: node scripts/v30410-prod-back.mjs candidate
+      - name: GPS wait and retry regression
+        run: node scripts/via-release-3041020-wait.mjs candidate
+      - name: Real reverse provider and automatic retry, required
+        run: node scripts/via-release-304107-real-gps.mjs candidate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v3041020-regression
+          path: v30410-visual/evidence
+          if-no-files-found: ignore
