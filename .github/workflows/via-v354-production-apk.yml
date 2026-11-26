@@ -1,0 +1,120 @@
+name: Vía Traslados V35.4 — signed production pilot and installable rollback
+on:
+  push:
+    branches: [via-v354-prod-avisos-20261126]
+    paths: ['.github/workflows/via-v354-production-apk.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-production-apk-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Queue regression and exact rollback baseline
+        run: |
+          mkdir -p /tmp/alert-tests
+          javac -d /tmp/alert-tests android-driver/app/src/main/java/uy/viatraslados/conductor/RequestAlertQueue.java tests/RequestAlertQueueTest.java
+          java -cp /tmp/alert-tests uy.viatraslados.conductor.RequestAlertQueueTest
+          git worktree add --detach /tmp/via-rollback c9b08893cff2f14755bdde1892b33e36d657d5d6
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/via-rollback/android-driver/app/build.gradle')
+          s=p.read_text();assert "versionCode viaProductionRelease ? 35" in s
+          p.write_text(s.replace("versionCode viaProductionRelease ? 35","versionCode viaProductionRelease ? 355").replace("versionName viaProductionRelease ? '0.35.0'","versionName viaProductionRelease ? '0.35.0-rollback'"))
+          PY
+      - name: Build production package and rollback package
+        run: |
+          gradle -p android-driver :app:assembleRelease -PviaProductionRelease=true --no-daemon
+          gradle -p /tmp/via-rollback/android-driver :app:assembleRelease -PviaProductionRelease=true --no-daemon
+      - uses: actions/download-artifact@v4
+        with:
+          name: VIA_V35_PROD_APK_SIGNED
+          run-id: 44217589953
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: VIA_V35_PROD_SIGNING_KEY_PRIVATE_BACKUP
+          run-id: 44217589953
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-signing
+      - name: Sign with original certificate, verify both binaries
+        env:
+          SIGN_DIR: ${{ runner.temp }}/original-signing
+          ORIGINAL: ${{ runner.temp }}/original-apk/via-traslados-conductor-v35.apk
+        run: |
+          set -euo pipefail
+          trap 'rm -rf "$SIGN_DIR"' EXIT
+          chmod -R go-rwx "$SIGN_DIR"
+          echo '324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3  '"$ORIGINAL" | sha256sum -c -
+          tool="$(dirname "$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)")"
+          test -x "$tool/apksigner"
+          cert() { "$tool/apksigner" verify --print-certs "$1" | grep 'Signer #1 certificate SHA-256 digest:'; }
+          expected="$(cert "$ORIGINAL")"
+          mkdir -p direct-apk/assets
+          export SIGNPASS="$(cat "$SIGN_DIR/CLAVE-DE-FIRMA-GUARDAR.txt")"
+          for mode in pilot rollback; do
+            if [ "$mode" = pilot ]; then
+              src=android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
+              dest=direct-apk/assets/via-traslados-conductor-v354.apk
+              code=354
+            else
+              src=/tmp/via-rollback/android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
+              dest=direct-apk/assets/via-traslados-conductor-v35-rollback.apk
+              code=355
+            fi
+            "$tool/zipalign" -f 4 "$src" /tmp/via-aligned.apk
+            "$tool/apksigner" sign --ks "$SIGN_DIR/via-traslados-produccion-guardar.p12" --ks-type PKCS12 --ks-key-alias via-traslados-prod --ks-pass env:SIGNPASS --key-pass env:SIGNPASS --out "$dest" /tmp/via-aligned.apk
+            test "$(cert "$dest")" = "$expected"
+            "$tool/aapt" dump badging "$dest" | grep -F "package: name='uy.viatraslados.conductor.production' versionCode='$code'"
+            ! "$tool/aapt" dump xmltree "$dest" AndroidManifest.xml | grep -F 'android:debuggable(0x0101000f)'
+            "$tool/zipalign" -c 4 "$dest"
+          done
+          unset SIGNPASS
+          sha256sum direct-apk/assets/*.apk
+          echo VIA_PROD_SIGNED_ORIGINAL_CERT_AND_ROLLBACK_OK
+      - name: Check production API and original V35 direct URL
+        run: |
+          curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{if(!JSON.parse(s).ok)process.exit(1)})'
+          curl -fsSL --retry 3 https://via-traslados-descargas.marcelof-gx.workers.dev/apk/via-traslados-conductor-v35.apk -o /tmp/v35-public.apk
+          echo '324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3  /tmp/v35-public.apk' | sha256sum -c -
+      - name: Publish only APKs on new production downloads Worker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          cat > direct-apk/assets/_headers <<'EOF'
+          /*.apk
+            Content-Type: application/vnd.android.package-archive
+            Content-Disposition: attachment
+            X-Content-Type-Options: nosniff
+          EOF
+          cat > direct-apk/wrangler.jsonc <<'EOF'
+          {"name":"via-traslados-conductor-release","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
+          EOF
+          npx --yes wrangler@4.160.1 deploy --config direct-apk/wrangler.jsonc
+      - name: Verify both public APKs byte for byte
+        run: |
+          for file in direct-apk/assets/*.apk; do
+            url="https://via-traslados-conductor-release.marcelof-gx.workers.dev/$(basename "$file")"
+            curl -fLsS --retry 8 --retry-all-errors --retry-delay 3 -D /tmp/apk-headers "$url" -o /tmp/apk-check
+            cmp "$file" /tmp/apk-check
+            grep -i 'content-type: application/vnd.android.package-archive' /tmp/apk-headers
+            echo "VIA_PROD_DIRECT_VERIFIED $url"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v354-signed-production-and-rollback
+          path: direct-apk/assets/*.apk

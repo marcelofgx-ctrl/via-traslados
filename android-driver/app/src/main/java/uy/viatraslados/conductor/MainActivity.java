@@ -83,6 +83,14 @@ public final class MainActivity extends Activity {
     private boolean requestSearchVisible = false;
     private boolean loading = false;
     private boolean visible = false;
+    private Dialog newRequestDialog;
+    private String newRequestDialogId="";
+    private boolean alertServiceAttempted=false;
+    private final Runnable advanceRequestAlerts=()->notifyNewRequests(bookings);
+    private void scheduleRequestAlerts(){
+        handler.removeCallbacks(advanceRequestAlerts);
+        if(visible&&!isFinishing()&&!isDestroyed())handler.postDelayed(advanceRequestAlerts,220);
+    }
     private Dialog acceptanceDialog;
     private String acceptanceDialogId = "";
     private final Runnable poll = new Runnable() {
@@ -131,15 +139,23 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         visible = true;
+        RequestMonitorService.setForeground(true);
         handler.removeCallbacks(poll);
         handler.postDelayed(poll, 20000);
         if (operatorKey != null || staffToken != null) fetchBookings(false);
     }
 
+    @Override public void onWindowFocusChanged(boolean focused){
+        super.onWindowFocusChanged(focused);
+        if(focused)scheduleRequestAlerts();
+    }
     @Override protected void onPause() {
         visible = false;
+        RequestMonitorService.setForeground(false);
+        handler.removeCallbacks(advanceRequestAlerts);
         handler.removeCallbacks(poll);
         if (acceptanceDialog != null) acceptanceDialog.dismiss();
+        if(newRequestDialog!=null)newRequestDialog.dismiss();
         super.onPause();
     }
 
@@ -147,6 +163,7 @@ public final class MainActivity extends Activity {
         operatorKey = null;
         staffToken = null;
         staffRefreshToken = null;
+        handler.removeCallbacks(advanceRequestAlerts);
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -932,6 +949,9 @@ public final class MainActivity extends Activity {
     }
 
     private void loginScreen() {
+        if(newRequestDialog!=null)newRequestDialog.dismiss();
+        if(!staffUserId.isEmpty())RequestMonitorService.stop(this);
+        alertServiceAttempted=false;
         authFlow = false;
         root.removeAllViews();
         operatorKey = null;
@@ -1171,7 +1191,14 @@ public final class MainActivity extends Activity {
                     } else {
                         requestVisibleRoutes();
                     }
+                    if(BuildConfig.VIA_PRODUCTION&&visible&&!staffUserId.isEmpty()&&staffToken!=null){
+                        RequestMonitorService.stopIfOther(this,staffUserId);
+                        if(!alertServiceAttempted&&RequestMonitorService.desired(this,staffUserId)){
+                            alertServiceAttempted=true;startRequestMonitor();dashboard();
+                        }
+                    }
                     notifyAcceptedProposals(next);
+                    notifyNewRequests(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
                     if(login){
@@ -1210,6 +1237,7 @@ public final class MainActivity extends Activity {
     // Conserva solo el identificador de la aceptación ya anunciada, nunca las credenciales.
     private void notifyAcceptedProposals(JSONArray rows) {
         if (BuildConfig.VIA_PREVIEW) return;
+        if(newRequestDialog!=null||!hasWindowFocus())return;
         if (!visible || rows==null || (operatorKey==null && staffToken==null)) return;
         if (acceptanceDialog!=null) {
             boolean stillPending=false;
@@ -1327,6 +1355,195 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private boolean newRequestEligible(JSONObject r){
+        return r!=null && "requested".equals(r.optString("status")) &&
+            r.optBoolean("canQuote",false) && !r.optString("id","").isEmpty();
+    }
+
+    private android.content.SharedPreferences newRequestPrefs(){
+        return getSharedPreferences("via_new_request_alerts_v351",MODE_PRIVATE);
+    }
+    private String newRequestKey(String id){
+        String who=staffUserId;
+        return RequestAlertQueue.key(who,id);
+    }
+
+    private void notifyNewRequests(JSONArray rows){
+        if(!BuildConfig.VIA_PRODUCTION||staffToken==null||!RequestMonitorService.desired(this,staffUserId))return;
+        if(!visible||isFinishing()||rows==null||authFlow||
+            (operatorKey==null&&staffToken==null))return;
+        if(newRequestDialog!=null){
+            boolean stillOpen=false;
+            for(int i=0;i<rows.length();i++){
+                JSONObject r=rows.optJSONObject(i);
+                if(newRequestEligible(r)&&newRequestDialogId.equals(r.optString("id")))stillOpen=true;
+            }
+            if(!stillOpen)newRequestDialog.dismiss();
+        }
+        if(newRequestDialog!=null||acceptanceDialog!=null||!hasWindowFocus())return;
+        java.util.ArrayList<RequestAlertQueue.Entry> entries=new java.util.ArrayList<>();
+        java.util.HashMap<String,JSONObject> byId=new java.util.HashMap<>();
+        for(int i=0;i<rows.length();i++){
+            JSONObject r=rows.optJSONObject(i);
+            if(!newRequestEligible(r))continue;
+            String id=r.optString("id"),key=newRequestKey(id);
+            if(key.isEmpty())continue;
+            entries.add(new RequestAlertQueue.Entry(id,r.optString("created_at")));
+            byId.putIfAbsent(id,r);
+        }
+        RequestAlertQueue.Selection next=RequestAlertQueue.next(entries,id->newRequestPrefs().getBoolean(newRequestKey(id),false));
+        if(next!=null)showNewRequestDialog(byId.get(next.id),next.count);
+    }
+
+    private GradientDrawable requestAlertSatin(int top,int bottom,int radius,int border){
+        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{top,bottom});
+        d.setCornerRadius(dp(radius));
+        d.setStroke(dp(1),border);
+        return d;
+    }
+
+    private void showNewRequestDialog(JSONObject booking,int pending){
+        if(!visible||isFinishing()||newRequestDialog!=null)return;
+        String id=booking.optString("id",""),seenKey=newRequestKey(id);
+        if(seenKey.isEmpty())return;
+        Dialog dialog=new Dialog(this);
+        LinearLayout sheet=column();
+        sheet.setPadding(dp(15),dp(10),dp(15),dp(12));
+        sheet.setBackground(requestAlertSatin(Color.WHITE,Color.rgb(250,253,251),22,BORDER));
+        View grip=new View(this);grip.setBackground(bg(Color.rgb(196,212,204),4,0));
+        LinearLayout.LayoutParams gripParams=new LinearLayout.LayoutParams(dp(32),dp(4));
+        gripParams.gravity=Gravity.CENTER_HORIZONTAL;gripParams.bottomMargin=dp(8);sheet.addView(grip,gripParams);
+        LinearLayout header=row();
+        LinearLayout head=column();
+        addLine(head,"VÍA TRASLADOS",10,TEAL_DARK,true,2);
+        addLine(head,pending>1?"Nueva solicitud · "+pending+" por ver":"Nueva solicitud · última por ver",18,INK,true,0);
+        header.addView(head,new LinearLayout.LayoutParams(0,-2,1));
+        Runnable acknowledge=()->{
+            newRequestPrefs().edit().putBoolean(seenKey,true).apply();
+            RequestMonitorService.cancelAlert(this,staffUserId,id);
+        };
+        TextView close=text("×",24,MUTED,false);close.setGravity(Gravity.CENTER);
+        close.setContentDescription("Cerrar aviso");close.setOnClickListener(v->{acknowledge.run();dialog.dismiss();});
+        header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        sheet.addView(header);
+        // Use the name already present in the authorized request. No invented photo.
+        String name=booking.isNull("name")?"":booking.optString("name","").trim();
+        if(name.isEmpty())name="Pasajero";
+        LinearLayout passenger=row();
+        TextView initials=text(passengerInitials(name),15,TEAL_DARK,true);
+        initials.setGravity(Gravity.CENTER);initials.setBackground(bg(SOFT,24,BORDER));
+        initials.setContentDescription("Avatar con iniciales del pasajero");
+        passenger.addView(initials,new LinearLayout.LayoutParams(dp(42),dp(42)));
+        LinearLayout person=column();LinearLayout.LayoutParams personParams=new LinearLayout.LayoutParams(0,-2,1);personParams.leftMargin=dp(10);
+        TextView passengerName=text(name,15,INK,true);passengerName.setMaxLines(1);passengerName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        person.addView(passengerName);addLine(person,"Pasajero · "+booking.optInt("passengers",1)+" persona(s)",11,MUTED,false,0);
+        passenger.addView(person,personParams);sheet.addView(passenger);
+        spacer(sheet,9);
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout content=column(),trip=column();
+        trip.setPadding(dp(10),dp(8),dp(10),dp(8));
+        trip.setBackground(requestAlertSatin(Color.rgb(249,253,250),Color.rgb(232,244,237),13,BORDER));
+        compactAlertPoint(trip,"●",booking.optString("origin"),"Origen");
+        spacer(trip,5);compactAlertPoint(trip,"◆",booking.optString("destination"),"Destino");
+        spacer(trip,6);addLine(trip,routeMetrics(booking.optJSONObject("route")),12,TEAL_DARK,true,0);
+        content.addView(trip,new LinearLayout.LayoutParams(-1,-2));
+        spacer(content,7);addLine(content,compactDate(booking.optString("date"))+" · "+booking.optString("time")+"  ·  "+booking.optInt("bags",0)+" valija(s)",12,INK,true,0);
+        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
+        int maxBody=Math.max(dp(82),Math.min(dp(160),(int)(getResources().getDisplayMetrics().heightPixels*.22)));
+        scroll.measure(View.MeasureSpec.makeMeasureSpec(Math.max(dp(160),getResources().getDisplayMetrics().widthPixels-dp(50)),View.MeasureSpec.AT_MOST),View.MeasureSpec.makeMeasureSpec(maxBody,View.MeasureSpec.AT_MOST));
+        sheet.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(maxBody,scroll.getMeasuredHeight())));
+        spacer(sheet,9);LinearLayout actions=row();
+        actions.addView(button("Visto",false,v->{acknowledge.run();dialog.dismiss();}),new LinearLayout.LayoutParams(0,dp(48),1));
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(48),2);ap.leftMargin=dp(8);
+        actions.addView(button("Ver solicitud",true,v->{
+            JSONObject current=null;
+            for(int i=0;i<bookings.length();i++){
+                JSONObject r=bookings.optJSONObject(i);
+                if(newRequestEligible(r)&&id.equals(r.optString("id")))current=r;
+            }
+            acknowledge.run();dialog.dismiss();tab="solicitudes";subtab="nuevas";dashboard();
+            if(current!=null)details(current);
+        }),ap);
+        sheet.addView(actions);
+        newRequestDialog=dialog;newRequestDialogId=id;
+        dialog.setCancelable(true);dialog.setCanceledOnTouchOutside(false);
+        // Explicit back/cancel is a viewed alert; lifecycle dismissals are not.
+        dialog.setOnCancelListener(d->acknowledge.run());
+        dialog.setOnDismissListener(d->{
+            if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}
+            // A detail dialog owns focus until it closes; do not interrupt it.
+            scheduleRequestAlerts();
+        });
+        dialog.setContentView(sheet);dialog.show();
+        Window w=dialog.getWindow();
+        if(w!=null){
+            w.setBackgroundDrawableResource(android.R.color.transparent);
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams p=w.getAttributes();
+            p.width=Math.min(dp(460),getResources().getDisplayMetrics().widthPixels-dp(20));
+            p.height=WindowManager.LayoutParams.WRAP_CONTENT;
+            p.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;p.dimAmount=.12f;p.y=dp(8);
+            w.setAttributes(p);
+            w.setWindowAnimations(android.R.style.Animation_InputMethod);
+        }
+    }
+
+    private String passengerInitials(String name){
+        String[] parts=name.trim().split("\\s+");
+        String first=parts[0].isEmpty()?"P":parts[0].substring(0,parts[0].offsetByCodePoints(0,1));
+        String last=parts.length>1?parts[parts.length-1]:"";
+        return (first+(last.isEmpty()?"":last.substring(0,last.offsetByCodePoints(0,1)))).toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private void compactAlertPoint(LinearLayout parent,String marker,String address,String label){
+        LinearLayout line=row();
+        TextView pin=text(marker,13,TEAL_DARK,true);pin.setGravity(Gravity.CENTER);
+        line.addView(pin,new LinearLayout.LayoutParams(dp(22),dp(24)));
+        TextView name=text(prettyAddress(address),13,INK,true);
+        name.setContentDescription(label+": "+prettyAddress(address));
+        name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        line.addView(name,new LinearLayout.LayoutParams(0,-2,1));parent.addView(line);
+    }
+
+    private boolean requestNotificationPermission(){
+        return android.os.Build.VERSION.SDK_INT<33||checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+    private void startRequestMonitor(){
+        if(!BuildConfig.VIA_PRODUCTION||!visible||staffToken==null||staffUserId.isEmpty()||!requestNotificationPermission())return;
+        if(RequestMonitorService.runningFor(staffUserId))return;
+        try{RequestMonitorService.start(this,staffUserId,staffToken);}
+        catch(Exception e){message("No se pudo iniciar el monitoreo externo. Las solicitudes siguen disponibles en la APK.");}
+    }
+    private void changeRequestAvailability(boolean on){
+        if(staffUserId.isEmpty()||staffToken==null)return;
+        if(on&&!requestNotificationPermission()){
+            dashboard();requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},354);return;
+        }
+        RequestMonitorService.setDesired(this,staffUserId,on);
+        alertServiceAttempted=true;
+        if(on){startRequestMonitor();scheduleRequestAlerts();}
+        else {RequestMonitorService.stop(this);RequestMonitorService.clearAlerts(this);if(newRequestDialog!=null)newRequestDialog.dismiss();}
+        dashboard();
+    }
+    private void addRequestAvailability(){
+        if(!BuildConfig.VIA_PRODUCTION||staffToken==null||staffUserId.isEmpty())return;
+        boolean on=RequestMonitorService.desired(this,staffUserId),running=RequestMonitorService.runningFor(staffUserId);
+        LinearLayout line=row();line.setPadding(dp(17),dp(4),dp(17),dp(4));line.setBackgroundColor(SOFT);
+        LinearLayout label=column();
+        addLine(label,on?"●  Disponible":"○  No disponible",13,on?TEAL_DARK:MUTED,true,1);
+        addLine(label,on?(running?"Monitoreo activo · API real":"Avisos dentro de la APK · reactivar externo"):"Avisos silenciados",10,MUTED,false,0);
+        line.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+        if(on&&!running){TextView restart=actionText("↻",TEAL_DARK,v->{startRequestMonitor();dashboard();});restart.setContentDescription("Reactivar monitoreo externo");line.addView(restart,new LinearLayout.LayoutParams(dp(44),dp(44)));}
+        android.widget.Switch toggle=new android.widget.Switch(this);toggle.setChecked(on);toggle.setContentDescription("Disponibilidad para recibir solicitudes");
+        toggle.setOnCheckedChangeListener((v,checked)->changeRequestAvailability(checked));
+        line.addView(toggle,new LinearLayout.LayoutParams(-2,dp(48)));root.addView(line,new LinearLayout.LayoutParams(-1,-2));
+    }
+    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
+        super.onRequestPermissionsResult(code,permissions,results);
+        if(code==354&&results.length>0&&results[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)changeRequestAvailability(true);
+    }
+
     private LinearLayout statTile(String value, String label, boolean featured) {
         LinearLayout tile = column();
         tile.setPadding(dp(15),dp(13),dp(15),dp(13));
@@ -1389,6 +1606,7 @@ public final class MainActivity extends Activity {
             header.addView(badge,badgeParams);
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
+        addRequestAvailability();
         if (BuildConfig.VIA_ONLINE_QA) {
             TextView qa=text(BuildConfig.VIA_ONBOARD_QA?
                 (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
@@ -4139,6 +4357,8 @@ public final class MainActivity extends Activity {
         }
         addLine(account,"La contraseña no se guarda en el dispositivo.",12,MUTED,false,12);
         Button leave=button("Cerrar sesión",false,v->{
+            RequestMonitorService.setDesired(this,staffUserId,false);
+            RequestMonitorService.stop(this);RequestMonitorService.clearAlerts(this);
             if(staffToken!=null){
                 JSONObject payload=new JSONObject();
                 try{

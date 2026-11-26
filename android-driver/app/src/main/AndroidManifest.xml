@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.USE_BIOMETRIC" />
   <application android:label="${appLabel}"
     android:allowBackup="false"
     android:usesCleartextTraffic="false"
     android:theme="@style/AppTheme"
     android:icon="@drawable/driver_icon">
+    <service android:name=".RequestMonitorService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync" />
     <activity android:name=".MainActivity"
       android:exported="true"
       android:windowSoftInputMode="adjustResize">
