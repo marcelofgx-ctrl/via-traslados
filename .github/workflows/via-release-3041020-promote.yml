@@ -1,0 +1,116 @@
+name: Vía V30.4.10.20 — authorized production activation and rollback
+on:
+  push:
+    branches: [via-release-v3041020-20261126]
+    paths: ['.github/workflows/via-release-3041020-promote.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  activate:
+    if: "github.ref == 'refs/heads/via-release-v3041020-20261126' && github.event.head_commit.message == 'release: authorized V30.4.10.20 production activation'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - name: Require approved immutable QA and candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45809382418 --jq .head_sha)" = 3cd4ca60fdb85b122708c9b644b4f360315de6aa
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45809382418 --jq .conclusion)" = success
+          test "$(gh api repos/${{ github.repository }}/actions/artifacts/15110933314 --jq .digest)" = sha256:636ba79114abd9285f57359906d7941a0d7cd060d76d7ed9e83bc9824bdfc0e4
+          git diff --exit-code 3cd4ca60fdb85b122708c9b644b4f360315de6aa HEAD -- addons scripts/via-release-3041020-build.py scripts/via-release-3041020-candidate.py scripts/via-release-3041020-contrast.mjs scripts/via-release-3041020-wait.mjs scripts/v30410-prod-back.mjs scripts/v30410-prod-geography.mjs scripts/via-release-304107-real-gps.mjs
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          run-id: 45809382418
+          github-token: ${{ github.token }}
+          path: v30410-visual
+      - name: Activate exact tested version, no upload
+        id: promote
+        run: python3 scripts/via-release-3041020-promote.py promote
+      - name: Verify exact public assets and unchanged API
+        run: python3 scripts/via-release-3041020-promote.py final
+      - name: Immediate rollback if activation or verification fails
+        if: failure() && steps.promote.outcome != 'skipped'
+        run: python3 scripts/via-release-3041020-promote.py rollback
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v3041020-activation
+          path: v30410-visual/production-confirmed.json
+  regression:
+    needs: activate
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    timeout-minutes: 8
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          run-id: 45809382418
+          github-token: ${{ github.token }}
+          path: v30410-visual
+      - name: Install matching Playwright
+        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - name: Production visual contrast
+        run: |
+          mkdir -p v30410-visual/evidence
+          node scripts/via-release-3041020-contrast.mjs prod
+      - name: Production real POI, route and cache
+        run: node scripts/v30410-prod-geography.mjs prod
+      - name: Production wizard/session, synthetic only
+        run: node scripts/v30410-prod-back.mjs prod
+      - name: Production wait and retry, synthetic only
+        run: node scripts/via-release-3041020-wait.mjs prod
+      - name: Production reverse and recovery, real provider
+        run: node scripts/via-release-304107-real-gps.mjs prod
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v3041020-production-regression
+          path: v30410-visual/evidence
+          if-no-files-found: ignore
+  finish:
+    needs: [activate, regression]
+    if: always() && needs.activate.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          run-id: 45809382418
+          github-token: ${{ github.token }}
+          path: v30410-visual
+      - name: Rollback if production tests failed or were skipped
+        if: needs.activate.result != 'success' || needs.regression.result != 'success'
+        run: python3 scripts/via-release-3041020-promote.py rollback
+      - name: Verify final production state
+        if: needs.activate.result == 'success' && needs.regression.result == 'success'
+        run: python3 scripts/via-release-3041020-promote.py final
+      - name: Rollback if final verification fails
+        if: failure() && needs.activate.result == 'success' && needs.regression.result == 'success'
+        run: python3 scripts/via-release-3041020-promote.py rollback
+      - uses: actions/upload-artifact@v4
+        if: needs.activate.result == 'success' && needs.regression.result == 'success'
+        with:
+          name: via-v3041020-production-confirmed
+          path: v30410-visual/production-confirmed.json
