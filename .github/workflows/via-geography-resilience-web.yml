@@ -1,0 +1,51 @@
+name: Vía — geographic redundancy web candidate, no traffic
+on:
+  push:
+    branches: [via-geography-resilience-20261126]
+    paths: ['.github/workflows/via-geography-resilience-web.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: node --test tests/via-geography-resilience.test.mjs
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          run-id: 45809382418
+          github-token: ${{ github.token }}
+          path: v30410-visual
+      - run: python3 scripts/via-resilience-web-build.py
+      - run: npx --yes wrangler@4.160.1 versions upload --config via-resilience/wrangler-web.jsonc --keep-vars
+      - name: Verify new web candidate bindings and exact assets
+        run: |
+          python3 - <<'PY'
+          import runpy,json,pathlib,concurrent.futures,urllib.parse
+          m=runpy.run_path('scripts/via-resilience-api-build.py');m['guard']()
+          p=m['P'];h=m['H'];n=m['WEB'];base=m['W'];v=p['latest_uploaded_version'](n);assert v!=base
+          assert m['contract'](n,v)==m['contract'](n,base)
+          assert all(m['meta'](n,v)['resources']['script_runtime'].get(k)==m['meta'](n,base)['resources']['script_runtime'].get(k) for k in ['compatibility_date','compatibility_flags'])
+          out=pathlib.Path('via-resilience');r=json.loads((out/'web-baseline.json').read_text());url='https://'+v[:8]+'-via-traslados-web-prod.marcelof-gx.workers.dev'
+          def check(name):
+           b,_=p['get'](url+'/'+urllib.parse.quote(name,safe='/'));y=(out/'assets'/name).read_bytes()
+           assert (h['html_tokens'](b)==h['html_tokens'](y) if name.endswith('.html') else b==y),name
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(check,r['hashes']))
+          m['guard']();r.update(candidate=v,preview=url);(out/'web-candidate.json').write_text(json.dumps(r));print('VIA_RESILIENCE_WEB_CANDIDATE '+json.dumps({k:r[k] for k in ['candidate','preview','web','api','changed']}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-resilience-web-candidate
+          path: via-resilience/web-candidate.json

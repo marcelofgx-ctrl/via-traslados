@@ -14,3 +14,13 @@ test('healthy exact IDE stays first, no backup',async()=>{let n=0;const r=await 
 test('IDE 503 recovers via backup',async()=>{const r=await race(()=>res({results:[]},503),()=>res(good));assert.equal(r.status,200);assert.equal(r.headers.get('X-Via-Address-Source'),'Geoapify')});
 test('both failures are not a no-match; true empty needs two successful replies',async()=>{assert.equal((await race(()=>res({results:[]},503),()=>res({results:[]},503))).status,503);assert.equal((await race(()=>res({results:[]}),()=>res({results:[]},503))).status,503);assert.equal((await race(()=>res({results:[]}),()=>res({results:[]}))).status,200)});
 test('POI untouched',async()=>{let n=0;const r=await addressRace(new Request('https://viatraslados.com/api/direcciones?mode=places&q=Hotel'),{VIA_POI_API:{fetch(){throw Error('no')}}},{fetch(){n++;return res({results:[]})}},null);assert.equal(r.status,200);assert.equal(n,1)});
+
+test('numbered street fallback performs one bounded street lookup and preserves number without point',async()=>{
+ const env={VIA_POI_API:{fetch:async r=>{const u=new URL(r.url);return res({results:u.searchParams.get('q').includes('2200')?[]:[{street:'Arenal Grande',city:'Montevideo',department:'Montevideo',kind:'street',accuracy:'unconfirmed',lat:null,lng:null}]})}}};
+ const r=await addressRace(req(),env,{fetch:async()=>res({results:[]},503)},null,{lead:5,deadline:80});
+ const row=(await r.json()).results[0];assert.equal(row.street,'Arenal Grande 2200');assert.equal(row.lat,null);assert.equal(row.accuracy,'unconfirmed');
+});
+test('resolve never trusts another portal with wrong number or locality',async()=>{
+ const r=await addressRace(new Request('https://viatraslados.com/api/direcciones?mode=resolve&q='+encodeURIComponent(q)),{VIA_POI_API:{fetch:async()=>res({results:[]})}},{fetch:async()=>res({results:[{...good.results[0],street:'Arenal Grande 2202'}]})},null,{lead:5,deadline:80});
+ assert.deepEqual((await r.json()).results,[]);
+});
