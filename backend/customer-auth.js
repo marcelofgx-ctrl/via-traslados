@@ -201,7 +201,7 @@ export async function customerRoutes(req,env,path,send){
   const rows=await env.DB.prepare("SELECT id,origin,destination,trip_date AS date,trip_time AS time,passengers,bags,notes,status,price_uyu AS price,created_at,updated_at,"+
    "(SELECT distance_m FROM booking_routes WHERE booking_id=bookings.id AND provider='geoapify') AS route_distance_m,"+
    "(SELECT duration_s FROM booking_routes WHERE booking_id=bookings.id AND provider='geoapify') AS route_duration_s "+(hourlyEnabled(env)?hourlySelect('bookings'):'')+
-   "FROM bookings WHERE email=? ORDER BY created_at DESC LIMIT 100").bind(session.email).all();
+   " FROM bookings WHERE email=? ORDER BY created_at DESC LIMIT 100").bind(session.email).all();
   return reply((rows.results||[]).map(row=>{
    const {route_distance_m,route_duration_s,...booking}=row;
    const {service_type,requested_duration_minutes,itinerary_notes,included_duration_minutes,included_km,extra_time_terms,extra_km_terms,quote_notes,...safe}=booking;

@@ -72,5 +72,9 @@ assert one("SELECT commission_cents FROM booking_commission_ledger WHERE booking
 booking('full','10:00','2026-12-03',hour=1440)
 quote('full','d1',1440)
 assert one("SELECT ends-starts FROM via_service_intervals WHERE id='full'")== (88200,)
+booking('late','08:00','2026-12-03')
+quote('late','d1')
+reject("INSERT INTO booking_routes(booking_id,distance_m,duration_s,provider) VALUES('late',30000,10000,'geoapify')",reason='VIA_ROUTE_SCHEDULE_CONFLICT')
+assert one("SELECT 1 FROM booking_routes WHERE booking_id='late'") is None
 assert run('PRAGMA foreign_key_check').fetchall()==[]
 print('PASS: preservation, quote assignment, cross-mode overlap, reassignment, boundary, midnight, cancellation, no fake route, commission, 24h')

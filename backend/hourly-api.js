@@ -6,7 +6,8 @@ import {quoteBreakdown} from './dispatch-business.js';
 export const hourlyEnabled=env=>env.VIA_HOURLY_ENABLED==='1';
 const hash=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const textField=(x,max)=>{if(x==null)return '';if(typeof x!=='string'||x.trim().length>max)throw Error('Texto inválido');return x.trim()};
-const localNow=()=>Date.now()-3*3600000; // Uruguay UTC-03, current scheduling horizon.
+const uyClock=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Montevideo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+const localNow=()=>{const p=Object.fromEntries(uyClock.formatToParts(new Date()).map(x=>[x.type,x.value]));return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second)};
 export const hourlySelect=alias=>", "+alias+".service_type,"+alias+".requested_duration_minutes,"+alias+".itinerary_notes,"+
  ["included_duration_minutes","included_km","extra_time_terms","extra_km_terms","quote_notes"].map(k=>"(SELECT "+k+" FROM booking_quotes WHERE booking_id="+alias+".id) AS "+k).join(",");
 export function hourlyFields(row){

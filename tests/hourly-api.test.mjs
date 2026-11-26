@@ -56,7 +56,7 @@ test('real handler hourly lifecycle, ownership, persisted quote, replay and canc
  assert.equal((await call(op,'c','PATCH',quote)).status,200);
  assert.equal((await call(op,'c','PATCH',{...quote,price:5000})).status,409);
  assert.equal((await call(path,'a')).body.hourlyQuote.includedKm,100);
- const history=await call('/api/customer/bookings','a');assert.equal(history.status,200);assert.equal(history.body[0].hourlyQuote.extraTimeTerms,'A convenir');
+ const history=await call('/api/customer/bookings','a');assert.equal(history.status,200,JSON.stringify(history));assert.equal(history.body[0].hourlyQuote.extraTimeTerms,'A convenir');
  assert.equal((await call(path+'/accept','a','POST',{})).status,200);
  assert.equal((await call(path+'/accept','a','POST',{})).status,200);
  assert.equal(db.prepare('SELECT driver_id FROM driver_assignments WHERE booking_id=?').get(id).driver_id,'d1');
@@ -66,7 +66,7 @@ test('real handler hourly lifecycle, ownership, persisted quote, replay and canc
  assert.equal((await call(path+'/cancel','a','POST',{})).status,200);
  assert.equal((await call(path+'/cancel','a','POST',{})).status,200);
 });
-test('mixed-mode assignment rejects conflict and cancellation releases it',async()=>{
+test('hourly assignment rejects conflict and cancellation releases it',async()=>{
  const {db,body,call}=fixture();
  const a=await call('/api/requests','a','POST',body);assert.equal(a.status,201);
  const b=await call('/api/requests','a','POST',{...body,requestId:randomUUID(),time:'13:00'});assert.equal(b.status,201);
