@@ -86,6 +86,9 @@ public final class MainActivity extends Activity {
     private Dialog newRequestDialog;
     private String newRequestDialogId="";
     private boolean alertServiceAttempted=false;
+    private long lastMonitorAttempt=0;
+    private TextView monitorStatusLabel;
+    private final Runnable monitorStatusTick=new Runnable(){ public void run(){ if(!visible)return; if(monitorStatusLabel!=null)monitorStatusLabel.setText(monitorStatusText()); handler.postDelayed(this,1500); }};
     private final Runnable advanceRequestAlerts=()->notifyNewRequests(bookings);
     private void scheduleRequestAlerts(){
         handler.removeCallbacks(advanceRequestAlerts);
@@ -140,6 +143,8 @@ public final class MainActivity extends Activity {
         super.onResume();
         visible = true;
         RequestMonitorService.setForeground(true);
+        handler.removeCallbacks(monitorStatusTick);handler.post(monitorStatusTick);
+        if(staffToken!=null&&!staffUserId.isEmpty()&&RequestMonitorService.desired(this,staffUserId))startRequestMonitor();
         handler.removeCallbacks(poll);
         handler.postDelayed(poll, 20000);
         if (operatorKey != null || staffToken != null) fetchBookings(false);
@@ -152,6 +157,7 @@ public final class MainActivity extends Activity {
     @Override protected void onPause() {
         visible = false;
         RequestMonitorService.setForeground(false);
+        handler.removeCallbacks(monitorStatusTick);
         handler.removeCallbacks(advanceRequestAlerts);
         handler.removeCallbacks(poll);
         if (acceptanceDialog != null) acceptanceDialog.dismiss();
@@ -164,6 +170,7 @@ public final class MainActivity extends Activity {
         staffToken = null;
         staffRefreshToken = null;
         handler.removeCallbacks(advanceRequestAlerts);
+        handler.removeCallbacks(monitorStatusTick);
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -1081,7 +1088,7 @@ public final class MainActivity extends Activity {
         spacer(page, 14);
 
         TextView foot = text(BuildConfig.VIA_PRODUCTION
-            ? "V35 · PRODUCCIÓN · DATOS REALES" : "ACCESO SEGURO  ·  VÍA TRASLADOS",
+            ? "V"+BuildConfig.VERSION_NAME.substring(2)+" · PRODUCCIÓN · DATOS REALES" : "ACCESO SEGURO  ·  VÍA TRASLADOS",
             10, MUTED, true);
         foot.setGravity(Gravity.CENTER);
         foot.setLetterSpacing(0.10f);
@@ -1193,9 +1200,7 @@ public final class MainActivity extends Activity {
                     }
                     if(BuildConfig.VIA_PRODUCTION&&visible&&!staffUserId.isEmpty()&&staffToken!=null){
                         RequestMonitorService.stopIfOther(this,staffUserId);
-                        if(!alertServiceAttempted&&RequestMonitorService.desired(this,staffUserId)){
-                            alertServiceAttempted=true;startRequestMonitor();dashboard();
-                        }
+                        if(RequestMonitorService.desired(this,staffUserId))startRequestMonitor();
                     }
                     notifyAcceptedProposals(next);
                     notifyNewRequests(next);
@@ -1422,6 +1427,7 @@ public final class MainActivity extends Activity {
         Runnable acknowledge=()->{
             newRequestPrefs().edit().putBoolean(seenKey,true).apply();
             RequestMonitorService.cancelAlert(this,staffUserId,id);
+            AlertSignal.stop(this);
         };
         TextView close=text("×",24,MUTED,false);close.setGravity(Gravity.CENTER);
         close.setContentDescription("Cerrar aviso");close.setOnClickListener(v->{acknowledge.run();dialog.dismiss();});
@@ -1476,6 +1482,7 @@ public final class MainActivity extends Activity {
             scheduleRequestAlerts();
         });
         dialog.setContentView(sheet);dialog.show();
+        AlertSignal.playInside(this,seenKey);
         Window w=dialog.getWindow();
         if(w!=null){
             w.setBackgroundDrawableResource(android.R.color.transparent);
@@ -1511,7 +1518,10 @@ public final class MainActivity extends Activity {
     }
     private void startRequestMonitor(){
         if(!BuildConfig.VIA_PRODUCTION||!visible||staffToken==null||staffUserId.isEmpty()||!requestNotificationPermission())return;
-        if(RequestMonitorService.runningFor(staffUserId))return;
+        if(RequestMonitorService.runningFor(staffUserId)){RequestMonitorService.updateToken(staffUserId,staffToken);return;}
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(lastMonitorAttempt!=0&&now-lastMonitorAttempt<10000)return;
+        lastMonitorAttempt=now;
         try{RequestMonitorService.start(this,staffUserId,staffToken);}
         catch(Exception e){message("No se pudo iniciar el monitoreo externo. Las solicitudes siguen disponibles en la APK.");}
     }
@@ -1522,9 +1532,31 @@ public final class MainActivity extends Activity {
         }
         RequestMonitorService.setDesired(this,staffUserId,on);
         alertServiceAttempted=true;
-        if(on){startRequestMonitor();scheduleRequestAlerts();}
-        else {RequestMonitorService.stop(this);RequestMonitorService.clearAlerts(this);if(newRequestDialog!=null)newRequestDialog.dismiss();}
+        if(on){lastMonitorAttempt=0;startRequestMonitor();scheduleRequestAlerts();}
+
+        else {RequestMonitorService.stop(this);RequestMonitorService.clearAlerts(this);AlertSignal.stop(this);if(newRequestDialog!=null)newRequestDialog.dismiss();}
         dashboard();
+    }
+    private String monitorStatusText(){
+        if(!RequestMonitorService.desired(this,staffUserId))return "Avisos silenciados";
+        if(!requestNotificationPermission())return "Activá notificaciones de Android";
+        if(!RequestMonitorService.runningFor(staffUserId))return "Avisos internos · "+RequestMonitorService.status();
+        return android.provider.Settings.canDrawOverlays(this)?"Monitoreo activo · emergente externo":"Monitoreo activo · notificación Android";
+    }
+    private void configureExternalPopup(){
+        if(!requestNotificationPermission()){
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},354);return;
+        }
+        if(android.provider.Settings.canDrawOverlays(this)){
+            message("Emergente externo autorizado. Android controla su aparición sobre otras apps.");
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Avisos sobre otras aplicaciones")
+          .setMessage("Permití mostrar sobre otras apps para recibir un aviso compacto de Vía Traslados mientras usás Uber o Cabify. No se mostrarán datos del pasajero. Podés revocar este permiso en Android.")
+          .setNegativeButton("Ahora no",null).setPositiveButton("Configurar",(d,w)->{
+              try{startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:"+getPackageName())));}
+              catch(Exception e){message("Configurá Mostrar sobre otras aplicaciones en Ajustes de Android.");}
+          }).show();
     }
     private void addRequestAvailability(){
         if(!BuildConfig.VIA_PRODUCTION||staffToken==null||staffUserId.isEmpty())return;
@@ -1532,9 +1564,12 @@ public final class MainActivity extends Activity {
         LinearLayout line=row();line.setPadding(dp(17),dp(4),dp(17),dp(4));line.setBackgroundColor(SOFT);
         LinearLayout label=column();
         addLine(label,on?"●  Disponible":"○  No disponible",13,on?TEAL_DARK:MUTED,true,1);
-        addLine(label,on?(running?"Monitoreo activo · API real":"Avisos dentro de la APK · reactivar externo"):"Avisos silenciados",10,MUTED,false,0);
+        monitorStatusLabel=text(monitorStatusText(),10,MUTED,false);
+        label.addView(monitorStatusLabel);
+        if(on){TextView external=text(android.provider.Settings.canDrawOverlays(this)?"Emergente externo autorizado":"Activar emergente externo",10,TEAL_DARK,true);
+            external.setPadding(0,dp(3),0,dp(3));external.setOnClickListener(v->configureExternalPopup());label.addView(external);}
         line.addView(label,new LinearLayout.LayoutParams(0,-2,1));
-        if(on&&!running){TextView restart=actionText("↻",TEAL_DARK,v->{startRequestMonitor();dashboard();});restart.setContentDescription("Reactivar monitoreo externo");line.addView(restart,new LinearLayout.LayoutParams(dp(44),dp(44)));}
+        if(on){TextView restart=actionText("↻",TEAL_DARK,v->{lastMonitorAttempt=0;if(!requestNotificationPermission()){requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},354);}else startRequestMonitor();});restart.setContentDescription("Reactivar monitoreo externo");line.addView(restart,new LinearLayout.LayoutParams(dp(44),dp(44)));}
         android.widget.Switch toggle=new android.widget.Switch(this);toggle.setChecked(on);toggle.setContentDescription("Disponibilidad para recibir solicitudes");
         toggle.setOnCheckedChangeListener((v,checked)->changeRequestAvailability(checked));
         line.addView(toggle,new LinearLayout.LayoutParams(-2,dp(48)));root.addView(line,new LinearLayout.LayoutParams(-1,-2));
@@ -1618,7 +1653,7 @@ public final class MainActivity extends Activity {
             root.addView(qa,new LinearLayout.LayoutParams(-1,-2));
         }else if(BuildConfig.VIA_PRODUCTION){
             // Banner independiente del APK de demostración; evita confusiones en Samsung.
-            TextView prod=text("V35 · PRODUCCIÓN · API REAL",10,TEAL_DARK,true);
+            TextView prod=text("V"+BuildConfig.VERSION_NAME.substring(2)+" · PRODUCCIÓN · API REAL",10,TEAL_DARK,true);
             prod.setGravity(Gravity.CENTER);
             prod.setPadding(dp(7),dp(8),dp(7),dp(8));
             prod.setBackgroundColor(SOFT);

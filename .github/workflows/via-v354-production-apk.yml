@@ -1,7 +1,7 @@
-name: Vía Traslados V35.4 — signed production pilot and installable rollback
+name: Vía Traslados V35.6 — production audible external alerts and rollback
 on:
   push:
-    branches: [via-v354-prod-avisos-20261126]
+    branches: [via-v356-prod-alertas-20261126]
     paths: ['.github/workflows/via-v354-production-apk.yml']
 permissions:
   contents: read
@@ -27,12 +27,12 @@ jobs:
           mkdir -p /tmp/alert-tests
           javac -d /tmp/alert-tests android-driver/app/src/main/java/uy/viatraslados/conductor/RequestAlertQueue.java tests/RequestAlertQueueTest.java
           java -cp /tmp/alert-tests uy.viatraslados.conductor.RequestAlertQueueTest
-          git worktree add --detach /tmp/via-rollback c9b08893cff2f14755bdde1892b33e36d657d5d6
+          git worktree add --detach /tmp/via-rollback 62f055361b90ddd499a166093e19a1fb530a8abf
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/via-rollback/android-driver/app/build.gradle')
-          s=p.read_text();assert "versionCode viaProductionRelease ? 35" in s
-          p.write_text(s.replace("versionCode viaProductionRelease ? 35","versionCode viaProductionRelease ? 355").replace("versionName viaProductionRelease ? '0.35.0'","versionName viaProductionRelease ? '0.35.0-rollback'"))
+          s=p.read_text();assert "versionCode viaProductionRelease ? 354" in s
+          p.write_text(s.replace("versionCode viaProductionRelease ? 354","versionCode viaProductionRelease ? 357").replace("versionName viaProductionRelease ? '0.35.4'","versionName viaProductionRelease ? '0.35.4-rollback'"))
           PY
       - name: Build production package and rollback package
         run: |
@@ -96,15 +96,15 @@ jobs:
           for mode in pilot rollback; do
             if [ "$mode" = pilot ]; then
               src=android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
-              dest=direct-apk/assets/via-traslados-conductor-v354.apk
-              code=354
-              version=0.35.4
+              dest=direct-apk/assets/via-traslados-conductor-v356.apk
+              code=356
+              version=0.35.6
               root=android-driver
             else
               src=/tmp/via-rollback/android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
-              dest=direct-apk/assets/via-traslados-conductor-v35-rollback.apk
-              code=355
-              version=0.35.0-rollback
+              dest=direct-apk/assets/via-traslados-conductor-v354-rollback.apk
+              code=357
+              version=0.35.4-rollback
               root=/tmp/via-rollback/android-driver
             fi
             echo "PHASE: $mode generated production build flags"
@@ -151,13 +151,13 @@ jobs:
             X-Content-Type-Options: nosniff
           EOF
           cat > direct-apk/wrangler.jsonc <<'EOF'
-          {"name":"via-traslados-conductor-release","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
+          {"name":"via-traslados-conductor-v356","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
           EOF
           npx --yes wrangler@4.160.1 deploy --config direct-apk/wrangler.jsonc
       - name: Verify both public APKs byte for byte
         run: |
           for file in direct-apk/assets/*.apk; do
-            url="https://via-traslados-conductor-release.marcelof-gx.workers.dev/$(basename "$file")"
+            url="https://via-traslados-conductor-v356.marcelof-gx.workers.dev/$(basename "$file")"
             curl -fLsS --retry 8 --retry-all-errors --retry-delay 3 -D /tmp/apk-headers "$url" -o /tmp/apk-check
             cmp "$file" /tmp/apk-check
             grep -i 'content-type: application/vnd.android.package-archive' /tmp/apk-headers
@@ -166,5 +166,5 @@ jobs:
           curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{if(!JSON.parse(s).ok)process.exit(1)})'
       - uses: actions/upload-artifact@v4
         with:
-          name: via-v354-signed-production-and-rollback
+          name: via-v356-signed-production-and-rollback
           path: direct-apk/assets/*.apk
