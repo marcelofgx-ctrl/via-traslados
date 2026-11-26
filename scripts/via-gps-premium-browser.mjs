@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium,firefox,webkit} from 'playwright';
 import {mkdirSync} from 'node:fs';
-const root='https://via-traslados-search-refined-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-search-density-qa.marcelof-gx.workers.dev';
 const old='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev';
 mkdirSync('gps-premium-evidence',{recursive:true});
 for(const n of ['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-picker.js','app.js','store.js','via-visual-compat.css']){
@@ -30,7 +30,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut')?.dataset.viaGpsState==='idle');
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.18 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.19 QA');
  const button=p.locator('#location-shortcut'),state=s=>p.waitForFunction(x=>document.querySelector('#location-shortcut')?.dataset.viaGpsState===x,s,{timeout:12000});
  assert.equal(await p.locator('#home-origin').getAttribute('placeholder'),'¿Dónde te recogemos?');
  for(const id of ['home-origin','home-destination']){
@@ -65,6 +65,9 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
  await searchPage.waitForFunction(()=>document.querySelector('#address-suggestions')?.dataset.viaResultsReady==='true'&&document.activeElement!==document.querySelector('#home-destination'));
  const resultStyle=await list.locator('.address-choice strong').first().evaluate(e=>({size:getComputedStyle(e).fontSize,weight:getComputedStyle(e).fontWeight}));
  assert.deepEqual(resultStyle,{size:'13px',weight:'600'});
+ const density=await list.locator('.address-choice').first().evaluate(e=>({min:getComputedStyle(e).minHeight,padding:getComputedStyle(e).paddingTop,gap:getComputedStyle(e).gap,height:e.getBoundingClientRect().height}));
+ assert.equal(density.min,'44px');assert.equal(density.padding,'5px');assert.equal(density.gap,'4px');assert(density.height>=43.9);
+ console.log('VIA_SUGGESTION_DENSITY_PASS '+JSON.stringify({name,...density}));
  assert(await list.isVisible());
  await dest.focus();assert(await dest.evaluate(e=>e===document.activeElement));
  await searchPage.waitForFunction(()=>document.querySelectorAll('#address-suggestions .address-choice').length>0);

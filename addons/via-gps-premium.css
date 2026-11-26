@@ -1,4 +1,4 @@
-/* Isolated GPS presentation V30.4.10.18; no changes to input or map actions. */
+/* Isolated GPS presentation V30.4.10.19; no changes to input or map actions. */
 html body .reference-home #location-shortcut#location-shortcut{
  --gps-ink:#fff;
  position:relative!important;display:inline-flex!important;flex-direction:row!important;
@@ -209,7 +209,7 @@ html body .reference-home :is(#home-origin,#home-destination):focus{
 
 /* Refined place results: compact, legible and touch-friendly. */
 html body #address-suggestions[data-via-compact="true"] .address-choice{
- min-height:48px!important;padding:7px 10px!important;gap:6px!important;
+ min-height:44px!important;padding:5px 10px!important;gap:4px!important;
 }
 html body #address-suggestions[data-via-compact="true"] .address-choice strong{
  font-size:13px!important;font-weight:600!important;line-height:1.25!important;letter-spacing:-.12px!important;
