@@ -1,5 +1,6 @@
 import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,emailOtpAvailable} from './auth.js';
 import {locationPoint} from './location-v30.js';
+import {hourlyEnabled,hourlySelect,hourlyFields,createHourly,quoteHourly} from './hourly-api.js';
 import {staffRoutes,identity,webEnabled} from './staff.js';
 import {staffPhoneRoutes} from './staff-phone.js';
 import {routeEstimateRoutes,precalculateBookingRoute} from './route-estimate.js';
@@ -29,7 +30,7 @@ export function validateBooking(p){
  if(!Number.isInteger(q.passengers)||q.passengers<1||q.passengers>8||!Number.isInteger(q.bags)||q.bags<0||q.bags>5)throw Error('Pasajeros o valijas inválidos');
  return q
 }
-const publicRow=r=>({id:r.id,origin:r.origin,destination:r.destination,date:r.trip_date,time:r.trip_time,passengers:r.passengers,bags:r.bags,notes:r.notes,status:r.status,price:r.price_uyu,created_at:r.created_at,updated_at:r.updated_at,
+const publicRow=r=>({...hourlyFields(r),id:r.id,origin:r.origin,destination:r.destination,date:r.trip_date,time:r.trip_time,passengers:r.passengers,bags:r.bags,notes:r.notes,status:r.status,price:r.price_uyu,created_at:r.created_at,updated_at:r.updated_at,
  route:r.route_provider==='geoapify'&&Number(r.route_distance_m)>0&&Number(r.route_duration_s)>0?
  {distanceKm:Math.round(Number(r.route_distance_m)/100)/10,durationMinutes:Math.ceil(Number(r.route_duration_s)/60),
   estimate:true,trafficIncluded:false,source:'Geoapify',attribution:'© OpenStreetMap contributors · Powered by Geoapify'}:null});
@@ -48,7 +49,7 @@ const routeSelect=alias=>
  "(SELECT provider FROM booking_routes WHERE booking_id="+alias+".id AND provider='geoapify') AS route_provider";
 function scheduleMissingRoutes(env,ctx,rows,max=2){
  if(!ctx?.waitUntil)return;
- const missing=rows.filter(x=>!x.route_distance_m&&
+ const missing=rows.filter(x=>x.service_type!=='hourly'&&!x.route_distance_m&&
   ['requested','quoted','accepted','confirmed'].includes(x.status)).slice(0,20);
  if(!missing.length)return;
  ctx.waitUntil((async()=>{
@@ -74,13 +75,13 @@ const getBooking=async(req,env,id)=>{
  // Si hay una cuenta autenticada, únicamente puede consultar sus propias reservas.
  // Un token antiguo en un teléfono compartido no prevalece sobre otra identidad.
  if(account){
-  return env.DB.prepare(`SELECT ${FIELDS},${routeSelect('bookings')} FROM bookings WHERE id=? AND email=?`)
+  return env.DB.prepare(`SELECT ${FIELDS}${hourlyEnabled(env)?hourlySelect('bookings'):''},${routeSelect('bookings')} FROM bookings WHERE id=? AND email=?`)
    .bind(id,account.email).first();
  }
  // Compatibilidad con reservas anteriores al sistema de cuentas: enlace con token.
  const token=req.headers.get('X-Booking-Token')||'';
  if(!token||token.length>200)return null;
- const row=await env.DB.prepare(`SELECT ${FIELDS},${routeSelect('bookings')},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
+ const row=await env.DB.prepare(`SELECT ${FIELDS}${hourlyEnabled(env)?hourlySelect('bookings'):''},${routeSelect('bookings')},access_token_hash FROM bookings WHERE id=?`).bind(id).first();
  return row&&equal(await hash(token),row.access_token_hash)?row:null;
 };
 async function transition(env,id,from,to,actor,price){
@@ -119,6 +120,12 @@ export default {async fetch(req,env,ctx){
    if(Number(req.headers.get('Content-Length')||0)>6000)return err('Solicitud demasiado grande',413);
    const raw=await req.text();if(raw.length>6000)return err('Solicitud demasiado grande',413);
    const p=JSON.parse(raw);if(p?.website)return err('Solicitud rechazada');
+   if(p?.serviceType==='hourly'){
+    if(!hourlyEnabled(env))return err('Modalidad no habilitada',403);
+    const result=await createHourly(env,await customerSession(req,env),p);
+    return result.error?err(result.error,result.status):send(result.data,result.status);
+   }
+   if(p?.serviceType!=null&&p.serviceType!=='point_to_point')return err('Modalidad inválida',400);
    let booking;try{booking=validateBooking(p)}catch(e){return err(e.message)}
    const account=await customerSession(req,env);
     if(account&&account.email!==booking.email)return err('El correo del pasajero no coincide con la cuenta verificada.',403);
@@ -149,8 +156,9 @@ export default {async fetch(req,env,ctx){
    if(req.method==='GET'&&!item[2])return send(publicRow(row));
    if(req.method==='POST'&&item[2]){
     const to=item[2]==='accept'?'accepted':'cancelled';
+    if(row.service_type==='hourly'&&row.status===to)return send({id,status:to,replayed:true});
     if(!validTransition(row.status,to))return err('Estado incompatible',409);
-    if(!await transition(env,id,row.status,to,'passenger',null))return err('Reserva modificada',409);
+    try{if(!await transition(env,id,row.status,to,'passenger',null))return err('Reserva modificada',409)}catch(e){if(String(e).includes('VIA_HOURLY_ACCEPT')||String(e).includes('VIA_QUOTE_OVERLAP'))return err('La asignación o agenda cambió. Actualizá la reserva.',409);throw e}
     return send({id,status:to})
    }
   }
@@ -158,7 +166,7 @@ export default {async fetch(req,env,ctx){
    const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
    const policy=await driverPolicy(env,actor);
    if(actor.role==='admin'){
-     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS},${routeSelect('bookings')},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name,(SELECT booking_id FROM booking_dispatch_releases r WHERE r.booking_id=bookings.id) AS released FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
+     const rows=await env.DB.prepare(`SELECT ${OP_FIELDS}${hourlyEnabled(env)?hourlySelect('bookings'):''},${routeSelect('bookings')},(SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,(SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=bookings.id) AS assigned_driver_name,(SELECT booking_id FROM booking_dispatch_releases r WHERE r.booking_id=bookings.id) AS released FROM bookings ORDER BY trip_date DESC,trip_time DESC LIMIT 200`).all();
      scheduleMissingRoutes(env,ctx,rows.results);
      return send(rows.results.map(r=>({...operatorRow(r),
        canQuote:actor.id!=='master'&&r.status==='requested'&&!r.assigned_driver_id,
@@ -169,7 +177,7 @@ export default {async fetch(req,env,ctx){
    if(actor.role!=='driver')return err('Acceso no autorizado',403);
    const rows=await env.DB.prepare(
      `SELECT b.*,a.driver_id AS assigned_driver_id,u.display_name AS assigned_driver_name,
-      r.booking_id AS released,${routeSelect('b')} FROM bookings b
+      r.booking_id AS released,${routeSelect('b')}${hourlyEnabled(env)?hourlySelect('b'):''} FROM bookings b
       LEFT JOIN driver_assignments a ON a.booking_id=b.id
       LEFT JOIN staff_users u ON u.id=a.driver_id
       LEFT JOIN booking_dispatch_releases r ON r.booking_id=b.id
@@ -213,15 +221,15 @@ export default {async fetch(req,env,ctx){
      const assignment=await env.DB.prepare('SELECT driver_id FROM driver_assignments WHERE booking_id=?').bind(id).first();
      if(assignment?.driver_id!==actor.id)return err('Este viaje no te fue asignado',403);
    }
-   const row=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings WHERE id=?`).bind(id).first();
+   const row=await env.DB.prepare(`SELECT ${OP_FIELDS}${hourlyEnabled(env)?hourlySelect('bookings'):''} FROM bookings WHERE id=?`).bind(id).first();
    if(!row)return err('Solicitud no encontrada',404);
    const to=body?.status;
    if(to==='quoted'){
      const amount=Number(body?.price);
-     const outcome=await quoteBooking(env,actor,id,amount);
+     const outcome=row.service_type==='hourly'?await quoteHourly(env,actor,id,body):await quoteBooking(env,actor,id,amount);
      if(outcome.error)return err(outcome.error,outcome.status);
      const updated=await env.DB.prepare(
-       `SELECT ${OP_FIELDS},${routeSelect('bookings')},
+       `SELECT ${OP_FIELDS}${hourlyEnabled(env)?hourlySelect('bookings'):''},${routeSelect('bookings')},
        (SELECT driver_id FROM driver_assignments WHERE booking_id=bookings.id) AS assigned_driver_id,
        (SELECT u.display_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id
         WHERE a.booking_id=bookings.id) AS assigned_driver_name
@@ -233,7 +241,7 @@ export default {async fetch(req,env,ctx){
    }
    if(!validTransition(row.status,to)||to==='accepted')return err('Cambio no permitido',409);
    if(!await transition(env,id,row.status,to,'operator',null))return err('Reserva modificada',409);
-   const updated=await env.DB.prepare(`SELECT ${OP_FIELDS} FROM bookings WHERE id=?`).bind(id).first();
+   const updated=await env.DB.prepare(`SELECT ${OP_FIELDS}${hourlyEnabled(env)?hourlySelect('bookings'):''} FROM bookings WHERE id=?`).bind(id).first();
    return send(operatorRow(updated))
   }
   return err('Ruta no encontrada',404)

@@ -84,3 +84,38 @@ BEGIN SELECT RAISE(ABORT,'VIA_HOURLY_NO_ROUTE'); END;
 CREATE TRIGGER via_hourly_no_route_update BEFORE UPDATE ON booking_routes
 WHEN EXISTS(SELECT 1 FROM bookings WHERE id=NEW.booking_id AND service_type='hourly')
 BEGIN SELECT RAISE(ABORT,'VIA_HOURLY_NO_ROUTE'); END;
+
+-- Idempotency scoped to account; historical rows unchanged.
+ALTER TABLE bookings ADD COLUMN hourly_request_id TEXT;
+ALTER TABLE bookings ADD COLUMN hourly_request_hash TEXT;
+CREATE UNIQUE INDEX via_hourly_request_unique ON bookings(email,hourly_request_id) WHERE hourly_request_id IS NOT NULL;
+CREATE TRIGGER via_hourly_accept_guard BEFORE UPDATE OF status ON bookings
+WHEN NEW.service_type='hourly' AND NEW.status='accepted' AND OLD.status<>'accepted'
+BEGIN
+ SELECT RAISE(ABORT,'VIA_HOURLY_ACCEPT') WHERE NOT EXISTS(
+ SELECT 1 FROM booking_quotes q JOIN driver_assignments a ON a.booking_id=q.booking_id
+ WHERE q.booking_id=NEW.id AND q.included_duration_minutes IS NOT NULL);
+END;
+-- A late route must not silently create an overlap with a booked hourly service.
+CREATE TRIGGER via_hourly_late_route_insert AFTER INSERT ON booking_routes
+BEGIN
+ SELECT RAISE(ABORT,'VIA_ROUTE_SCHEDULE_CONFLICT') WHERE EXISTS(
+ SELECT 1 FROM driver_assignments current JOIN via_service_intervals target ON target.id=current.booking_id
+ JOIN driver_assignments a ON a.driver_id=current.driver_id
+ JOIN via_service_intervals other ON other.id=a.booking_id
+ WHERE target.id=NEW.booking_id AND other.id<>target.id
+ AND other.service_type='hourly' AND target.status NOT IN ('cancelled','completed')
+ AND other.status NOT IN ('cancelled','completed')
+ AND target.starts<other.ends AND other.starts<target.ends);
+END;
+CREATE TRIGGER via_hourly_late_route_update AFTER UPDATE OF duration_s ON booking_routes
+BEGIN
+ SELECT RAISE(ABORT,'VIA_ROUTE_SCHEDULE_CONFLICT') WHERE EXISTS(
+ SELECT 1 FROM driver_assignments current JOIN via_service_intervals target ON target.id=current.booking_id
+ JOIN driver_assignments a ON a.driver_id=current.driver_id
+ JOIN via_service_intervals other ON other.id=a.booking_id
+ WHERE target.id=NEW.booking_id AND other.id<>target.id
+ AND other.service_type='hourly' AND target.status NOT IN ('cancelled','completed')
+ AND other.status NOT IN ('cancelled','completed')
+ AND target.starts<other.ends AND other.starts<target.ends);
+END;

@@ -315,12 +315,12 @@ export async function staffRoutes(req,env,path,send,err){
  const assign=path.match(/^\/api\/admin\/requests\/([A-Z0-9-]+)\/assign$/);
  async function readAssignmentContext(id) {
    const booking=await env.DB.prepare(
-     "SELECT b.id,b.status,b.trip_date,b.trip_time,b.passengers,b.bags,COALESCE(r.duration_s,0) AS duration_s FROM bookings b LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.id=?"
+     "SELECT b.id,b.status,b.trip_date,b.trip_time,b.passengers,b.bags,COALESCE(r.duration_s,0) AS duration_s "+(env.VIA_HOURLY_ENABLED==='1'?",b.service_type,b.requested_duration_minutes,(SELECT included_duration_minutes FROM booking_quotes WHERE booking_id=b.id) AS included_duration_minutes ":'')+"FROM bookings b LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.id=?"
    ).bind(id).first();
    if(!booking)return null;
    const current=await env.DB.prepare("SELECT a.driver_id,u.display_name AS driver_name FROM driver_assignments a JOIN staff_users u ON a.driver_id=u.id WHERE a.booking_id=?").bind(id).first();
    const slots=await env.DB.prepare(
-     "SELECT a.driver_id,b.id,b.trip_date,b.trip_time,b.status,COALESCE(r.duration_s,0) AS duration_s FROM driver_assignments a JOIN bookings b ON b.id=a.booking_id LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.status NOT IN ('cancelled','completed') AND b.id<>? AND b.trip_date BETWEEN date(?, '-1 day') AND date(?, '+1 day')"
+     "SELECT a.driver_id,b.id,b.trip_date,b.trip_time,b.status,COALESCE(r.duration_s,0) AS duration_s "+(env.VIA_HOURLY_ENABLED==='1'?",b.service_type,b.requested_duration_minutes,(SELECT included_duration_minutes FROM booking_quotes WHERE booking_id=b.id) AS included_duration_minutes ":'')+"FROM driver_assignments a JOIN bookings b ON b.id=a.booking_id LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.status NOT IN ('cancelled','completed') AND b.id<>? AND b.trip_date BETWEEN date(?, '-6 day') AND date(?, '+6 day')"
    ).bind(id,booking.trip_date,booking.trip_date).all();
    return {booking,current,slots:slots.results};
  }
@@ -355,6 +355,7 @@ export async function staffRoutes(req,env,path,send,err){
    if(Object.prototype.hasOwnProperty.call(p,'expectedDriverId') &&
       p.expectedDriverId!==previous)return err('La asignación cambió. Actualizá la pantalla y volvé a intentar.',409);
    if(p.driverId===null){
+     if(context.booking.service_type==='hourly'&&context.booking.status!=='requested')return err('Cancelá la reserva o reasigná un conductor antes de liberar una propuesta vigente',409);
      if(!previous)return send({bookingId:assign[1],driverId:null,unchanged:true});
      const removal=await env.DB.prepare('DELETE FROM driver_assignments WHERE booking_id=? AND driver_id=?')
        .bind(assign[1],previous).run();
@@ -388,9 +389,9 @@ export async function staffRoutes(req,env,path,send,err){
     "AND CAST(strftime('%s',b.trip_date||' '||b.trip_time) AS INTEGER)+MAX(3600,COALESCE(r.duration_s,0))+1800 > ?) "+
     "ON CONFLICT(booking_id) DO UPDATE SET driver_id=excluded.driver_id,assigned_by=excluded.assigned_by,assigned_at=unixepoch() "+
     "WHERE driver_assignments.driver_id=?";
-   const changed=await env.DB.prepare(sql)
+   let changed;try{changed=await env.DB.prepare(sql)
      .bind(assign[1],user.id,actor.id,assign[1],previous||'',assign[1],user.id,user.id,assign[1],
-       window.end,window.start,previous||'').run();
+       window.end,window.start,previous||'').run()}catch(e){if(String(e).includes('VIA_QUOTE_OVERLAP'))return err('La agenda cambió. Revisá el conductor seleccionado.',409);throw e}
    if(changed.meta?.changes!==1)return err('La agenda o la asignación cambió. Revisá el conductor seleccionado.',409);
    await audit(env,actor,'assign',assign[1],(previous||'sin asignar')+' -> '+user.id);
    return send({bookingId:assign[1],driverId:user.id,assigned:true});

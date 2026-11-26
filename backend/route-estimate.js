@@ -127,6 +127,7 @@ const toOutput=(r,cached)=>({
 // credenciales de operador para las tareas internas del Worker.
 export async function precalculateBookingRoute(env,booking,scope='system'){
  if(!booking?.id)return{status:422,data:{error:'Reserva inválida'}};
+ if(booking.service_type==='hourly'||booking.destination===null)return{status:422,data:{error:'Este servicio no tiene ruta vial predeterminada'}};
  const id=booking.id;
  const cached=await env.DB.prepare('SELECT distance_m,duration_s,provider,updated_at FROM booking_routes WHERE booking_id=?').bind(id).first();
  if(cached?.provider==='geoapify'&&now()-Number(cached.updated_at)<7*86400)
@@ -157,8 +158,8 @@ export async function precalculateBookingRoute(env,booking,scope='system'){
   return{status:422,data:{error:'No se pudo localizar origen o destino con suficiente precisión.'}};
  const result=await drivingRoute(origin,destination,key);
  if(result.error)return{status:result.status,data:{error:result.error}};
- await env.DB.prepare('INSERT INTO booking_routes(booking_id,distance_m,duration_s,provider,updated_at) VALUES (?,?,?,?,unixepoch()) ON CONFLICT(booking_id) DO UPDATE SET distance_m=excluded.distance_m,duration_s=excluded.duration_s,provider=excluded.provider,updated_at=excluded.updated_at')
-  .bind(id,result.distance,result.time,'geoapify').run();
+ try{await env.DB.prepare('INSERT INTO booking_routes(booking_id,distance_m,duration_s,provider,updated_at) VALUES (?,?,?,?,unixepoch()) ON CONFLICT(booking_id) DO UPDATE SET distance_m=excluded.distance_m,duration_s=excluded.duration_s,provider=excluded.provider,updated_at=excluded.updated_at')
+  .bind(id,result.distance,result.time,'geoapify').run()}catch(e){if(String(e).includes('VIA_ROUTE_SCHEDULE_CONFLICT'))return{status:409,data:{error:'La ruta actualizada genera un conflicto de agenda; requiere revisión'}};throw e}
  return{status:200,data:toOutput({distance_m:result.distance,duration_s:result.time},false)};
 }
 

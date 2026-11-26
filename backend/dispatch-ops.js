@@ -139,10 +139,11 @@ export async function guideForBooking(env,actor,id){
  const visibility=await visibilityFor(env,actor,id,policy);
  if(!visibility.visible)return {status:404,error:'Solicitud no disponible'};
  const route=await env.DB.prepare(
-   "SELECT b.id,b.status,b.price_uyu,r.distance_m,r.duration_s "+
+   "SELECT b.id,b.status,b.price_uyu,r.distance_m,r.duration_s "+(env.VIA_HOURLY_ENABLED==='1'?',b.service_type ':'')+
    "FROM bookings b LEFT JOIN booking_routes r ON r.booking_id=b.id WHERE b.id=?"
  ).bind(id).first();
  if(!route)return {status:404,error:'Solicitud no encontrada'};
+ if(route.service_type==='hourly')return {status:200,guide:null,canQuote:visibility.mayQuote,canRelease:visibility.mayRelease,exampleAtSuggested:null};
  const params=await pricingSettings(env);
  const guide=priceGuide(Number(route.distance_m)/1000,Number(route.duration_s)/60,params);
  return {status:200,guide,

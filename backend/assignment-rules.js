@@ -14,7 +14,10 @@ export function bookingSeconds(date,time){
 export function occupiedInterval(booking){
   const start=bookingSeconds(booking.trip_date??booking.date,booking.trip_time??booking.time);
   if(start===null)return null;
-  const seconds=Math.max(MINIMUM_SERVICE_SECONDS,Number(booking.duration_s)||0);
+  const hourly=(booking.serviceType??booking.service_type)==='hourly';
+  const minutes=booking.requestedDurationMinutes??booking.requested_duration_minutes;
+  if(hourly&&(!Number.isInteger(minutes)||minutes<60||minutes>1440||minutes%30!==0))return null;
+  const seconds=hourly?Math.max(minutes,Number(booking.included_duration_minutes)||0)*60:Math.max(MINIMUM_SERVICE_SECONDS,Number(booking.duration_s)||0);
   return {start,end:start+seconds+TURNAROUND_SECONDS};
 }
 export function bookingsOverlap(first,second){
