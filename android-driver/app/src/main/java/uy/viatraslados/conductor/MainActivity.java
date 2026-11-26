@@ -85,6 +85,11 @@ public final class MainActivity extends Activity {
     private boolean visible = false;
     private Dialog newRequestDialog;
     private String newRequestDialogId="";
+    private boolean availabilityBusy=false;
+    private boolean alertsSyncBusy=false;
+    private boolean alertsSynced=false;
+    private String syncedAlertActor="";
+    private android.content.BroadcastReceiver pushReceiver;
     private final Runnable advanceRequestAlerts=()->notifyNewRequests(bookings);
     private void scheduleRequestAlerts(){
         handler.removeCallbacks(advanceRequestAlerts);
@@ -101,6 +106,9 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        DriverPush.init(this);
+        pushReceiver=new android.content.BroadcastReceiver(){@Override public void onReceive(android.content.Context c,Intent i){if(visible)fetchBookings(false);}};
+        androidx.core.content.ContextCompat.registerReceiver(this,pushReceiver,new android.content.IntentFilter(DriverPush.ACTION),androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
         getWindow().setStatusBarColor(Color.WHITE);
         getWindow().setNavigationBarColor(LIGHT);
         getWindow().getDecorView().setSystemUiVisibility(
@@ -164,6 +172,7 @@ public final class MainActivity extends Activity {
         staffToken = null;
         staffRefreshToken = null;
         executor.shutdownNow();
+        if(pushReceiver!=null)unregisterReceiver(pushReceiver);
         super.onDestroy();
     }
 
@@ -1189,6 +1198,7 @@ public final class MainActivity extends Activity {
                         requestVisibleRoutes();
                     }
                     notifyAcceptedProposals(next);
+                    syncDriverAlerts();
                     notifyNewRequests(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
@@ -1364,6 +1374,7 @@ public final class MainActivity extends Activity {
 
     private void notifyNewRequests(JSONArray rows){
         if(BuildConfig.VIA_PREVIEW&&!BuildConfig.VIA_ALERTS_PREVIEW)return;
+        if(!DriverPush.available(this,alertActor()))return;
         if(!visible||isFinishing()||rows==null||authFlow||
             (operatorKey==null&&staffToken==null))return;
         if(newRequestDialog!=null){
@@ -1415,6 +1426,11 @@ public final class MainActivity extends Activity {
         header.addView(head,new LinearLayout.LayoutParams(0,-2,1));
         Runnable acknowledge=()->{
             newRequestPrefs().edit().putBoolean(seenKey,true).apply();
+            DriverPush.cancel(this,id);
+            if(!BuildConfig.VIA_PREVIEW&&alertsSynced){
+                JSONObject payload=new JSONObject();try{payload.put("bookingId",id);}catch(Exception ignored){}
+                api("POST","/api/operator/alerts/seen",payload,(status,response,error)->{});
+            }
         };
         TextView close=text("×",24,MUTED,false);close.setGravity(Gravity.CENTER);
         close.setContentDescription("Cerrar aviso");close.setOnClickListener(v->{acknowledge.run();dialog.dismiss();});
@@ -1482,6 +1498,68 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private String alertActor(){return BuildConfig.VIA_ALERTS_PREVIEW?"preview":staffUserId;}
+    private void addAvailabilityHeader(){
+        if(!BuildConfig.VIA_ALERTS_PREVIEW&&alertActor().isEmpty())return;
+        LinearLayout line=row();line.setPadding(dp(17),dp(4),dp(17),dp(4));line.setBackgroundColor(SOFT);
+        boolean on=DriverPush.available(this,alertActor());
+        LinearLayout label=column();
+        addLine(label,on?"●  Disponible":"○  No disponible",13,on?TEAL_DARK:MUTED,true,1);
+        addLine(label,BuildConfig.VIA_ALERTS_PREVIEW?"Modo de prueba · sin push remoto":on?"Avisos de nuevas solicitudes":"Avisos silenciados",10,MUTED,false,0);
+        line.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+        android.widget.Switch toggle=new android.widget.Switch(this);toggle.setChecked(on);toggle.setEnabled(!availabilityBusy);
+        toggle.setContentDescription("Disponibilidad para recibir solicitudes");
+        toggle.setOnCheckedChangeListener((v,checked)->changeAvailability(checked));
+        line.addView(toggle,new LinearLayout.LayoutParams(-2,dp(48)));root.addView(line,new LinearLayout.LayoutParams(-1,-2));
+    }
+    private void changeAvailability(boolean on){
+        if(availabilityBusy)return;
+        String actor=alertActor();if(actor.isEmpty())return;
+        if(on&&android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            dashboard();requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},354);return;
+        }
+        if(BuildConfig.VIA_ALERTS_PREVIEW){
+            DriverPush.setAvailable(this,actor,on);
+            if(!on&&newRequestDialog!=null)newRequestDialog.dismiss();
+            dashboard();if(on)scheduleRequestAlerts();return;
+        }
+        availabilityBusy=true;
+        if(!on){DriverPush.setAvailable(this,actor,false);postAvailability(actor,false,null);return;}
+        if(!DriverPush.init(this)){availabilityBusy=false;dashboard();message("Firebase todavía no está configurado.");return;}
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task->{
+            if(!actor.equals(alertActor())){availabilityBusy=false;return;}
+            if(!task.isSuccessful()){availabilityBusy=false;dashboard();message("No se pudo registrar el teléfono.");return;}
+            postAvailability(actor,true,task.getResult());
+        });
+    }
+    private void postAvailability(String actor,boolean on,String token){
+        JSONObject p=new JSONObject();try{p.put("deviceId",DriverPush.deviceId(this)).put("available",on);if(token!=null)p.put("token",token);}catch(Exception ignored){}
+        api("POST","/api/operator/alerts/availability",p,(status,response,error)->{
+            availabilityBusy=false;
+            if(!actor.equals(alertActor()))return;
+            if(status==200){DriverPush.setAvailable(this,actor,on);alertsSynced=true;syncedAlertActor=actor;if(on)scheduleRequestAlerts();}
+            else message(on?"No se activaron los avisos remotos.":"Avisos locales apagados; falta confirmar en el servidor.");
+            dashboard();
+        });
+    }
+    private void syncDriverAlerts(){
+        if(BuildConfig.VIA_PREVIEW||staffToken==null||alertActor().isEmpty()||alertsSyncBusy)return;
+        final String actor=alertActor();
+        alertsSyncBusy=true;
+        api("GET","/api/operator/alerts",null,(status,response,error)->{
+            alertsSyncBusy=false;if(!actor.equals(alertActor())||status!=200)return;
+            try{
+                JSONObject p=new JSONObject(response);JSONArray seen=p.optJSONArray("seen");
+                if(seen!=null){android.content.SharedPreferences.Editor edit=newRequestPrefs().edit();for(int i=0;i<seen.length();i++){String id=seen.optString(i);if(!id.isEmpty())edit.putBoolean(RequestAlertQueue.key(actor,id),true);}edit.apply();}
+                boolean on=p.optBoolean("available")&&DriverPush.deviceId(this).equals(p.optString("deviceId"));
+                DriverPush.setAvailable(this,actor,on);
+                alertsSynced=true;
+                if(!actor.equals(syncedAlertActor)){syncedAlertActor=actor;dashboard();}
+                scheduleRequestAlerts();
+            }catch(Exception ignored){}
+        });
+    }
+
     private String passengerInitials(String name){
         String[] parts=name.trim().split("\\s+");
         String first=parts[0].isEmpty()?"P":parts[0].substring(0,parts[0].offsetByCodePoints(0,1));
@@ -1502,6 +1580,7 @@ public final class MainActivity extends Activity {
     // Offline explicit demonstration; remote background delivery is a separate feature.
     private void testExternalAlert(){
         if(!BuildConfig.VIA_ALERTS_PREVIEW)return;
+        if(!DriverPush.available(this,alertActor())){message("Activá Disponible para probar el aviso externo.");return;}
         if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
             requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},352);return;
         }
@@ -1514,7 +1593,7 @@ public final class MainActivity extends Activity {
         channel.enableVibration(true);nm.createNotificationChannel(channel);
         Toast.makeText(this,"Abrí otra aplicación. Aviso de prueba en 8 segundos.",Toast.LENGTH_LONG).show();
         handler.postDelayed(()->{
-            if(isFinishing()||isDestroyed()||!nm.areNotificationsEnabled())return;
+            if(isFinishing()||isDestroyed()||!nm.areNotificationsEnabled()||!DriverPush.available(this,alertActor()))return;
             Intent open=new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
             android.app.PendingIntent pi=android.app.PendingIntent.getActivity(this,352,open,android.app.PendingIntent.FLAG_UPDATE_CURRENT|android.app.PendingIntent.FLAG_IMMUTABLE);
             android.app.Notification n=new android.app.Notification.Builder(this,channelId)
@@ -1531,6 +1610,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){
         super.onRequestPermissionsResult(requestCode,permissions,results);
+        if(requestCode==354&&results.length>0&&results[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)changeAvailability(true);
         if(requestCode==352&&BuildConfig.VIA_ALERTS_PREVIEW&&results.length>0&&results[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)testExternalAlert();
     }
 
@@ -1596,6 +1676,7 @@ public final class MainActivity extends Activity {
             header.addView(badge,badgeParams);
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
+        addAvailabilityHeader();
         if (BuildConfig.VIA_ONLINE_QA) {
             TextView qa=text(BuildConfig.VIA_ONBOARD_QA?
                 (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
@@ -1613,7 +1694,7 @@ public final class MainActivity extends Activity {
             prod.setBackgroundColor(SOFT);
             root.addView(prod,new LinearLayout.LayoutParams(-1,-2));
         }else if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_ALERTS_PREVIEW ? "V35.3 · AVISOS · DEMO SIN PRODUCCIÓN" : BuildConfig.VIA_OPERATION_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_ALERTS_PREVIEW ? "V35.4 · DISPONIBILIDAD · DEMO SIN PRODUCCIÓN" : BuildConfig.VIA_OPERATION_PREVIEW ?
                 "V31 · FICHA OPERATIVA PREMIUM · DEMO AISLADA" :
                 BuildConfig.VIA_LAYOUT_PREVIEW ?
                 "V30 · DETALLE Y COTIZACIÓN · DEMO SIN PRODUCCIÓN" :
@@ -4347,6 +4428,11 @@ public final class MainActivity extends Activity {
         }
         addLine(account,"La contraseña no se guarda en el dispositivo.",12,MUTED,false,12);
         Button leave=button("Cerrar sesión",false,v->{
+            if(!BuildConfig.VIA_PREVIEW&&staffToken!=null){
+                JSONObject off=new JSONObject();try{off.put("available",false).put("deviceId",DriverPush.deviceId(this));}catch(Exception ignored){}
+                api("POST","/api/operator/alerts/availability",off,(status,response,error)->{});
+            }
+            DriverPush.setAvailable(this,alertActor(),false);
             if(staffToken!=null){
                 JSONObject payload=new JSONObject();
                 try{

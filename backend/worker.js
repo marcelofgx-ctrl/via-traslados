@@ -6,6 +6,7 @@ import {customerSession,customerRoutes} from './customer-auth.js';
 import {customerPasskeyRoutes} from './customer-passkeys.js';
 import {allowedOriginsFor} from './origins.js';
 import {queueConfirmationDelivery} from './booking-confirmation-mail.js';
+import {driverAlertRoutes,queueDriverAlerts} from './driver-alerts.js';
 import {driverPolicy,visibilityFor,quoteBooking,releaseBooking,guideForBooking} from './dispatch-ops.js';
 const STEPS={requested:['quoted','cancelled'],quoted:['accepted','cancelled'],accepted:['confirmed','cancelled'],confirmed:['en_route','cancelled'],en_route:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed'],completed:[],cancelled:[]};
 const FIELDS='id,origin,destination,trip_date,trip_time,passengers,bags,notes,status,price_uyu,created_at,updated_at';
@@ -94,7 +95,7 @@ async function transition(env,id,from,to,actor,price){
  return true;
 }
 export default {
- scheduled(_event,env,ctx){queueConfirmationDelivery(env,ctx)},
+ scheduled(_event,env,ctx){queueConfirmationDelivery(env,ctx);queueDriverAlerts(env,ctx)},
  async fetch(req,env,ctx){
  const url=new URL(req.url),origin=req.headers.get('Origin');
   const allowed=allowedOriginsFor(env,url.pathname);
@@ -107,6 +108,7 @@ export default {
   const path=url.pathname;
   if(path==='/api/health'&&req.method==='GET')return send({ok:true,name:'via-traslados',otpAvailable:emailOtpAvailable(env)});
   const phoneHandled=await staffPhoneRoutes(req,env,path,send,err);if(phoneHandled)return phoneHandled;
+  const alerts=await driverAlertRoutes(req,env,path,send,ctx);if(alerts)return alerts;
   const handled=await staffRoutes(req,env,path,send,err);if(handled)return handled;
   if(path==='/api/public/route-preview'&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio.',503);
   const distanceHandled=await routeEstimateRoutes(req,env,path,send);if(distanceHandled)return distanceHandled;
@@ -130,6 +132,7 @@ export default {
    await env.DB.prepare('INSERT INTO bookings (id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,booking.name,booking.phone,booking.email,booking.origin,booking.destination,booking.date,booking.time,booking.passengers,booking.bags,booking.notes,tokenHash,'requested').run();
    await env.DB.prepare('INSERT INTO booking_events (booking_id,old_status,new_status,actor) VALUES (?,?,?,?)').bind(id,null,'requested','passenger').run();
    scheduleMissingRoutes(env,ctx,[{id,origin:booking.origin,destination:booking.destination,status:'requested'}],1);
+   queueDriverAlerts(env,ctx);
    return send({id,access_token:token,status:'requested'},201)
   }
   const item=path.match(/^\/api\/requests\/([A-Z0-9-]+)(?:\/(accept|cancel))?$/);
@@ -192,6 +195,7 @@ export default {
   if(releaseMatch&&req.method==='POST'){
     const actor=await authorized(req,env);if(!actor)return err('Acceso no autorizado',401);
     const result=await releaseBooking(env,actor,releaseMatch[1]);
+    if(!result.error)queueDriverAlerts(env,ctx);
     return result.error?err(result.error,result.status):send(result);
   }
   const op=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)$/);

@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {pushMessage,drainDriverAlerts} from '../backend/driver-alerts.js';
+test('disabled worker never touches DB',async()=>{await drainDriverAlerts({DB:{prepare(){throw Error('unexpected DB access')}}})});
+test('private data never leaves backend through push',()=>{const p=pushMessage('token','VIA-123456789','device-123456789');assert.equal(p.message.data.kind,'new_request');assert.equal(p.message.android.priority,'HIGH');assert.deepEqual(Object.keys(p.message.data).sort(),['body','bookingId','deviceId','kind','title']);assert.equal(p.message.notification,undefined)});
