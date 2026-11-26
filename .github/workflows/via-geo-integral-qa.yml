@@ -1,0 +1,54 @@
+name: Vía V30.4.10.9 — integrated geographic QA, real providers and D1
+on:
+  push:
+    branches: [via-v30410-visual-compat-qa-20261125]
+    paths: ['.github/workflows/via-geo-integral-qa.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-geo-integral-qa
+  cancel-in-progress: false
+jobs:
+  integrated:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify cache QA evidence and core tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45801000480 --jq .conclusion)" = success
+          node tests/via-reverse-fallback.test.mjs
+          node tests/via-reverse-cache.test.mjs
+      - name: Build exact visual package and isolated geographic bridge
+        run: python3 scripts/via-geo-integral-build.py
+      - name: Publish isolated functional geography preview
+        run: npx --yes wrangler@4.160.1 deploy --config v30410-visual/geo-integral/wrangler.jsonc
+      - name: Install Playwright
+        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.56.1-ubuntu-24.04-chromium-webkit
+      - name: Install required browser dependencies
+        timeout-minutes: 3
+        run: npx playwright install --with-deps chromium webkit
+      - name: Real provider fallback, real D1 hit and single tap in browser
+        run: node scripts/via-geo-integral-real.mjs
+      - name: Confirm production baseline
+        if: always()
+        run: python3 -c "import runpy;m=runpy.run_path('scripts/v302-route-cache-qa.py');assert m['version'](m['WEB'])=='b23d68ea-5aae-4827-b808-3c4c3504a959' and m['version'](m['API'])=='5ad845a7-beeb-44e5-9e52-6459bd1fbb8b';print('VIA_PRODUCTION_UNCHANGED')"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-geo-integral-evidence
+          path: v30410-visual/geo-evidence
+          if-no-files-found: ignore
