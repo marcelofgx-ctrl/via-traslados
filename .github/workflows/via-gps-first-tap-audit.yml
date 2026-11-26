@@ -1,0 +1,33 @@
+name: Vía GPS — active source and first-tap reproduction, read only
+on:
+  push:
+    branches: [via-v30410-visual-compat-qa-20261125]
+    paths: ['.github/workflows/via-gps-first-tap-audit.yml','scripts/via-gps-first-tap-audit.mjs']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Active source segments (no private data)
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://b23d68ea-via-traslados-web-prod.marcelof-gx.workers.dev/';
+          for(const file of ['reference.js','geo-v2/core.mjs','index.html','address-autocomplete.js']){
+            const r=await fetch(base+file,{signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error(file+' '+r.status);const s=await r.text();
+            if(file==='reference.js')console.log('GPS_ACTIVE_REFERENCE '+JSON.stringify(s));
+            else if(file==='geo-v2/core.mjs')console.log('GPS_ACTIVE_CORE '+JSON.stringify(s));
+            else {const l=s.split('\n');const hits=l.map((v,i)=>/geolocation|watchPosition|location-shortcut|gps-feedback|reverseCandidates|mode=reverse/.test(v)?i:-1).filter(i=>i>=0);console.log('GPS_ACTIVE_HITS '+JSON.stringify({file,hits:hits.slice(0,35).map(i=>[i+1,l[i].slice(0,450)])}));}
+          }
+          NODE
+      - name: Browser
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Reproduce one tap with synthetic GPS and reverse responses
+        run: node scripts/via-gps-first-tap-audit.mjs
