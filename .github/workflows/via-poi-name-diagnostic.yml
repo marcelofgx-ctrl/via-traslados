@@ -1,0 +1,35 @@
+name: Vía — real POI name diagnostic and QA bridge validation
+on:
+  push:
+    branches: [via-home-return-v3041025-qa-20261126]
+    paths: ['.github/workflows/via-poi-name-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: |
+          node --input-type=module <<'NODE'
+          const hosts={prod:'https://viatraslados.com',qa25:'https://via-traslados-home-return-qa.marcelof-gx.workers.dev',qa26:'https://via-traslados-home-return-geo-qa.marcelof-gx.workers.dev'};
+          for(const [tag,host] of Object.entries(hosts)){
+           if(tag!=='prod'){
+            for(const [path,method] of [['/api/health','GET'],['/api/customer/me','GET'],['/api/requests','POST']]){
+             const r=await fetch(host+path,{method,signal:AbortSignal.timeout(15000)});
+             console.log('VIA_QA_GUARD '+JSON.stringify({tag,path,status:r.status}));
+             if(path!=='/api/health'&&r.ok)throw Error('Unexpected QA account/write success');
+            }
+           }
+           for(const q of ["McDonald's","McDonalds","McDonald’s","Mc Donalds","Hyatt","Nuevocentro"]){
+            try{
+             const u=new URL(host+'/api/direcciones');u.search=new URLSearchParams({mode:'places',q,lat:'-34.884',lng:'-56.174'});
+             const t=Date.now(),r=await fetch(u,{signal:AbortSignal.timeout(18000),headers:{Accept:'application/json','User-Agent':'ViaTrasladosV35SignedRelease'}});
+             const j=await r.json(),rows=j.results||[];
+             console.log('VIA_POI_NAME '+JSON.stringify({tag,q,status:r.status,ms:Date.now()-t,count:rows.length,names:rows.slice(0,4).map(x=>x.name||x.street||x.label),error:j.error||null}));
+            }catch(e){console.log('VIA_POI_NAME '+JSON.stringify({tag,q,error:e.name}))}
+           }
+          }
+          NODE
