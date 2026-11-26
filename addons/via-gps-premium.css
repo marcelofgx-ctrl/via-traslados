@@ -1,4 +1,4 @@
-/* Isolated GPS presentation V30.4.10.15; no changes to input or map actions. */
+/* Isolated GPS presentation V30.4.10.16; no changes to input or map actions. */
 html body .reference-home #location-shortcut#location-shortcut{
  --gps-ink:#fff;
  position:relative!important;display:inline-flex!important;flex-direction:row!important;
@@ -143,4 +143,14 @@ html body .reference-home #via-geography-credit{
  line-height:1.35!important;margin:0 0 4px!important;color:#315c53!important;
  background:rgba(250,254,251,.94);border-radius:5px;padding:2px 5px;
  text-align:center;white-space:normal;
+}
+
+
+/* Refine only the empty home address prompts. Preserve 16px editable inputs
+   to avoid automatic zoom on iOS and keep search/selection geometry stable. */
+html body .reference-home :is(#home-origin,#home-destination)::placeholder{
+ font-size:14px!important;font-weight:400!important;letter-spacing:-.1px!important;
+}
+html body .reference-home :is(#home-origin,#home-destination)::-webkit-input-placeholder{
+ font-size:14px!important;font-weight:400!important;letter-spacing:-.1px!important;
 }
