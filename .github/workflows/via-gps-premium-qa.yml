@@ -51,7 +51,7 @@ jobs:
           }
           assert(protectedQa,'QA health or explicit reservation denial not verified');
           const page=await get('/index.html');assert((await page.text()).includes('placeholder="¿Dónde te recogemos?"'));
-          assert(style.includes('width:44px!important'));assert(style.includes('--via-suggest-width'));assert(style.includes('38px painted control'));
+          assert(style.includes('width:44px!important'));assert(style.includes('--via-suggest-width'));assert(style.includes('38px painted control'));assert((await (await get('/index.html')).text()).includes('id="via-geography-credit"'));
           console.log('VIA_GPS_PREMIUM_LIVE '+u);
           NODE
       - name: Verify production unchanged

@@ -24,8 +24,13 @@ credit=re.search(r'<small id="via-geography-credit"[^>]*>.*?</small>',s,flags=re
 assert credit,'Missing provider credit'
 credit_html=credit.group(0)
 s=s[:credit.start()]+s[credit.end():]
-s,count=re.subn(r'(<a class="reference-reservations"[^>]*>.*?</a>\s*</div>)(\s*</section>)',lambda match:match.group(1)+'\n'+credit_html+match.group(2),s,count=1,flags=re.S)
-assert count==1,'Missing booking card end'
+# Use the unique home section boundary, not a fragile link class or wrapper.
+wizard=re.search(r'<section\b[^>]*\bid=["\x27]solicitar["\x27][^>]*>',s)
+assert wizard,'Missing wizard boundary'
+home_end=s.rfind('</section>',0,wizard.start())
+assert home_end>0 and 'reference-reservations' in s[:home_end],'Missing home section end'
+s=s[:home_end]+credit_html+'\n'+s[home_end:]
+assert s.count('id="via-geography-credit"')==1
 p.write_text(s)
 p=assets/'config.js';s=p.read_text();assert old in s;p.write_text(s.replace(old,new))
 p=assets/'sw.js';s=p.read_text();assert '30.4.10.10' in s;p.write_text(s.replace('30.4.10.10','30.4.10.15'))
