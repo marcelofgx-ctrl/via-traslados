@@ -1,0 +1,38 @@
+name: Vía — reverse Geoapify fallback, tested API candidate without traffic
+on:
+  push:
+    branches: [via-v30410-visual-compat-qa-20261125]
+    paths: ['.github/workflows/via-reverse-fallback-candidate.yml']
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify reverse fallback unit tests
+        run: node tests/via-reverse-fallback.test.mjs
+      - name: Build additive API endpoint from actual active bundle
+        run: python3 scripts/via-reverse-api-candidate.py prepare
+      - name: Upload candidate API with existing bindings, no traffic
+        run: npx --yes wrangler@4.160.1 versions upload --config via-reverse-api/wrangler.jsonc --keep-vars
+      - name: Verify candidate bindings and production baseline
+        run: python3 scripts/via-reverse-api-candidate.py verify
+      - name: Test real Geoapify reverse service
+        run: node scripts/via-reverse-api-real.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-reverse-api-candidate
+          path: via-reverse-api/candidate.json
+          if-no-files-found: ignore
