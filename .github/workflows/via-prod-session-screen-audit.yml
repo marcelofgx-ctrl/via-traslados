@@ -1,0 +1,59 @@
+name: Vía — production session screen diagnostic (read only)
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ['.github/workflows/via-prod-session-screen-audit.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify production active versions and API health
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node scripts/v30-cloudflare-inventory.mjs
+          node --input-type=module <<'JS'
+          const root='https://via-traslados-api.marcelof-gx.workers.dev';
+          for(const path of ['/api/health','/api/customer/me']){
+            const r=await fetch(root+path,{headers:{Origin:'https://viatraslados.com'},signal:AbortSignal.timeout(12000)});
+            const j=await r.json();console.log('PROD_API '+JSON.stringify({path,status:r.status,cors:r.headers.get('access-control-allow-origin'),ok:j.ok,otpAvailable:j.otpAvailable}));
+          }
+          for(const path of ['index.html','app.js','store.js','config.js','reference.js']){
+            const r=await fetch('https://viatraslados.com/'+path,{signal:AbortSignal.timeout(15000)});const s=await r.text();
+            console.log('PROD_ASSET '+JSON.stringify({path,status:r.status,bytes:s.length,version:s.includes('30.4.8'),qa:s.includes('via-traslados-api-qa.marcelof-gx.workers.dev')}));
+            if(path==='store.js'||path==='app.js'){
+              const lines=s.split('\n');
+              const re=path==='store.js'?/async function resume|async resume|customer\/me|AbortController|AbortSignal|session-v1/:/Comprobando tu sesión|function onBusy|function changeStep|function revalidateIdentity/;
+              for(let i=0;i<lines.length;i++)if(re.test(lines[i]))console.log('CODE '+path+' '+(i+1)+' '+lines.slice(Math.max(0,i-2),i+5).join(' ').slice(0,950));
+            }
+          }
+          JS
+      - name: Read-only browser reproduction of production form
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install chromium >/dev/null
+          node --input-type=module <<'JS'
+          import {chromium} from 'playwright';
+          const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+          const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
+          await ctx.route('**/*',r=>['GET','HEAD','OPTIONS'].includes(r.request().method())?r.continue():r.abort());
+          const page=await ctx.newPage();
+          page.on('pageerror',e=>console.log('PAGE_ERROR '+e.name+' '+e.message.slice(0,200)));
+          await page.goto('https://viatraslados.com',{waitUntil:'domcontentloaded'});
+          await page.waitForFunction(()=>window.ViaAddress&&window.ViaStore);
+          const snap=()=>page.evaluate(()=>({button:document.getElementById('to-contact')?.textContent.trim(),disabled:document.getElementById('to-contact')?.disabled,origin:document.getElementById('home-origin')?.value,approx:[...document.querySelectorAll('.via-selected-accuracy')].filter(e=>e.getClientRects().length>0).map(e=>e.textContent.trim()),version:[...document.scripts].some(s=>s.src.includes('address-autocomplete.js?v=30.4.8'))}));
+          console.log('CLEAN_HOME '+JSON.stringify(await snap()));
+          await page.locator('#start-booking').click();
+          console.log('EMPTY_WIZARD_INITIAL '+JSON.stringify(await snap()));
+          await page.waitForTimeout(5000);
+          console.log('EMPTY_WIZARD_5S '+JSON.stringify(await snap()));
+          await browser.close();
+          JS
