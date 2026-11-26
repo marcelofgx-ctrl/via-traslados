@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS address_search_cache(slot INTEGER PRIMARY KEY CHECK(slot BETWEEN 0 AND 4095),cache_key TEXT NOT NULL,payload TEXT NOT NULL CHECK(length(CAST(payload AS BLOB))<=6000),expires_at INTEGER NOT NULL);

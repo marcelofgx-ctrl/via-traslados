@@ -1,0 +1,33 @@
+name: Vía — geographic redundancy API candidate, no traffic
+on:
+  push:
+    branches: [via-geography-resilience-20261126]
+    paths: ['.github/workflows/via-geography-resilience-candidate.yml']
+permissions:
+  contents: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: node --test tests/via-geography-resilience.test.mjs
+      - run: python3 scripts/via-resilience-api-build.py prepare
+      - run: npx --yes wrangler@4.160.1 versions upload --config via-resilience/wrangler-api.jsonc --keep-vars
+      - run: python3 scripts/via-resilience-api-build.py verify
+      - run: node scripts/via-resilience-api-real.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-resilience-candidate
+          path: via-resilience/candidate.json
+          if-no-files-found: ignore

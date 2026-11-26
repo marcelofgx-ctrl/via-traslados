@@ -1,0 +1,16 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {vfNormalize} from '../addons/via-forward-api.mjs';
+import {addressRace} from '../addons/via-address-race.mjs';
+const q='Arenal Grande 2200, Montevideo';
+const p={country_code:'uy',street:'Arenal Grande',city:'Montevideo',state:'Montevideo',housenumber:'2200',result_type:'building',rank:{match_type:'full_match',confidence:1,confidence_building_level:1}};
+const feature=properties=>({properties,geometry:{coordinates:[-56.17,-34.88]}});
+const good={results:vfNormalize({features:[feature(p)]},q,'suggest')};
+test('exact portal, strict confidence and correct locality',()=>{assert.equal(good.results[0].accuracy,'portal');assert.equal(good.results[0].lat,-34.88);assert.equal(vfNormalize({features:[feature({...p,housenumber:'2202'})]},q,'suggest')[0].lat,null);assert.equal(vfNormalize({features:[feature({...p,rank:{}})]},q,'suggest')[0].accuracy,'unconfirmed');assert.deepEqual(vfNormalize({features:[feature({...p,city:'Salto',state:'Salto'})]},q,'suggest'),[])});
+test('street only is not a portal; resolve refuses it',()=>{const b={features:[feature({...p,result_type:'street',housenumber:null})]};assert.equal(vfNormalize(b,q,'suggest')[0].street,'Arenal Grande 2200');assert.equal(vfNormalize(b,q,'suggest')[0].lng,null);assert.deepEqual(vfNormalize(b,q,'resolve'),[])});
+const req=()=>new Request('https://viatraslados.com/api/direcciones?mode=suggest&q='+encodeURIComponent(q));
+const res=(j,s=200)=>Response.json(j,{status:s});
+const race=(a,b)=>addressRace(req(),{VIA_POI_API:{fetch:async()=>b()},POI_CACHE:null},{fetch:async()=>a()},null,{lead:5,deadline:80});
+test('healthy exact IDE stays first, no backup',async()=>{let n=0;const r=await race(()=>res(good),()=>{n++;return res(good)});assert.equal(r.headers.get('X-Via-Address-Source'),'IDE');assert.equal(n,0)});
+test('IDE 503 recovers via backup',async()=>{const r=await race(()=>res({results:[]},503),()=>res(good));assert.equal(r.status,200);assert.equal(r.headers.get('X-Via-Address-Source'),'Geoapify')});
+test('both failures are not a no-match; true empty needs two successful replies',async()=>{assert.equal((await race(()=>res({results:[]},503),()=>res({results:[]},503))).status,503);assert.equal((await race(()=>res({results:[]}),()=>res({results:[]},503))).status,503);assert.equal((await race(()=>res({results:[]}),()=>res({results:[]}))).status,200)});
+test('POI untouched',async()=>{let n=0;const r=await addressRace(new Request('https://viatraslados.com/api/direcciones?mode=places&q=Hotel'),{VIA_POI_API:{fetch(){throw Error('no')}}},{fetch(){n++;return res({results:[]})}},null);assert.equal(r.status,200);assert.equal(n,1)});
