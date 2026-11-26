@@ -1,0 +1,22 @@
+name: Vía V31.1 — API integration regression (no deploy)
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ['backend/**','qa/hourly/**','tests/hourly-api.test.mjs','.github/workflows/via-v311-api-integration.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  integration:
+    if: github.ref == 'refs/heads/via-hourly-service-v31-qa-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm install --no-audit --no-fund
+      - run: python3 qa/hourly/rehearse.py
+      - run: npm test
+      - run: npm run check
