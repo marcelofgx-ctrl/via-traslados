@@ -1,0 +1,25 @@
+name: Vía V31.1 — hourly schema rehearsal (no deploy)
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ['qa/hourly/**', '.github/workflows/via-v311-hourly-rehearsal.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rehearsal:
+    if: github.ref == 'refs/heads/via-hourly-service-v31-qa-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Rehearse SQL with foreign keys enabled
+        run: python3 qa/hourly/rehearse.py
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Existing backend contract regression
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
