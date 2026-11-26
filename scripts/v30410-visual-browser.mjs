@@ -34,7 +34,7 @@ for(const [profile,engine,ua] of cases){
  const page=await ctx.newPage();
  await page.goto((remote?stage:root)+'/index.html',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.ViaAddress&&window.ViaStore);
- await page.evaluate(()=>document.fonts.ready);
+ await page.evaluate(async()=>{await document.fonts.ready;await Promise.allSettled([document.fonts.load('600 24px Manrope'),document.fonts.load('700 24px Manrope')]);await document.fonts.ready});
  assert.equal(await page.locator('html').getAttribute('data-via-visual'),profile);
  const measure=()=>page.evaluate(()=>{
   const b=document.getElementById('location-shortcut'),s=b.querySelector('svg'),r=b.getBoundingClientRect(),sr=s?.getBoundingClientRect(),cs=getComputedStyle(b);
@@ -50,7 +50,7 @@ for(const [profile,engine,ua] of cases){
  const reference=await measure();
  await page.screenshot({path:path+'-reference.png',animations:'disabled'});
  assert.deepEqual(active.button,reference.button,'Changed touch target geometry');
- if(profile!=='chrome-android')assert.deepEqual(active,reference,'Reference browser unexpectedly changed');
+ if(profile!=='chrome-android'){const {fontReady:af,...as}=active,{fontReady:rf,...rs}=reference;assert.deepEqual(as,rs,'Reference browser unexpectedly changed');}
  else {assert(active.idle,'Unexpected GPS glyph: '+active.glyph);assert.equal(active.font,'0px');assert.equal(active.pseudo.width,'24px');assert.equal(active.pseudo.height,'24px');assert.match(active.pseudo.mask,/data:image\/svg\+xml/);assert.equal(reference.font,'24px');assert.deepEqual(active.surfaces,reference.surfaces);assert.equal(active.glyph,reference.glyph);
   // Ensure progress/error glyph remains unchanged instead of drawing idle vector.
   await page.evaluate(()=>{const b=document.getElementById('location-shortcut');b.setAttribute('aria-busy','true')});
@@ -61,6 +61,25 @@ for(const [profile,engine,ua] of cases){
   await page.waitForFunction(()=>document.getElementById('location-shortcut').hasAttribute('data-via-vector-idle'));
  }
  await page.evaluate(p=>document.documentElement.dataset.viaVisual=p,profile);
+ // Opt-in finish must preserve target geometry and typography; compare same physical viewport.
+ const finishMetrics=()=>page.evaluate(()=>{
+  const ids=['start-booking','location-shortcut','home-origin','home-destination','home-date','home-time','home-passengers'];
+  return {controls:ids.map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return [id,r.width,r.height]}),
+    button:getComputedStyle(document.getElementById('start-booking')).backgroundImage,
+    card:getComputedStyle(document.querySelector('.reference-booking')).boxShadow,
+    overflow:document.documentElement.scrollWidth>innerWidth};
+ });
+ assert.equal(await page.locator('html').getAttribute('data-via-finish'),'reference');
+ const beforeFinish=await finishMetrics();
+ await page.evaluate(()=>document.documentElement.dataset.viaFinish='premium');
+ const afterFinish=await finishMetrics();
+ assert.deepEqual(afterFinish.controls,beforeFinish.controls,'Touch target dimensions changed');
+ assert.equal(afterFinish.overflow,beforeFinish.overflow);
+ assert.notEqual(afterFinish.button,beforeFinish.button,'Premium gradient not applied');
+ assert.notEqual(afterFinish.card,beforeFinish.card,'Premium card shadow not applied');
+ await page.screenshot({path:path+'-premium.png',animations:'disabled'});
+ await page.evaluate(()=>document.documentElement.dataset.viaFinish='reference');
+ assert.deepEqual(await finishMetrics(),beforeFinish,'Reference finish did not restore');
  await page.locator('#start-booking').click();
  assert.match(await page.locator('#to-contact').innerText(),/Continuar/);
  assert(!(await page.locator('#to-contact').isDisabled()));

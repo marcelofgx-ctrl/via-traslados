@@ -3,3 +3,6 @@ Samsung Internet es la referencia visual física del usuario. Mantener su diseñ
 
 ## Iteración V30.4.10.1
 Las 24 comprobaciones de la primera iteración pasaron (45745746079), pero el tamaño calculado del carácter GPS ya era 24px en todos los perfiles. El ensayo no acreditaba mejora de nitidez. Sustituir visualmente solo el carácter GPS inactivo de Chrome Android por una máscara vectorial, sin tocar texto ni handlers, mantener sus estados de progreso y preservar exactamente las propiedades de fondo y textura. La detección no puede distinguir siempre pestañas personalizadas de Chrome nativo; confirmar resultado físico. El resto de perfiles sin overrides.
+
+## V30.4.10.2 — acabado premium optativo
+La ejecución 45746064111 detuvo la publicación: discrepancia temporal de document.fonts.check en WebKit. Se conserva la comprobación de estilo y geometría pero se espera explícitamente la carga de Manrope; el estado de descarga se registra, no se confunde con un cambio CSS. La variante QA ?acabado=premium activa solo propiedades de pintura (sombras internas, degradado satinado, iconos de trazos redondeados, discreción del número de versión). Por defecto se conserva la referencia. No modificar imagen ni filtros de fondo hasta contrastar capturas físicas. Fecha y otros cambios de dimensiones quedan fuera de este ensayo. QA no funcional, sin reservas.

@@ -20,3 +20,56 @@
 }
 /* Other profiles remain pixel-equivalent to base. No global sharpening,
    font replacement, blur changes, zoom, or new compositing layers. */
+
+
+/* V30.4.10.2 QA: opt-in satin/glass finish. Reference is untouched.
+   Only paint properties: no resizing, transforms, routing or form behavior. */
+html[data-via-finish="premium"] .reference-home .reference-booking {
+ box-shadow:0 15px 38px rgba(12,48,47,.20),inset 0 1px 0 rgba(255,255,255,.94),inset 0 -1px 0 rgba(115,158,147,.12)!important;
+}
+html[data-via-finish="premium"] .reference-home .highlight,
+html[data-via-finish="premium"] .reference-home .reference-field,
+html[data-via-finish="premium"] .reference-home .reference-option,
+html[data-via-finish="premium"] .reference-home .reference-reservations {
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.82),inset 0 -1px 0 rgba(65,113,101,.10),0 2px 8px rgba(22,62,55,.055)!important;
+}
+html[data-via-finish="premium"] .reference-home #start-booking {
+ background-image:linear-gradient(110deg,#118d83 0%,#087d76 47%,#005e5b 100%)!important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.27),inset 0 -1px 0 rgba(0,52,47,.18),0 6px 14px rgba(0,91,84,.17)!important;
+}
+html[data-via-finish="premium"] .reference-home #start-booking:active {
+ box-shadow:inset 0 2px 7px rgba(0,46,42,.22),0 2px 5px rgba(0,91,84,.13)!important;
+}
+html[data-via-finish="premium"] .reference-tabs {
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 -3px 14px rgba(30,72,64,.08)!important;
+}
+html[data-via-finish="premium"] .reference-tabs a.selected {
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.64),0 2px 8px rgba(35,110,94,.065)!important;
+}
+html[data-via-finish="premium"] .reference-home svg {
+ stroke-linecap:round;
+ stroke-linejoin:round;
+}
+html[data-via-finish="premium"] #via-visible-release {
+ font-size:9px!important;
+ opacity:.72!important;
+ line-height:11px!important;
+}
+@media (prefers-color-scheme:dark) {
+ html[data-via-finish="premium"] .reference-home .reference-booking {
+  box-shadow:0 15px 38px rgba(0,0,0,.32),inset 0 1px 0 rgba(187,225,210,.12)!important;
+ }
+ html[data-via-finish="premium"] .reference-home .highlight,
+ html[data-via-finish="premium"] .reference-home .reference-field,
+ html[data-via-finish="premium"] .reference-home .reference-option,
+ html[data-via-finish="premium"] .reference-home .reference-reservations {
+  box-shadow:inset 0 1px 0 rgba(187,225,210,.11),0 2px 8px rgba(0,0,0,.11)!important;
+ }
+ html[data-via-finish="premium"] .reference-tabs {
+  box-shadow:inset 0 1px 0 rgba(187,225,210,.10),0 -3px 14px rgba(0,0,0,.18)!important;
+ }
+ html[data-via-finish="premium"] .reference-tabs a.selected {
+  box-shadow:inset 0 1px 0 rgba(187,225,210,.12)!important;
+ }
+}
+/* Keep original background image, blur, text contrast, and native input dimensions. */

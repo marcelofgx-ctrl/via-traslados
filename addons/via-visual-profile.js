@@ -11,6 +11,8 @@
  const chrome=/Chrome\/|CriOS\//i.test(ua);
  const profile=samsung?'samsung':ios?'ios':android&&firefox?'firefox-android':android&&edge?'edge-android':android&&opera?'opera-android':android&&webview?'android-webview':android&&chrome?'chrome-android':firefox?'firefox':chrome?'chromium':'default';
  document.documentElement.dataset.viaVisual=profile;
+ // QA comparison is opt-in, never stored or sent. Default retains the original finish.
+ document.documentElement.dataset.viaFinish=new URLSearchParams(location.search).get('acabado')==='premium'?'premium':'reference';
  // Do not replace DOM text or attach functional listeners. Observe only the existing idle glyph.
  function init(){
   const button=document.getElementById('location-shortcut');if(!button)return;
