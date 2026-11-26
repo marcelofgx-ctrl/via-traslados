@@ -1,0 +1,61 @@
+name: Vía — exact V30.4.10.24 repromotion with public propagation gate
+on:
+  push:
+    branches: [via-geography-resilience-20261126]
+    paths: ['.github/workflows/via-resilience-exact-repromotion.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact approved candidate and previous rollback
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45836917606 --jq .conclusion)" = success
+          test "$(gh api repos/${{ github.repository }}/actions/artifacts/15125517414 --jq .digest)" = sha256:3ae2a4cb1d20d004c54146590f14ad8515dc5e7a9499ee6b90e2868da26249d3
+          test "$(gh api repos/${{ github.repository }}/actions/artifacts/15126746918 --jq .digest)" = sha256:43675ea4d568e97b6397329207490b6fec7603f90b0a667d1ec24c73098430d6
+          git diff --exit-code 9076fd63e0b8ecd79e9cbda7375115f7b6d41667 HEAD -- addons scripts/via-resilience-shared-release.py scripts/via-resilience-integration.mjs
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-resilience-candidate
+          run-id: 45836917606
+          github-token: ${{ github.token }}
+          path: via-resilience
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-resilience-shared-cache-report
+          run-id: 45837703435
+          github-token: ${{ github.token }}
+          path: via-resilience
+      - name: Confirm immutable web candidate
+        run: python3 -c "import json;assert json.load(open('via-resilience/web-candidate.json'))['candidate']=='25a28e6e-73e0-4fcd-8c52-1489ede9f7e4'"
+      - name: Activate additive API only
+        id: api
+        run: python3 scripts/via-resilience-shared-release.py api
+      - name: Recheck complete candidate
+        run: node scripts/via-resilience-integration.mjs candidate
+      - name: Activate exact validated web
+        run: python3 scripts/via-resilience-shared-release.py web
+      - name: Require public edge convergence
+        run: node scripts/via-resilience-public-propagation.mjs
+      - name: Verify full production contract
+        run: |
+          node scripts/via-resilience-integration.mjs prod
+          python3 scripts/via-resilience-shared-release.py final
+      - name: Roll back both versions on failure
+        if: failure() && steps.api.outcome != 'skipped'
+        run: python3 scripts/via-resilience-shared-release.py rollback
