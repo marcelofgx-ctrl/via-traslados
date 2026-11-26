@@ -12,10 +12,10 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
   Object.defineProperty(navigator,'geolocation',{value:g,configurable:true});
   if(navigator.permissions)Object.defineProperty(navigator.permissions,'query',{value:async()=>({state:'granted'}),configurable:true});
  },{lat,lng});
- let reverseCalls=0;
+ let reverseCalls=0;const retry=reducedMotion==='no-preference';
  await c.route('**/*',async r=>{
   const q=r.request(),u=new URL(q.url()),p=u.pathname;
-  if(p==='/api/direcciones'&&u.searchParams.get('mode')==='reverse'){reverseCalls++;await new Promise(x=>setTimeout(x,1100));return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:[{street:'Avenida de las Américas 100',city:'Ciudad de la Costa',department:'Canelones',lat,lng,distanceMeters:8,source:'synthetic'}]})}).catch(()=>{});}
+  if(p==='/api/direcciones'&&u.searchParams.get('mode')==='reverse'){reverseCalls++;await new Promise(x=>setTimeout(x,1100));return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:retry&&reverseCalls===1?[]:[{street:'Avenida de las Américas 100',city:'Ciudad de la Costa',department:'Canelones',lat,lng,distanceMeters:8,source:'synthetic'}]})}).catch(()=>{});}
   if(p.startsWith('/api/')||!['GET','HEAD'].includes(q.method()))return r.abort();
   if(remote&&u.origin===stage)return r.continue();
   if(!remote&&u.origin===root){const n=p.slice(1)||'index.html';if(!/^[\w./-]+$/.test(n)||n.includes('..'))return r.abort();try{const body=readFileSync('v30410-visual/assets/'+n),ext=n.split('.').pop(),type={html:'text/html',js:'application/javascript',mjs:'application/javascript',css:'text/css',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',svg:'image/svg+xml',woff2:'font/woff2',webmanifest:'application/manifest+json'}[ext]||'application/octet-stream';return r.fulfill({status:200,contentType:type,body})}catch{return r.abort()}}
@@ -24,6 +24,7 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
  const p=await c.newPage();await p.goto((remote?stage:root)+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut'));
  const button=p.locator('#location-shortcut'),note=p.locator('#via-gps-feedback');
  await button.click();
+ await p.waitForFunction(()=>document.querySelector('#via-gps-feedback')?.dataset.viaWait==='gps'||[...document.querySelectorAll('#via-gps-feedback button')].some(b=>b.textContent==='Permitir ubicación'));
  if(await p.getByRole('button',{name:'Permitir ubicación',exact:true}).count())await p.getByRole('button',{name:'Permitir ubicación',exact:true}).click();
  for(const state of ['gps','precision','reverse']){
   await p.waitForFunction(s=>document.querySelector('#via-gps-feedback')?.dataset.viaWait===s,state,{timeout:12000});
@@ -35,7 +36,7 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
   if(reducedMotion==='no-preference')await p.screenshot({path:'v30410-visual/evidence/'+(remote?'remote':'local')+'-wait-'+name+'-'+state+'.png',animations:'allow'});
  }
  await p.waitForFunction(()=>!document.getElementById('location-shortcut').disabled,{timeout:12000});
- assert.equal(reverseCalls,1);assert.equal(await note.locator('.via-wait-track').count(),0);
+ assert.equal(reverseCalls,retry?2:1);assert.equal(await note.locator('.via-wait-track').count(),0);
  assert.match(await p.locator('#home-origin').inputValue(),/Américas/);
  // Cancel by editing manually: no stale indicator or overwrite.
  await button.click();await p.waitForFunction(()=>document.querySelector('#via-gps-feedback')?.dataset.viaWait==='gps');
@@ -43,7 +44,7 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
  await p.waitForFunction(()=>!document.getElementById('location-shortcut').disabled);
  assert.equal(await note.locator('.via-wait-track:visible').count(),0);
  assert.equal(await p.locator('#home-origin').inputValue(),'Dirección manual de prueba');
- console.log('VIA_WAIT_PASS '+JSON.stringify({name,reducedMotion,remote,states:['gps','precision','reverse'],cancel:true,synthetic:true}));
+ console.log('VIA_WAIT_PASS '+JSON.stringify({name,reducedMotion,remote,states:['gps','precision','reverse'],cancel:true,synthetic:true,firstEmptyRecovered:retry,reverseCalls}));
  await c.close();
  }}finally{await b.close()}
 }
