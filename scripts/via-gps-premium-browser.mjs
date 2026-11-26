@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium,firefox,webkit} from 'playwright';
 import {mkdirSync} from 'node:fs';
-const root='https://via-traslados-gps-compact-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-search-compact-qa.marcelof-gx.workers.dev';
 const old='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev';
 mkdirSync('gps-premium-evidence',{recursive:true});
 for(const n of ['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-picker.js','app.js','store.js','via-visual-compat.css']){
@@ -30,10 +30,26 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut')?.dataset.viaGpsState==='idle');
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.13 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.14 QA');
  const button=p.locator('#location-shortcut'),state=s=>p.waitForFunction(x=>document.querySelector('#location-shortcut')?.dataset.viaGpsState===x,s,{timeout:12000});
  assert.equal(await p.locator('#home-origin').getAttribute('placeholder'),'¿Dónde te recogemos?');
  const box=await button.boundingBox();assert(box.width>=43.9&&box.width<=45&&box.height>=43.9&&box.height<=45);assert.equal(await button.getAttribute('aria-label'),'Mi ubicación');assert.equal(await button.getAttribute('title'),'Mi ubicación');
+ // Test actual autocomplete presentation with a synthetic response, preserving real selection logic.
+ const searchPage=await c.newPage();
+ await searchPage.goto(root+'/index.html',{waitUntil:'domcontentloaded'});
+ await searchPage.waitForFunction(()=>window.ViaAddress&&document.querySelector('#address-suggestions'));
+ const dest=searchPage.locator('#home-destination');
+ assert.equal(await dest.evaluate(e=>getComputedStyle(e).fontSize),'16px');
+ // Intercept all geographic reads in this independent page; no reservation writes.
+ await searchPage.route('**/api/direcciones?**',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:Array.from({length:6},(_,i)=>({street:'Aeropuerto de prueba '+i,label:'Aeropuerto de prueba '+i,city:'Canelones',department:'Canelones',lat:-34.8+i/1000,lng:-56.0,kind:'place',accuracy:'poi',distanceKm:i+1}))})}));
+ await dest.fill('Aeropuerto');
+ const list=searchPage.locator('#address-suggestions');
+ await searchPage.waitForFunction(()=>document.querySelector('#address-suggestions')?.dataset.viaCompact==='true'&&!document.querySelector('#address-suggestions')?.classList.contains('hidden'));
+ const bounds=await list.evaluate(e=>({width:e.getBoundingClientRect().width,field:document.querySelector('#home-destination').closest('.reference-field').getBoundingClientRect().width,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right,viewport:innerWidth}));
+ assert(Math.abs(bounds.width-bounds.field)<3&&bounds.left>=0&&bounds.right<=bounds.viewport+1,JSON.stringify(bounds));
+ assert(await dest.evaluate(e=>e===document.activeElement));
+ await searchPage.screenshot({path:'gps-premium-evidence/'+name+'-search.png',animations:'disabled'});
+ await searchPage.close();
  const visual=await button.evaluate(e=>({icon:getComputedStyle(e,'::before').backgroundImage,label:getComputedStyle(e,'::after').content,scroll:document.documentElement.scrollWidth,width:innerWidth}));
  assert(visual.icon.includes('data:image/svg+xml'));assert.equal(visual.label,'none');assert(visual.scroll<=visual.width);
  await p.screenshot({path:'gps-premium-evidence/'+name+'-idle.png',animations:'disabled'});
