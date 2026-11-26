@@ -105,7 +105,7 @@ export default {async fetch(req,env,ctx){
  if(!env.DB)return err('Base de datos no configurada',503);
  try{
   const path=url.pathname;
-  if(path==='/api/health'&&req.method==='GET')return send({ok:true,name:'via-traslados',otpAvailable:emailOtpAvailable(env)});
+  if(path==='/api/health'&&req.method==='GET')return send({ok:true,name:'via-traslados',otpAvailable:emailOtpAvailable(env),...(hourlyEnabled(env)?{backendVersion:'31.1-qa',hourlyEnabled:true}:{})});
   const phoneHandled=await staffPhoneRoutes(req,env,path,send,err);if(phoneHandled)return phoneHandled;
   const handled=await staffRoutes(req,env,path,send,err);if(handled)return handled;
   if(path==='/api/public/route-preview'&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio.',503);

@@ -1,0 +1,39 @@
+name: Vía V31.1 — D1 runtime and Worker candidate (no deploy)
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ['.github/workflows/via-v311-d1-runtime.yml','qa/hourly/runtime-preflight.mjs','wrangler-v311-qa.jsonc']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/via-hourly-service-v31-qa-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify actual QA schema, auth capabilities and recovery
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node qa/hourly/runtime-preflight.mjs
+      - name: Rehearse against exact schema
+        run: python3 qa/hourly/rehearse.py /tmp/via-qa-schema.sql
+      - name: Test existing and new API
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run check
+      - name: Execute migration in local D1 runtime ONLY
+        run: |
+          mkdir -p qa-hourly-migrations
+          cp qa/hourly/005_hourly_candidate.sql qa-hourly-migrations/0001_hourly.sql
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-qa-db --local --config wrangler-v311-qa.jsonc --file /tmp/via-qa-schema.sql --persist-to /tmp/via-d1-local
+          npx --yes wrangler@4.160.1 d1 migrations apply via-traslados-qa-db --local --config wrangler-v311-qa.jsonc --persist-to /tmp/via-d1-local
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-qa-db --local --config wrangler-v311-qa.jsonc --command "SELECT name FROM sqlite_master WHERE name='via_service_intervals'; PRAGMA foreign_key_check;" --persist-to /tmp/via-d1-local
+      - name: Build QA candidate without uploading
+        run: npx --yes wrangler@4.160.1 deploy --config wrangler-v311-qa.jsonc --dry-run --outdir /tmp/via-v311-candidate

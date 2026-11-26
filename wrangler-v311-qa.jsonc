@@ -1,0 +1,9 @@
+{
+ "name":"via-traslados-api-qa",
+ "main":"backend/worker.js",
+ "compatibility_date":"2026-11-10",
+ "workers_dev":true,
+ "keep_vars":true,
+ "d1_databases":[{"binding":"DB","database_name":"via-traslados-qa-db","database_id":"146017ce-09a7-4457-abd2-694a5a5b3e92","migrations_dir":"qa-hourly-migrations","migrations_table":"via_hourly_qa_migrations"}],
+ "vars":{"PUBLIC_ORIGIN":"https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev","OPERATOR_ORIGIN":"https://via-traslados-mine-v2917-stage.marcelof-gx.workers.dev","VIA_HOURLY_ENABLED":"1"}
+}
