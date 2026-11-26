@@ -1,0 +1,57 @@
+name: Vía V30.4.9 — geography regression and exact no-traffic candidate
+on:
+  push:
+    branches: [via-v3049-session-maintenance-20261125]
+    paths: ['scripts/v3049-final-*','.github/workflows/via-v3049-final-candidate.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/via-v3049-session-maintenance-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Retrieve immutable approved session candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45742509326 --jq .conclusion)" = success
+          gh run download 45742509326 --repo "${{ github.repository }}" --name via-v3049-maintenance-candidate --dir v3049-maintenance
+          test -f v3049-maintenance/assets/index.html
+      - name: Browser dependencies
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium webkit >/dev/null
+      - name: Real public geography and cache, no booking writes
+        run: node scripts/v3049-final-geography.mjs candidate
+      - name: Prepare exact production worker with unchanged bindings
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v3049-final-candidate.py prepare
+      - name: Upload version without traffic
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 versions upload --config v3049-maintenance/wrangler-prod.jsonc --keep-vars
+      - name: Verify exact preview assets and unchanged production
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v3049-final-candidate.py verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v3049-release-candidate
+          path: |
+            v3049-maintenance/release-candidate.json
+            v3049-maintenance/exact-hashes.json
+          retention-days: 30
