@@ -1,0 +1,50 @@
+name: Vía V30.4.10.21 — numbered address recovery QA only
+on:
+  push:
+    branches: [via-address-number-qa-20261126]
+    paths: ['.github/workflows/via-number-search-qa.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Unit tests, exact portal and conservative recovery
+        run: node --test tests/via-numbered-search.test.mjs
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          run-id: 45809382418
+          github-token: ${{ github.token }}
+          path: v30410-visual
+      - name: Build from verified active release assets
+        run: python3 scripts/via-number-search-build.py
+      - name: Deploy QA only
+        run: npx --yes wrangler@4.160.1 deploy --config number-search-qa/wrangler.jsonc
+      - name: Check live QA version, search proxy and reservation denial
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const u='https://via-traslados-number-search-qa.marcelof-gx.workers.dev';
+          const get=(p,o={})=>fetch(u+p,{...o,headers:{'User-Agent':'ViaTrasladosV35SignedRelease'},signal:AbortSignal.timeout(16000)});
+          let ready=false;
+          for(let i=0;i<8;i++){try{const r=await get('/index.html');if(r.ok&&(await r.text()).includes('V30.4.10.21 QA')){ready=true;break}}catch{}await new Promise(r=>setTimeout(r,2000))}
+          assert(ready);
+          assert((await get('/api/health')).ok);
+          assert.equal((await get('/api/requests',{method:'POST',body:'{}'})).status,503);
+          assert.equal((await get('/api/customer/me')).status,503);
+          const result=await get('/api/direcciones?mode=suggest&q=Arenal%20Grande');
+          assert(result.ok);assert((await result.json()).results.length>0);
+          console.log('VIA_NUMBER_QA_LIVE '+u);
+          NODE
+      - name: Confirm active production is unchanged
+        run: python3 -c "import runpy;m=runpy.run_path('scripts/v302-route-cache-qa.py');assert m['version'](m['WEB'])=='eb447f2d-4772-4ab6-9583-ee785bfa9621' and m['version'](m['API'])=='5ad845a7-beeb-44e5-9e52-6459bd1fbb8b';print('VIA_PRODUCTION_UNCHANGED')"

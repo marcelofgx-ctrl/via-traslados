@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {viaNumberQuery,viaVerifiedPortal,viaUnverifiedStreet,viaNumberedSuggest} from '../addons/via-numbered-search.mjs';
+const q='Arenal Grande 2200, Montevideo',p=viaNumberQuery(q);
+const street={street:'ARENAL GRANDE',city:'Montevideo',department:'Montevideo',lat:-34.9,lng:-56.17,accuracy:'street'};
+const portal={...street,street:'ARENAL GRANDE 2200',accuracy:'portal'};
+const run=async (responses,query=q)=>{const calls=[];const data=await viaNumberedSuggest('https://viatraslados.com/api/direcciones?q='+encodeURIComponent(query),query,new AbortController().signal,async url=>{const u=new URL(url);calls.push([u.searchParams.get('mode'),u.searchParams.get('q')]);return Response.json({results:responses.shift()||[]})});return {calls,data}};
+test('exact result preserved, only one request',async()=>{const a=await run([[portal]]);assert.equal(a.calls.length,1);assert.deepEqual(a.data.results,[portal])});
+test('empty numbered suggest uses exact resolve first',async()=>{const a=await run([[],[portal],[street]]);assert.equal(a.calls.length,3);assert.deepEqual(a.data.results,[portal]);assert.equal(a.calls[2][1],'Arenal Grande, Montevideo')});
+test('street fallback retains requested number with no coordinates',async()=>{const a=await run([[],[],[street,{...street,street:'ARENAL GRANDE 2222'}]]);assert.equal(a.data.results.length,1);const r=a.data.results[0];assert.equal(r.street,'ARENAL GRANDE 2200');assert.equal(r.lat,null);assert.equal(r.lng,null);assert.equal(r.accuracy,'unconfirmed');assert.equal(r.postalStatus,'unknown')});
+test('no wrong portal or locality or POI',()=>{assert(!viaVerifiedPortal({...portal,street:'ARENAL GRANDE 2201'},p));assert(!viaVerifiedPortal({...portal,city:'Salto',department:'Salto'},p));assert(!viaVerifiedPortal({...portal,kind:'place'},p));assert.equal(viaUnverifiedStreet([{...street,street:'OTRA CALLE'}, {...street,city:'Salto',department:'Salto'}],p).length,0)});
+test('normal street and POI not expanded',async()=>{for(const query of ['Arenal Grande','Aeropuerto','Ruta 101']){assert.equal((await run([[]],query)).calls.length,1)}});
+test('number parsing accepts short door and preserves locality',()=>{assert.deepEqual(viaNumberQuery('Sarandí 12A, Maldonado'),{street:'Sarandí',number:'12a',localities:['Maldonado'],full:'Sarandí 12A'})});
