@@ -85,6 +85,11 @@ public final class MainActivity extends Activity {
     private boolean visible = false;
     private Dialog newRequestDialog;
     private String newRequestDialogId="";
+    private final Runnable advanceRequestAlerts=()->notifyNewRequests(bookings);
+    private void scheduleRequestAlerts(){
+        handler.removeCallbacks(advanceRequestAlerts);
+        if(visible&&!isFinishing()&&!isDestroyed())handler.postDelayed(advanceRequestAlerts,220);
+    }
     private Dialog acceptanceDialog;
     private String acceptanceDialogId = "";
     private final Runnable poll = new Runnable() {
@@ -139,8 +144,14 @@ public final class MainActivity extends Activity {
         if (operatorKey != null || staffToken != null) fetchBookings(false);
     }
 
+    @Override public void onWindowFocusChanged(boolean focused){
+        super.onWindowFocusChanged(focused);
+        if(focused)scheduleRequestAlerts();
+    }
+
     @Override protected void onPause() {
         visible = false;
+        handler.removeCallbacks(advanceRequestAlerts);
         handler.removeCallbacks(poll);
         if (acceptanceDialog != null) acceptanceDialog.dismiss();
         if (newRequestDialog != null) newRequestDialog.dismiss();
@@ -148,6 +159,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        handler.removeCallbacks(advanceRequestAlerts);
         operatorKey = null;
         staffToken = null;
         staffRefreshToken = null;
@@ -1346,8 +1358,8 @@ public final class MainActivity extends Activity {
     }
     private String newRequestKey(String id){
         String who=BuildConfig.VIA_ALERTS_PREVIEW?"preview":
-            operatorKey!=null?"master":staffUserId;
-        return who.isEmpty()?"":"seen_"+who+"_"+id;
+            !staffUserId.isEmpty()?staffUserId:operatorKey!=null?"master":"";
+        return RequestAlertQueue.key(who,id);
     }
 
     private void notifyNewRequests(JSONArray rows){
@@ -1363,17 +1375,18 @@ public final class MainActivity extends Activity {
             if(!stillOpen)newRequestDialog.dismiss();
         }
         if(newRequestDialog!=null||acceptanceDialog!=null||!hasWindowFocus())return;
-        JSONObject latest=null;
-        int pending=0;
+        java.util.ArrayList<RequestAlertQueue.Entry> entries=new java.util.ArrayList<>();
+        java.util.HashMap<String,JSONObject> byId=new java.util.HashMap<>();
         for(int i=0;i<rows.length();i++){
             JSONObject r=rows.optJSONObject(i);
             if(!newRequestEligible(r))continue;
-            String key=newRequestKey(r.optString("id"));
-            if(key.isEmpty()||newRequestPrefs().getBoolean(key,false))continue;
-            pending++;
-            if(latest==null||r.optString("created_at").compareTo(latest.optString("created_at"))>0)latest=r;
+            String id=r.optString("id"),key=newRequestKey(id);
+            if(key.isEmpty())continue;
+            entries.add(new RequestAlertQueue.Entry(id,r.optString("created_at")));
+            byId.putIfAbsent(id,r);
         }
-        if(latest!=null)showNewRequestDialog(latest,pending);
+        RequestAlertQueue.Selection next=RequestAlertQueue.next(entries,id->newRequestPrefs().getBoolean(newRequestKey(id),false));
+        if(next!=null)showNewRequestDialog(byId.get(next.id),next.count);
     }
 
     private GradientDrawable requestAlertSatin(int top,int bottom,int radius,int border){
@@ -1398,9 +1411,11 @@ public final class MainActivity extends Activity {
         LinearLayout header=row();
         LinearLayout head=column();
         addLine(head,"VÍA TRASLADOS",10,TEAL_DARK,true,2);
-        addLine(head,pending>1?"Nueva solicitud · "+pending+" pendientes":"Nueva solicitud",18,INK,true,0);
+        addLine(head,pending>1?"Nueva solicitud · "+pending+" por ver":"Nueva solicitud · última por ver",18,INK,true,0);
         header.addView(head,new LinearLayout.LayoutParams(0,-2,1));
-        Runnable acknowledge=()->newRequestPrefs().edit().putBoolean(seenKey,true).apply();
+        Runnable acknowledge=()->{
+            newRequestPrefs().edit().putBoolean(seenKey,true).apply();
+        };
         TextView close=text("×",24,MUTED,false);close.setGravity(Gravity.CENTER);
         close.setContentDescription("Cerrar aviso");close.setOnClickListener(v->{acknowledge.run();dialog.dismiss();});
         header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));
@@ -1432,7 +1447,7 @@ public final class MainActivity extends Activity {
         scroll.measure(View.MeasureSpec.makeMeasureSpec(Math.max(dp(160),getResources().getDisplayMetrics().widthPixels-dp(50)),View.MeasureSpec.AT_MOST),View.MeasureSpec.makeMeasureSpec(maxBody,View.MeasureSpec.AT_MOST));
         sheet.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(maxBody,scroll.getMeasuredHeight())));
         spacer(sheet,9);LinearLayout actions=row();
-        actions.addView(button("Ahora no",false,v->{acknowledge.run();dialog.dismiss();}),new LinearLayout.LayoutParams(0,dp(48),1));
+        actions.addView(button("Visto",false,v->{acknowledge.run();dialog.dismiss();}),new LinearLayout.LayoutParams(0,dp(48),1));
         LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(48),2);ap.leftMargin=dp(8);
         actions.addView(button("Ver solicitud",true,v->{
             JSONObject current=null;
@@ -1446,7 +1461,13 @@ public final class MainActivity extends Activity {
         sheet.addView(actions);
         newRequestDialog=dialog;newRequestDialogId=id;
         dialog.setCancelable(true);dialog.setCanceledOnTouchOutside(false);
-        dialog.setOnDismissListener(d->{if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}});
+        // Explicit back/cancel is a viewed alert; lifecycle dismissals are not.
+        dialog.setOnCancelListener(d->acknowledge.run());
+        dialog.setOnDismissListener(d->{
+            if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}
+            // A detail dialog owns focus until it closes; do not interrupt it.
+            scheduleRequestAlerts();
+        });
         dialog.setContentView(sheet);dialog.show();
         Window w=dialog.getWindow();
         if(w!=null){
@@ -1592,7 +1613,7 @@ public final class MainActivity extends Activity {
             prod.setBackgroundColor(SOFT);
             root.addView(prod,new LinearLayout.LayoutParams(-1,-2));
         }else if (BuildConfig.VIA_PREVIEW) {
-            TextView demo=text(BuildConfig.VIA_ALERTS_PREVIEW ? "V35.2 · AVISOS · DEMO SIN PRODUCCIÓN" : BuildConfig.VIA_OPERATION_PREVIEW ?
+            TextView demo=text(BuildConfig.VIA_ALERTS_PREVIEW ? "V35.3 · AVISOS · DEMO SIN PRODUCCIÓN" : BuildConfig.VIA_OPERATION_PREVIEW ?
                 "V31 · FICHA OPERATIVA PREMIUM · DEMO AISLADA" :
                 BuildConfig.VIA_LAYOUT_PREVIEW ?
                 "V30 · DETALLE Y COTIZACIÓN · DEMO SIN PRODUCCIÓN" :
