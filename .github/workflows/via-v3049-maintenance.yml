@@ -1,0 +1,51 @@
+name: Vía V30.4.9 — isolated maintenance candidate
+on:
+  push:
+    branches: [via-v3049-session-maintenance-20261125]
+    paths: ['scripts/v3049-*','.github/workflows/via-v3049-maintenance.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qa:
+    if: github.ref == 'refs/heads/via-v3049-session-maintenance-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build from exact production version, no writes
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v3049-maintenance-build.py
+      - name: Install browser test tools
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium webkit >/dev/null
+      - name: Test exact candidate with synthetic network fixtures
+        run: node scripts/v3049-maintenance-browser.mjs local
+      - name: Deploy isolated static QA only
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v3049-maintenance/wrangler.jsonc
+      - name: Verify preview with synthetic network fixtures
+        run: node scripts/v3049-maintenance-browser.mjs preview
+      - name: Verify production unchanged
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node scripts/v30-cloudflare-inventory.mjs | tee /tmp/via-inventory
+          grep -q d29d5304-db8d-48bb-a082-44b336454ed6 /tmp/via-inventory
+          grep -q 5ad845a7-beeb-44e5-9e52-6459bd1fbb8b /tmp/via-inventory
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v3049-maintenance-candidate
+          path: |
+            v3049-maintenance/assets
+            v3049-maintenance/manifest.json
+          retention-days: 30
