@@ -1,3 +1,4 @@
+import {reverseCacheIdentity,reverseCacheRead,reverseCacheWrite} from './via-reverse-cache.mjs';
 // First usable nearby reference wins. Never change the original GPS point.
 export function viaReverseUsable(rows,lat,lng){
  if(!Array.isArray(rows))return false;
@@ -9,7 +10,10 @@ export function viaReverseUsable(rows,lat,lng){
 export async function viaReverseRace(request,env,legacy,ctx){
  const u=new URL(request.url),a=u.searchParams.get('lat'),b=u.searchParams.get('lng'),lat=Number(a),lng=Number(b);
  if(a===null||b===null||!Number.isFinite(lat)||!Number.isFinite(lng)||lat< -36||lat> -30||lng< -59||lng> -52||!env.VIA_POI_API)return legacy.fetch(request,env,ctx);
- const safe=(r)=>r.clone().json().then(j=>({r,usable:r.ok&&viaReverseUsable(j.results,lat,lng)})).catch(()=>({r,usable:false}));
+ const id=await reverseCacheIdentity(lat,lng);
+ const hit=await reverseCacheRead(env.POI_CACHE,id,lat,lng);
+ if(hit&&viaReverseUsable(hit,lat,lng))return new Response(JSON.stringify({results:hit,mode:'reverse',provider:'D1 cache'}),{headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Via-Reverse-Cache':'HIT'}});
+ const safe=(r)=>r.clone().json().then(j=>({r,rows:j.results,usable:r.ok&&viaReverseUsable(j.results,lat,lng)})).catch(()=>({r,usable:false}));
  let timer;
  const primary=Promise.resolve().then(()=>legacy.fetch(request,env,ctx)).then(safe).catch(()=>null);
  const secondary=new Promise(resolve=>{timer=setTimeout(resolve,900)}).then(()=>{
@@ -22,7 +26,7 @@ export async function viaReverseRace(request,env,legacy,ctx){
   const finish=r=>{if(done)return;done=true;clearTimeout(deadline);clearTimeout(timer);resolve(r)};
   const failure=()=>new Response(JSON.stringify({error:'No se pudo identificar la dirección',results:[]}),{status:503,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
   const deadline=setTimeout(()=>finish(first?.r?.ok?first.r:second?.r?.ok?second.r:first?.r||second?.r||failure()),5600);
-  const receive=(x,p)=>{if(done)return;if(p)first=x;else second=x;n++;if(x?.usable){finish(x.r);return}if(n===2)finish(first?.r?.ok?first.r:second?.r?.ok?second.r:first?.r||second?.r||failure())};
+  const receive=(x,p)=>{if(done)return;if(p)first=x;else second=x;n++;if(x?.usable){if(env.POI_CACHE&&ctx?.waitUntil)ctx.waitUntil(reverseCacheWrite(env.POI_CACHE,id,x.rows,lat,lng));finish(x.r);return}if(n===2)finish(first?.r?.ok?first.r:second?.r?.ok?second.r:first?.r||second?.r||failure())};
   primary.then(x=>receive(x,true));secondary.then(x=>receive(x,false));
  });
 }
