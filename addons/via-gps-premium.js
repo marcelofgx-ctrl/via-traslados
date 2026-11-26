@@ -49,3 +49,43 @@
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
+/* Overlay enhancement; no address requests, sorting, metadata or selection writes. */
+(()=>{'use strict';
+ function initSearch(){
+  const panel=document.getElementById('address-suggestions');
+  const fields=['home-origin','home-destination'].map(id=>document.getElementById(id)).filter(Boolean);
+  if(!panel||!fields.length)return;
+  let active=null,frame=0,touchStart=null;
+  function layout(){
+   frame=0;
+   if(!active||panel.classList.contains('hidden'))return;
+   const field=active.closest('.reference-field');if(!field)return;
+   const r=field.getBoundingClientRect(),v=window.visualViewport;
+   const left=v?.offsetLeft||0,top=v?.offsetTop||0,w=v?.width||innerWidth,h=v?.height||innerHeight;
+   const width=Math.min(r.width,w-16),x=Math.max(left+8,Math.min(r.left,left+w-width-8));
+   if(width<=0)return;
+   const originalTop=parseFloat(panel.style.top);
+   const y=Number.isFinite(originalTop)?originalTop:r.bottom;
+   const available=panel.dataset.placement==='above'?Math.max(42,r.top-top-12):Math.max(42,top+h-y-8);
+   panel.style.setProperty('--via-suggest-left',x+'px');
+   panel.style.setProperty('--via-suggest-width',width+'px');
+   panel.style.setProperty('--via-suggest-height',Math.min(320,available)+'px');
+   panel.dataset.viaCompact='true';
+  }
+  function schedule(){if(!frame)frame=requestAnimationFrame(layout)}
+  fields.forEach(el=>{const activate=()=>{active=el;schedule()};el.addEventListener('focus',activate);el.addEventListener('input',activate)});
+  ['origin','destination'].forEach(id=>document.getElementById(id)?.addEventListener('focus',()=>{active=null;delete panel.dataset.viaCompact}));
+  new MutationObserver(schedule).observe(panel,{attributes:true,attributeFilter:['class'],childList:true});
+  window.addEventListener('resize',schedule,{passive:true});
+  window.addEventListener('scroll',schedule,{passive:true,capture:true});
+  window.visualViewport?.addEventListener('resize',schedule,{passive:true});
+  window.visualViewport?.addEventListener('scroll',schedule,{passive:true});
+  panel.addEventListener('touchstart',e=>{touchStart=e.touches.length===1?e.touches[0].clientY:null},{passive:true});
+  panel.addEventListener('touchmove',e=>{
+   if(touchStart===null||!active||document.activeElement!==active||e.touches.length!==1)return;
+   if(Math.abs(e.touches[0].clientY-touchStart)>14&&panel.scrollHeight>panel.clientHeight+2){touchStart=null;active.blur();schedule()}
+  },{passive:true});
+  for(const event of ['touchend','touchcancel'])panel.addEventListener(event,()=>{touchStart=null},{passive:true});
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initSearch,{once:true});else initSearch();
+})();
