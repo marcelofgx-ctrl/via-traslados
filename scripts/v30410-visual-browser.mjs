@@ -32,7 +32,7 @@ for(const [profile,engine,ua] of cases){
   return r.abort();
  });
  const page=await ctx.newPage();
- await page.goto((remote?stage:root)+'/index.html',{waitUntil:'domcontentloaded'});
+ await page.goto((remote?stage:root)+'/index.html?acabado=original',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.ViaAddress&&window.ViaStore);
  await page.evaluate(async()=>{await document.fonts.ready;await Promise.allSettled([document.fonts.load('600 24px Manrope'),document.fonts.load('700 24px Manrope')]);await document.fonts.ready});
  assert.equal(await page.locator('html').getAttribute('data-via-visual'),profile);
@@ -67,19 +67,29 @@ for(const [profile,engine,ua] of cases){
   return {controls:ids.map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return [id,r.width,r.height]}),
     button:getComputedStyle(document.getElementById('start-booking')).backgroundImage,
     card:getComputedStyle(document.querySelector('.reference-booking')).boxShadow,
+    cardBackground:getComputedStyle(document.querySelector('.reference-booking')).backgroundImage,
     overflow:document.documentElement.scrollWidth>innerWidth};
  });
  assert.equal(await page.locator('html').getAttribute('data-via-finish'),'reference');
  const beforeFinish=await finishMetrics();
  await page.evaluate(()=>document.documentElement.dataset.viaFinish='premium');
+ await page.waitForFunction(prev=>getComputedStyle(document.getElementById('start-booking')).backgroundImage!==prev,beforeFinish.button,{timeout:5000});
+ await page.waitForTimeout(350);
  const afterFinish=await finishMetrics();
  assert.deepEqual(afterFinish.controls,beforeFinish.controls,'Touch target dimensions changed');
  assert.equal(afterFinish.overflow,beforeFinish.overflow);
  assert.notEqual(afterFinish.button,beforeFinish.button,'Premium gradient not applied');
  assert.notEqual(afterFinish.card,beforeFinish.card,'Premium card shadow not applied');
+ assert.notEqual(afterFinish.cardBackground,beforeFinish.cardBackground,'Premium material not applied');
  await page.screenshot({path:path+'-premium.png',animations:'disabled'});
  await page.evaluate(()=>document.documentElement.dataset.viaFinish='reference');
+ await page.waitForFunction(prev=>getComputedStyle(document.getElementById('start-booking')).backgroundImage===prev,beforeFinish.button,{timeout:5000});
+ await page.waitForTimeout(350);
  assert.deepEqual(await finishMetrics(),beforeFinish,'Reference finish did not restore');
+ // Exercise the actual default link users will open, not only an in-page override.
+ await page.goto((remote?stage:root)+'/index.html',{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.ViaAddress&&document.documentElement.dataset.viaFinish==='premium');
+ await page.waitForFunction(prev=>getComputedStyle(document.getElementById('start-booking')).backgroundImage!==prev,beforeFinish.button);
  await page.locator('#start-booking').click();
  assert.match(await page.locator('#to-contact').innerText(),/Continuar/);
  assert(!(await page.locator('#to-contact').isDisabled()));

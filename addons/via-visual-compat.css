@@ -22,54 +22,56 @@
    font replacement, blur changes, zoom, or new compositing layers. */
 
 
-/* V30.4.10.2 QA: opt-in satin/glass finish. Reference is untouched.
-   Only paint properties: no resizing, transforms, routing or form behavior. */
-html[data-via-finish="premium"] .reference-home .reference-booking {
- box-shadow:0 15px 38px rgba(12,48,47,.20),inset 0 1px 0 rgba(255,255,255,.94),inset 0 -1px 0 rgba(115,158,147,.12)!important;
+/* V30.4.10.3 QA. Premium finish on landing only. Keep reference geometry and behavior. */
+html[data-via-finish="premium"] body .reference-home .reference-booking {
+ background-image:linear-gradient(153deg,rgba(255,255,255,.97),rgba(235,246,240,.83) 53%,rgba(214,232,223,.91))!important;
+ box-shadow:0 14px 34px rgba(19,61,49,.24),inset 0 1px 0 #fff,inset 0 0 0 1px rgba(255,255,255,.58),inset 0 -2px 0 rgba(58,111,91,.12)!important;
 }
-html[data-via-finish="premium"] .reference-home .highlight,
-html[data-via-finish="premium"] .reference-home .reference-field,
-html[data-via-finish="premium"] .reference-home .reference-option,
-html[data-via-finish="premium"] .reference-home .reference-reservations {
- box-shadow:inset 0 1px 0 rgba(255,255,255,.82),inset 0 -1px 0 rgba(65,113,101,.10),0 2px 8px rgba(22,62,55,.055)!important;
+html[data-via-finish="premium"] body .reference-home .highlight,
+html[data-via-finish="premium"] body .reference-home .reference-field,
+html[data-via-finish="premium"] body .reference-home .reference-option,
+html[data-via-finish="premium"] body .reference-home .reference-reservations {
+ background-image:linear-gradient(155deg,rgba(255,255,255,.92),rgba(239,247,240,.65) 48%,rgba(218,233,223,.72))!important;
+ box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(59,111,91,.16),0 2px 7px rgba(24,66,53,.10)!important;
 }
-html[data-via-finish="premium"] .reference-home #start-booking {
- background-image:linear-gradient(110deg,#118d83 0%,#087d76 47%,#005e5b 100%)!important;
- box-shadow:inset 0 1px 0 rgba(255,255,255,.27),inset 0 -1px 0 rgba(0,52,47,.18),0 6px 14px rgba(0,91,84,.17)!important;
+html[data-via-finish="premium"] body #start-booking#start-booking {
+ background-image:linear-gradient(174deg,rgba(255,255,255,.19) 0%,rgba(255,255,255,0) 39%),linear-gradient(113deg,#128d7e 0%,#087568 46%,#004d47 100%)!important;
+ background-color:#086f65!important;
+ color:#fff!important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.48),inset 0 -2px 0 rgba(0,46,41,.26),0 6px 14px rgba(0,79,67,.25)!important;
 }
-html[data-via-finish="premium"] .reference-home #start-booking:active {
- box-shadow:inset 0 2px 7px rgba(0,46,42,.22),0 2px 5px rgba(0,91,84,.13)!important;
+html[data-via-finish="premium"] body #start-booking#start-booking:active {
+ box-shadow:inset 0 2px 7px rgba(0,46,42,.24),0 2px 5px rgba(0,91,84,.13)!important;
 }
-html[data-via-finish="premium"] .reference-tabs {
- box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 -3px 14px rgba(30,72,64,.08)!important;
+html[data-via-finish="premium"] body .reference-tabs {
+ background-image:linear-gradient(170deg,rgba(255,255,255,.96),rgba(224,239,231,.94))!important;
+ box-shadow:inset 0 1px 0 #fff,0 -3px 14px rgba(30,72,64,.14)!important;
 }
-html[data-via-finish="premium"] .reference-tabs a.selected {
- box-shadow:inset 0 1px 0 rgba(255,255,255,.64),0 2px 8px rgba(35,110,94,.065)!important;
+html[data-via-finish="premium"] body .reference-tabs a.selected {
+ background-image:linear-gradient(145deg,#edf9f1,#d0e9dc)!important;
+ box-shadow:inset 0 1px 0 #fff,0 2px 8px rgba(35,110,94,.12)!important;
 }
-html[data-via-finish="premium"] .reference-home svg {
- stroke-linecap:round;
- stroke-linejoin:round;
-}
-html[data-via-finish="premium"] #via-visible-release {
- font-size:9px!important;
- opacity:.72!important;
- line-height:11px!important;
-}
-@media (prefers-color-scheme:dark) {
- html[data-via-finish="premium"] .reference-home .reference-booking {
-  box-shadow:0 15px 38px rgba(0,0,0,.32),inset 0 1px 0 rgba(187,225,210,.12)!important;
+html[data-via-finish="premium"] body .reference-home svg {stroke-linecap:round;stroke-linejoin:round}
+html[data-via-finish="premium"] body #via-visible-release {font-size:9px!important;opacity:.78!important;line-height:11px!important}
+@media(prefers-color-scheme:dark) {
+ html[data-via-finish="premium"] body .reference-home .reference-booking {
+  background-image:linear-gradient(145deg,rgba(35,61,56,.98),rgba(19,42,38,.96) 60%,rgba(12,31,29,.98))!important;
+  box-shadow:0 14px 34px rgba(0,0,0,.34),inset 0 1px 0 rgba(203,241,222,.22),inset 0 -1px 0 rgba(0,0,0,.3)!important;
  }
- html[data-via-finish="premium"] .reference-home .highlight,
- html[data-via-finish="premium"] .reference-home .reference-field,
- html[data-via-finish="premium"] .reference-home .reference-option,
- html[data-via-finish="premium"] .reference-home .reference-reservations {
-  box-shadow:inset 0 1px 0 rgba(187,225,210,.11),0 2px 8px rgba(0,0,0,.11)!important;
+ html[data-via-finish="premium"] body .reference-home .highlight,
+ html[data-via-finish="premium"] body .reference-home .reference-field,
+ html[data-via-finish="premium"] body .reference-home .reference-option,
+ html[data-via-finish="premium"] body .reference-home .reference-reservations {
+  background-image:linear-gradient(150deg,rgba(55,82,74,.94),rgba(28,54,47,.94))!important;
+  box-shadow:inset 0 1px 0 rgba(203,241,222,.15),0 2px 8px rgba(0,0,0,.19)!important;
  }
- html[data-via-finish="premium"] .reference-tabs {
-  box-shadow:inset 0 1px 0 rgba(187,225,210,.10),0 -3px 14px rgba(0,0,0,.18)!important;
+ html[data-via-finish="premium"] body .reference-tabs {
+  background-image:linear-gradient(150deg,#304b43,#182f2b)!important;
+  box-shadow:inset 0 1px 0 rgba(203,241,222,.18),0 -3px 14px rgba(0,0,0,.2)!important;
  }
- html[data-via-finish="premium"] .reference-tabs a.selected {
-  box-shadow:inset 0 1px 0 rgba(187,225,210,.12)!important;
+ html[data-via-finish="premium"] body .reference-tabs a.selected {
+  background-image:linear-gradient(145deg,#315f50,#22483e)!important;
+  box-shadow:inset 0 1px 0 rgba(203,241,222,.23)!important;
  }
 }
-/* Keep original background image, blur, text contrast, and native input dimensions. */
+/* Original photo, text colors, blur radius, input geometry, navigation and logic untouched. */
