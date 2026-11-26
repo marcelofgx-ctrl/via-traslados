@@ -1,4 +1,4 @@
-name: Vía V30.4.10.9 — integrated geographic QA, real providers and D1
+name: Vía V30.4.10.10 — integrated geographic QA, real providers and D1
 on:
   push:
     branches: [via-v30410-visual-compat-qa-20261125]
@@ -38,9 +38,12 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-1.56.1-ubuntu-24.04-chromium-webkit
-      - name: Install required browser dependencies
+      - name: Install required system libraries
         timeout-minutes: 3
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install-deps chromium webkit
+      - name: Install browsers from pinned cache
+        timeout-minutes: 3
+        run: npx playwright install chromium webkit
       - name: Real provider fallback, real D1 hit and single tap in browser
         run: node scripts/via-geo-integral-real.mjs
       - name: Confirm production baseline

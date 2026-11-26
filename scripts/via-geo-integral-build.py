@@ -6,9 +6,20 @@ host='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev'
 p=assets/'config.js';s=p.read_text();old='https://via-traslados-api.marcelof-gx.workers.dev';assert s.count(old)==1;p.write_text(s.replace(old,host))
 p=assets/'index.html';s=p.read_text();assert '>V30.4.10.8</span>' in s
 credit='<small id="via-geography-credit" style="display:inline-block;font-size:10px;font-weight:500;line-height:1.35;margin-left:7px;color:#315c53"><a style="color:inherit" href="https://www.geoapify.com/" target="_blank" rel="noopener">Geoapify</a> · <a style="color:inherit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a> · <a style="color:inherit" href="https://openaddresses.io/" target="_blank" rel="noopener">OpenAddresses</a> · <a style="color:inherit" href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a></small>'
-s=s.replace('30.4.10.8','30.4.10.9').replace('>V30.4.10.9</span>','>V30.4.10.9 QA</span>'+credit).replace('aria-label="Versión 30.4.10.9"','aria-label="Versión 30.4.10.9 QA"')
+s=s.replace('30.4.10.8','30.4.10.10').replace('>V30.4.10.10</span>','>V30.4.10.10 QA</span>'+credit).replace('aria-label="Versión 30.4.10.10"','aria-label="Versión 30.4.10.10 QA"')
 p.write_text(s)
-p=assets/'sw.js';s=p.read_text();assert 'via-traslados-v30.4.10.8-visual' in s;p.write_text(s.replace('via-traslados-v30.4.10.8-visual','via-traslados-v30.4.10.9-geo-integral-qa'))
+# Match browser timeout to the server deadline, including D1 lookup and network overhead.
+p=assets/'reference.js';s=p.read_text()
+assert s.count('attempt===0?6500:4500')==1
+s=s.replace('attempt===0?6500:4500','7900')
+# QA-only diagnostics are displayed locally, no coordinates, no logging to a server.
+s=s.replace('let rows=[];\n   const current=',"let rows=[];let reverseDiag='';\n   const current=")
+s=s.replace('if(response.ok){\n      const data=await response.json();','reverseDiag="HTTP "+response.status+" · IDE "+(response.headers.get("X-Via-Reverse-IDE")||"—")+" · respaldo "+(response.headers.get("X-Via-Reverse-Backup")||"—")+" · D1 "+(response.headers.get("X-Via-Reverse-Cache")||"MISS");\n     if(response.ok){\n      const data=await response.json();')
+s=s.replace('catch{/* Keep GPS as a point, never assert a postal address from a failed lookup. */}',"catch(e){reverseDiag='Consulta '+(e?.name||'fallida')}")
+old="[{label:'Elegir en el mapa',go:openGpsMap,primary:true}]);\n    else if(!chosen.numberIsApproximate)"
+new="[{label:'Elegir en el mapa',go:openGpsMap,primary:true}], 'QA: '+(reverseDiag||'sin respuesta')+' · '+rows.length+' referencias · precisión ±'+Math.round(pos.accuracyMeters)+' m');\n    else if(!chosen.numberIsApproximate)"
+assert s.count(old)==1;s=s.replace(old,new);p.write_text(s)
+p=assets/'sw.js';s=p.read_text();assert 'via-traslados-v30.4.10.8-visual' in s;p.write_text(s.replace('via-traslados-v30.4.10.8-visual','via-traslados-v30.4.10.10-geo-integral-qa'))
 for n in ['via-reverse-bridge.mjs','via-reverse-cache.mjs','via-geo-integral-qa.mjs']:shutil.copyfile('addons/'+n,stage/n)
 url='https://api.cloudflare.com/client/v4/accounts/'+os.environ['CLOUDFLARE_ACCOUNT_ID']+'/d1/database?name=via-poi-cache-qa'
 req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['CLOUDFLARE_API_TOKEN']})

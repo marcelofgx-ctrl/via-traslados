@@ -8,7 +8,7 @@ export default {async fetch(r,env,ctx){
  if(u.pathname==='/api/direcciones'&&r.method==='GET'){
   const mode=u.searchParams.get('mode');
   if(mode==='reverse'){
-   const legacy={fetch(req){return proxy(WEB,req,6500)}};
+   const legacy={fetch(req){return proxy(WEB,req,7000)}};
    const service={fetch(req){return proxy(BACKUP,req,4000)}};
    return viaReverseRace(r,{POI_CACHE:env.POI_CACHE,VIA_POI_API:service},legacy,ctx);
   }

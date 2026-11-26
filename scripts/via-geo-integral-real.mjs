@@ -26,7 +26,7 @@ for(const [lat,lng] of points){
  await new Promise(r=>setTimeout(r,350));
  const second=await fetch(req,{signal:AbortSignal.timeout(12000)});const sj2=await second.json();const s2=display(sj2.results||[],lat,lng);
  if(second.headers.get('X-Via-Reverse-Cache')==='HIT'){assert.equal(s2.postalStatus,'suggested');hit=true;selected={lat,lng}}
- const info={lat,lng,backupStatus:response.status,backupPostal:b.postalStatus,backupMs:Date.now()-t,qaStatus:s.status,qaPostal:sd.postalStatus,repeatCache:second.headers.get('X-Via-Reverse-Cache')==='HIT'};
+ const info={lat,lng,ide:s.headers.get('X-Via-Reverse-IDE'),fallback:s.headers.get('X-Via-Reverse-Backup'),backupStatus:response.status,backupPostal:b.postalStatus,backupMs:Date.now()-t,qaStatus:s.status,qaPostal:sd.postalStatus,repeatCache:second.headers.get('X-Via-Reverse-Cache')==='HIT'};
  console.log('VIA_GEO_INTEGRAL_POINT '+JSON.stringify(info));evidence.push(info);
  if(backupGood&&hit&&unknown)break;
 }
@@ -37,7 +37,7 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
  try{const c=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
  await c.addInitScript(({lat,lng})=>{Object.defineProperty(navigator,'geolocation',{value:{watchPosition(ok){setTimeout(()=>ok({coords:{latitude:lat,longitude:lng,accuracy:12},timestamp:Date.now()}),250);return 1},clearWatch(){}},configurable:true});if(navigator.permissions)Object.defineProperty(navigator.permissions,'query',{value:async()=>({state:'granted'}),configurable:true});},selected);
  const p=await c.newPage();await p.goto(stage+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress);
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.9 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.10 QA');
  assert(await p.locator('#via-geography-credit').isVisible());
  let calls=0;p.on('request',r=>{if(r.url().includes('/api/direcciones?mode=reverse'))calls++});
  await p.locator('#location-shortcut').click();

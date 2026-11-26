@@ -18,3 +18,8 @@ const fast=await viaReverseRace(req,env,{fetch:async()=>reply(row)},{});assert.e
 const backup=await viaReverseRace(req,env,{fetch:async()=>reply([],503)},{});assert.equal(backup.status,200);assert.equal(secondary,1);
 const slow=await viaReverseRace(req,env,{fetch:async()=>{await new Promise(r=>setTimeout(r,1600));return reply([],503)}},{});assert.equal(slow.status,200);assert.equal(secondary,2);
 console.log('VIA_REVERSE_UNIT_PASS validation, distance, approximate number, ambiguity, fast primary, outage fallback');
+
+// Late but valid IDE result must not be discarded at the old 5.6s bridge deadline.
+const late=await viaReverseRace(req,{VIA_POI_API:{fetch:async()=>reply([],503)}},{fetch:async()=>{await new Promise(r=>setTimeout(r,6100));return reply(row)}},{});
+assert.equal(late.status,200);assert.equal(late.headers.get('X-Via-Reverse-IDE'),'200:usable');assert.equal(late.headers.get('X-Via-Reverse-Backup'),'503:unresolved');
+console.log('VIA_REVERSE_LATE_PRIMARY_PASS');
