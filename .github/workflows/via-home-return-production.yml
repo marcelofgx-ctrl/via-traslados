@@ -1,0 +1,95 @@
+name: Vía V30.4.10.26 — authorized home return production release
+on:
+  push:
+    branches: [via-home-return-v3041025-qa-20261126]
+    paths: ['.github/workflows/via-home-return-production.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require prior browser and real POI validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45845795151 --jq .conclusion)" = success
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45847382973 --jq .conclusion)" = success
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-resilience-shared-cache-report
+          run-id: 45837703435
+          github-token: ${{ github.token }}
+          path: via-resilience
+      - run: python3 scripts/via-home-return-prod-build.py
+      - run: npx --yes wrangler@4.160.1 versions upload --config home-return-prod/wrangler.jsonc --keep-vars
+      - run: python3 scripts/via-home-return-prod-release.py verify
+      - run: node scripts/via-home-return-prod-smoke.mjs candidate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-home-return-prod-candidate
+          path: home-return-prod/manifest.json
+  browser:
+    needs: package
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    timeout-minutes: 6
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-home-return-prod-candidate
+          path: home-return-prod
+      - run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - run: node scripts/via-home-return-prod-browser.mjs candidate
+  activate:
+    needs: [package,browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-home-return-prod-candidate
+          path: home-return-prod
+      - name: Activate verified candidate without rebuilding
+        id: promote
+        run: python3 scripts/via-home-return-prod-release.py promote
+      - name: Require domain propagation and verify all assets
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          let ok=false;
+          for(let i=0;i<12;i++){
+            try{const r=await fetch('https://viatraslados.com/?v=3041026&verify='+Date.now(),{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(12000)});if(r.ok&&(await r.text()).includes('V30.4.10.26')){ok=true;break}}catch{}
+            await new Promise(r=>setTimeout(r,3000))
+          }
+          assert(ok)
+          NODE
+          python3 scripts/via-home-return-prod-release.py final
+          node scripts/via-home-return-prod-smoke.mjs prod
+      - name: Roll back web only on failure
+        if: failure() && steps.promote.outcome != 'skipped'
+        run: python3 scripts/via-home-return-prod-release.py rollback
