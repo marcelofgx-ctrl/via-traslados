@@ -1,0 +1,52 @@
+name: Vía V30.4.10 — visual compatibility isolated QA
+on:
+  push:
+    branches: [via-v30410-visual-compat-qa-20261125]
+    paths: ['addons/via-visual-*','scripts/v30410-*','.github/workflows/via-v30410-visual-qa.yml']
+permissions:
+  contents: read
+jobs:
+  visual:
+    if: github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Build from verified current production, read only
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: python3 scripts/v30410-visual-build.py
+      - name: Browser engines
+        run: |
+          npm install --no-audit --no-fund --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium firefox webkit >/dev/null
+      - name: Compare profiles, screenshots and metrics
+        run: node scripts/v30410-visual-browser.mjs
+      - name: Deploy isolated visual preview
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config v30410-visual/wrangler.jsonc
+      - name: Verify preview profiles
+        run: node scripts/v30410-visual-browser.mjs preview
+      - name: Confirm production unchanged
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node scripts/v30-cloudflare-inventory.mjs | tee /tmp/via-inventory
+          grep -q b23d68ea-5aae-4827-b808-3c4c3504a959 /tmp/via-inventory
+          grep -q 5ad845a7-beeb-44e5-9e52-6459bd1fbb8b /tmp/via-inventory
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v30410-visual-evidence
+          path: |
+            v30410-visual/evidence
+            v30410-visual/manifest.json
+          if-no-files-found: ignore
+          retention-days: 30
