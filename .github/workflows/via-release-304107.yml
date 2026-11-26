@@ -1,0 +1,88 @@
+name: Vía V30.4.10.7 — authorized graphics and GPS retry production validation
+on:
+  push:
+    branches: [via-v30410-visual-compat-qa-20261125]
+    paths: ['.github/workflows/via-release-304107.yml']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: via-v30-poi-prod-api-web-atomic
+  cancel-in-progress: false
+jobs:
+  release:
+    if: "github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125' && github.event.head_commit.message == 'release: validate V30.4.10.7 graphics and GPS retry before promotion'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false,fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require successful exact V30.4.10.7 isolated QA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45797042463 --jq .head_sha)" = b092d4df7dc2ac5a3bd978cabf722ac4c4ecaa05
+          gh run watch 45797042463 --repo "${{ github.repository }}" --exit-status --interval 10
+          test "$(gh api repos/${{ github.repository }}/actions/runs/45797042463 --jq .conclusion)" = success
+      - name: Build visual correction from exact active production
+        run: python3 scripts/v30410-visual-build.py
+      - name: Install browser engines
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium firefox webkit >/dev/null
+      - name: Revalidate updated visual QA before any upload
+        run: node scripts/v30410-visual-browser.mjs
+      - name: Build exact production package and bindings
+        run: |
+          python3 scripts/via-release-304107-build.py
+          python3 scripts/via-release-304107-candidate.py prepare
+          mkdir -p v30410-visual/evidence
+      - name: Upload immutable version without traffic
+        run: npx --yes wrangler@4.160.1 versions upload --config v30410-visual/wrangler-prod.jsonc --keep-vars
+      - name: Verify exact assets and unchanged binding contract
+        run: python3 scripts/via-release-304107-candidate.py verify
+      - name: Candidate visual contrast and layout
+        run: node scripts/via-release-304107-contrast.mjs candidate
+      - name: Candidate real public POI and route distance, cache
+        run: node scripts/v30410-prod-geography.mjs candidate
+      - name: Candidate session and booking navigation with synthetic responses
+        run: node scripts/v30410-prod-back.mjs candidate
+      - name: Candidate GPS first response empty, real retry and wait states
+        run: |
+          node scripts/via-release-304107-wait.mjs candidate
+          node scripts/via-release-304107-real-gps.mjs candidate
+      - name: Promote verified candidate
+        id: promote
+        run: python3 scripts/via-release-304107-promote.py promote
+      - name: Production visual contrast and layout
+        run: node scripts/via-release-304107-contrast.mjs prod
+      - name: Production public real geography
+        run: node scripts/v30410-prod-geography.mjs prod
+      - name: Production session and reservation wizard regression
+        run: node scripts/v30410-prod-back.mjs prod
+      - name: Production GPS retry and animated wait regression
+        run: |
+          node scripts/via-release-304107-wait.mjs prod
+          node scripts/via-release-304107-real-gps.mjs prod
+      - name: Verify exact active assets and unchanged API
+        run: python3 scripts/via-release-304107-promote.py final
+      - name: Roll back on failure after activation
+        if: failure() && steps.promote.outcome != 'skipped'
+        run: python3 scripts/via-release-304107-promote.py rollback
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-v304107-production-evidence
+          path: |
+            v30410-visual/evidence
+            v30410-visual/manifest.json
+            v30410-visual/exact-hashes.json
+            v30410-visual/release-candidate.json
+            v30410-visual/production-confirmed.json
+          if-no-files-found: ignore
+          retention-days: 30
