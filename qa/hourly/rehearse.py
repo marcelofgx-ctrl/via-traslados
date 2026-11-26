@@ -1,10 +1,13 @@
 """Local schema rehearsal only; entirely synthetic in-memory records."""
-import sqlite3
+import sqlite3, sys
 from pathlib import Path
 db=sqlite3.connect(':memory:')
 db.execute('PRAGMA foreign_keys=ON')
-db.executescript(Path('backend/schema.sql').read_text())
-db.executescript(Path('backend/migrations/004_booking_locations_v30.sql').read_text())
+if len(sys.argv)>1:
+    db.executescript(Path(sys.argv[1]).read_text())
+else:
+    db.executescript(Path('backend/schema.sql').read_text())
+    db.executescript(Path('backend/migrations/004_booking_locations_v30.sql').read_text())
 def run(q, p=()): return db.execute(q,p)
 def one(q,p=()): return run(q,p).fetchone()
 def reject(q,p=(),reason=None):

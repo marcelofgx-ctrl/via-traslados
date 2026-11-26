@@ -1,0 +1,65 @@
+name: Vía V31.1 — exact QA schema and active API provenance (read only)
+on:
+  push:
+    branches: [via-hourly-service-v31-qa-20261125]
+    paths: ['.github/workflows/via-v311-qa-exact-rehearsal.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact:
+    if: github.ref == 'refs/heads/via-hourly-service-v31-qa-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Retrieve exact QA schema only and verify active executable identity
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,re,json,urllib.request,hashlib
+          from pathlib import Path
+          a=os.environ['CLOUDFLARE_ACCOUNT_ID']; t=os.environ['CLOUDFLARE_API_TOKEN']
+          assert re.fullmatch('[a-fA-F0-9]{32}',a) and t
+          root='https://api.cloudflare.com/client/v4/accounts/'+a
+          def get(path,body=None):
+              req=urllib.request.Request(root+path,data=json.dumps(body).encode() if body else None,headers={'Authorization':'Bearer '+t,'Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  return r.headers.get('Content-Type',''),r.read()
+          def api(path,body=None):
+              _,raw=get(path,body); out=json.loads(raw); assert out['success'];return out['result']
+          w='/workers/scripts/via-traslados-api-qa'
+          versions=api(w+'/deployments')['deployments'][0]['versions']
+          assert len(versions)==1 and versions[0]['percentage']==100
+          version=versions[0]['version_id']
+          assert version=='36b8d437-48cf-476c-92af-a74488458e38','QA changed; re-audit'
+          qa='146017ce-09a7-4457-abd2-694a5a5b3e92'
+          bindings=api(w+'/versions/'+version)['resources']['bindings']
+          assert any(b['name']=='DB' and (b.get('id') or b.get('database_id'))==qa for b in bindings)
+          assert not any((b.get('id') or b.get('database_id'))=='dfc6a732-4817-4c49-8f2b-16ecaff3ecc0' for b in bindings)
+          # Print only public origins and presence of configuration, never secret/plain contact values.
+          print('QA_ORIGINS',json.dumps({b['name']:b.get('text') for b in bindings if b['name'] in ('PUBLIC_ORIGIN','OPERATOR_ORIGIN')}))
+          print('QA_MODE_CONFIGURED',any(b['name']=='VIA_QA_MODE' for b in bindings))
+          mime,body=get(w)
+          boundary=re.search(r'boundary="?([^";]+)',mime)
+          assert boundary,'Unexpected active executable format'
+          parts=body.split(b'--'+boundary.group(1).encode())
+          modules=[p.split(b'\r\n\r\n',1)[1].rstrip(b'\r\n') for p in parts if b'name="worker.js"' in p and b'\r\n\r\n' in p]
+          assert len(modules)==1,'Could not identify active module'
+          code=modules[0]
+          markers=['/api/requests','/api/operator/requests','booking_locations','booking_quotes','VIA_QA_MODE','viaPoiHandle','requestedDurationMinutes','/api/auth/verify']
+          print('QA_ACTIVE_MODULE',json.dumps({'version':version,'sha256':hashlib.sha256(code).hexdigest(),'bytes':len(code),'markers':{m:m.encode() in code for m in markers}}))
+          assert api(w+'/deployments')['deployments'][0]['versions']==versions,'QA deployment changed during inspection'
+          q="SELECT type,name,sql FROM sqlite_master WHERE type IN ('table','index','view','trigger') AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'view' THEN 2 ELSE 3 END,name"
+          rows=api('/d1/database/'+qa+'/query',{'sql':q,'params':[]})[0]
+          assert rows['success']
+          Path('/tmp/via-exact-qa-schema.sql').write_text('\n'.join(x['sql'].rstrip(';')+';' for x in rows['results']))
+          print('EXACT_SCHEMA_OBJECTS',len(rows['results']))
+          PY
+      - name: Rehearse on exact QA schema, synthetic records only
+        run: |
+          python3 qa/hourly/rehearse.py /tmp/via-exact-qa-schema.sql
+          rm -f /tmp/via-exact-qa-schema.sql
