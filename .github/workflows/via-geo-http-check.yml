@@ -1,0 +1,18 @@
+name: Vía — direct reverse and D1 HTTP checks, no browsers
+on:
+  push:
+    branches: [via-v30410-visual-compat-qa-20261125]
+    paths: ['.github/workflows/via-geo-http-check.yml']
+permissions:
+  contents: read
+jobs:
+  http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Check exact published QA, real providers, ambiguity and D1 repeat
+        run: node scripts/via-geo-http-check.mjs
