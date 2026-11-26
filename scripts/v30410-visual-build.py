@@ -25,17 +25,28 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
   p=ASSETS/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b);hashes[n]=P['sha'](b)
 assert len(hashes)==40 and P['NEEDED'].issubset(hashes)
 p=ASSETS/'index.html';s=p.read_text();assert s.count('</head>')==1 and s.count('</body>')==1 and 'via-visible-release' in s
-p.write_text(s.replace('</head>','<script src="/via-visual-profile.js?v=30.4.10.5"></script></head>').replace('</body>','<link rel="stylesheet" href="/via-visual-compat.css?v=30.4.10.5"></body>').replace('>V30.4.9</span>','>V30.4.10.5 QA</span>').replace('aria-label="Versión 30.4.9"','aria-label="Versión 30.4.10.5 QA"'))
+p.write_text(s.replace('</head>','<script src="/via-visual-profile.js?v=30.4.10.6"></script></head>').replace('</body>','<link rel="stylesheet" href="/via-visual-compat.css?v=30.4.10.6"></body>').replace('>V30.4.9</span>','>V30.4.10.6 QA</span>').replace('aria-label="Versión 30.4.9"','aria-label="Versión 30.4.10.6 QA"'))
 for n in ['via-visual-profile.js','via-visual-compat.css']:shutil.copyfile('addons/'+n,ASSETS/n)
+# Exact active reference.js: only presentation hooks and explicit reverse lookup status.
+p=ASSETS/'reference.js';s=p.read_text()
+def replace_once(old,new):
+ global s
+ assert s.count(old)==1,old
+ s=s.replace(old,new)
+replace_once(" note.replaceChildren();\n if(!title&&!copy)", " note.replaceChildren();\n note.removeAttribute('data-via-wait');\n const waitStates={'Buscando tu ubicación':'gps','Mejorando precisión':'precision','Identificando dirección':'reverse'};\n const wait=waitStates[title];\n if(wait)note.setAttribute('data-via-wait',wait);\n if(title==='Buscando tu ubicación')copy='Obteniendo una posición precisa.';\n if(!title&&!copy)")
+replace_once(" if(actions.length){\n  const row=", " if(wait){const rail=document.createElement('span');rail.className='via-wait-track';rail.setAttribute('aria-hidden','true');note.appendChild(rail)}\n if(actions.length){\n  const row=")
+replace_once(" if(gpsButton){gpsButton.disabled=false;gpsButton.removeAttribute('aria-busy')}\n}", " if(gpsButton){gpsButton.disabled=false;gpsButton.removeAttribute('aria-busy')}\n const note=document.getElementById('via-gps-feedback');\n if(note?.hasAttribute('data-via-wait')){note.hidden=true;note.removeAttribute('data-via-wait')}\n}")
+replace_once("   const controller=new AbortController();run.abort=controller;", "   gpsPanel('Identificando dirección','Buscando referencias cercanas.',[{label:'Elegir en el mapa',go:openGpsMap}]);\n   const controller=new AbortController();run.abort=controller;")
+p.write_text(s)
 changed=[n for n,h in hashes.items() if P['sha']((ASSETS/n).read_bytes())!=h]
-assert changed==['index.html'],changed
+assert set(changed)=={'index.html','reference.js'},changed
 (OUT/'manifest.json').write_text(json.dumps({'base':BASE,'api':API,'source_assets':hashes,'changed':changed,'new':['via-visual-profile.js','via-visual-compat.css'],'qa_only':True},indent=2))
 # Separate static preview, never routes requests to production or QA bookings.
 preview=OUT/'preview';shutil.copytree(ASSETS,preview,dirs_exist_ok=True)
 cfg=preview/'config.js';s=cfg.read_text();old='https://via-traslados-api.marcelof-gx.workers.dev';assert s.count(old)==1
 cfg.write_text(s.replace(old,'https://via-traslados-v30410-visual-qa.marcelof-gx.workers.dev'))
 sw=preview/'sw.js';s=sw.read_text();assert 'via-traslados-v30.4.9-session' in s
-sw.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.5-visual-qa'))
+sw.write_text(s.replace('via-traslados-v30.4.9-session','via-traslados-v30.4.10.6-visual-qa'))
 (OUT/'worker.mjs').write_text("export default {async fetch(r,env){const u=new URL(r.url);if(u.pathname.startsWith('/api/')||!['GET','HEAD'].includes(r.method))return Response.json({error:'Vista visual QA aislada; sin reservas'},{status:503});return env.ASSETS.fetch(r)}}")
 (OUT/'wrangler.jsonc').write_text(json.dumps({'name':'via-traslados-v30410-visual-qa','main':'./worker.mjs','compatibility_date':'2026-11-10','workers_dev':True,'assets':{'directory':'./preview','binding':'ASSETS','run_worker_first':True}}))
-guard();print('VIA_VISUAL_CANDIDATE_READY 40 base assets; only index + independent visual layer; no production changes',flush=True)
+guard();print('VIA_VISUAL_CANDIDATE_READY 40 base assets; index and status-only reference hooks + visual layer; no production changes',flush=True)

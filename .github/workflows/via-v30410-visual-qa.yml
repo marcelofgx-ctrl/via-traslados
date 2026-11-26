@@ -25,14 +25,18 @@ jobs:
           npm install --no-audit --no-fund --no-save playwright@1.56.1
           npx playwright install --with-deps chromium firefox webkit >/dev/null
       - name: Compare profiles, screenshots and metrics
-        run: node scripts/v30410-visual-browser.mjs
+        run: |
+          node scripts/v30410-visual-browser.mjs
+          node scripts/v30410-wait-browser.mjs
       - name: Deploy isolated visual preview
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx --yes wrangler@4.160.1 deploy --config v30410-visual/wrangler.jsonc
       - name: Verify preview profiles
-        run: node scripts/v30410-visual-browser.mjs preview
+        run: |
+          node scripts/v30410-visual-browser.mjs preview
+          node scripts/v30410-wait-browser.mjs preview
       - name: Confirm production unchanged
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
