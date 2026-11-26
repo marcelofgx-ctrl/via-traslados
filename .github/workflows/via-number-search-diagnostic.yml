@@ -1,0 +1,17 @@
+name: Vía — address number diagnostic read-only
+on:
+  push:
+    branches: [via-address-number-qa-20261126]
+    paths: ['.github/workflows/via-number-search-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: node scripts/via-number-search-diagnostic.mjs
