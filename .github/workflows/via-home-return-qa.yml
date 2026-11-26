@@ -1,0 +1,50 @@
+name: Vía V30.4.10.25 — landing return QA only
+on:
+  push:
+    branches: [via-home-return-v3041025-qa-20261126]
+    paths: ['.github/workflows/via-home-return-qa.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-resilience-shared-cache-report
+          run-id: 45837703435
+          github-token: ${{ github.token }}
+          path: via-resilience
+      - run: python3 scripts/via-home-return-build.py
+      - run: npx --yes wrangler@4.160.1 deploy --config home-return-qa/wrangler.jsonc
+      - name: Verify public QA and deny reservation writes
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const u='https://via-traslados-home-return-qa.marcelof-gx.workers.dev';
+          let ok=false;for(let i=0;i<8;i++){try{const r=await fetch(u+'/index.html');if(r.ok&&(await r.text()).includes('V30.4.10.25 QA')){ok=true;break}}catch{}await new Promise(r=>setTimeout(r,2000))}
+          assert(ok);assert.equal((await fetch(u+'/api/requests',{method:'POST',body:'{}'})).status,503);
+          console.log('VIA_HOME_RETURN_QA_LIVE '+u)
+          NODE
+  browser:
+    needs: package
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    timeout-minutes: 6
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - run: node scripts/via-home-return-browser.mjs
