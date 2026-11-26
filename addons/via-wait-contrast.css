@@ -1,0 +1,48 @@
+
+/* Compact GPS wait only. Keep permission and post-wait confirmation actions. */
+html body #via-gps-feedback[data-via-wait]:not([hidden]){
+ padding:9px 11px!important;
+}
+html body #via-gps-feedback[data-via-wait]:not([hidden]) .via-gps-actions{
+ display:none!important;
+}
+html body #via-gps-feedback[data-via-wait]:not([hidden]) .via-wait-track{
+ height:6px!important;
+ margin:9px 0 2px!important;
+ background:#a6bdb2!important;
+ border:1px solid #859e92!important;
+ box-shadow:none!important;
+ forced-color-adjust:none;
+}
+html body #via-gps-feedback[data-via-wait] .via-wait-track::after{
+ top:0;bottom:0;width:36%;
+ background-color:#087e6e!important;
+ /* SVG carries its own contrasting edge, including in browser auto-dark.
+    Solid background remains a fallback when background images are disabled. */
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='6' viewBox='0 0 120 6' preserveAspectRatio='none'%3E%3Crect x='0.5' y='0.5' width='119' height='5' rx='2.5' fill='%23149e88' stroke='%23effff8' stroke-width='1'/%3E%3C/svg%3E")!important;
+ background-size:100% 100%!important;
+ background-repeat:no-repeat!important;
+ animation:via-wait-satin 1.65s ease-in-out infinite alternate!important;
+}
+@media(prefers-color-scheme:dark){
+ html body #via-gps-feedback[data-via-wait] .via-wait-track{
+  background:#50675e!important;border-color:#91aaa0!important;
+ }
+ html body #via-gps-feedback[data-via-wait] .via-wait-track::after{
+  background-color:#65dfc5!important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='6' viewBox='0 0 120 6' preserveAspectRatio='none'%3E%3Crect x='0.5' y='0.5' width='119' height='5' rx='2.5' fill='%2365dfc5' stroke='%230f4236' stroke-width='1'/%3E%3C/svg%3E")!important;
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ html body #via-gps-feedback[data-via-wait] .via-wait-track::after{
+  animation:none!important;transform:translateX(85%)!important;
+ }
+}
+@media(forced-colors:active){
+ html body #via-gps-feedback[data-via-wait] .via-wait-track{
+  forced-color-adjust:auto;background:Canvas!important;border-color:CanvasText!important;
+ }
+ html body #via-gps-feedback[data-via-wait] .via-wait-track::after{
+  background:Highlight!important;
+ }
+}

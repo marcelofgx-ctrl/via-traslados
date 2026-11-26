@@ -1,0 +1,60 @@
+name: Vía V30.4.10.22 — compact GPS wait and dark contrast QA
+on:
+  push:
+    branches: [via-gps-wait-contrast-qa-20261126]
+    paths: ['.github/workflows/via-wait-compact-qa.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v3041020-candidate
+          run-id: 45809382418
+          github-token: ${{ github.token }}
+          path: v30410-visual
+      - run: python3 scripts/via-wait-compact-build.py
+      - run: npx --yes wrangler@4.160.1 deploy --config wait-compact-qa/wrangler.jsonc
+      - name: Verify published QA and isolation
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const u='https://via-traslados-wait-compact-qa.marcelof-gx.workers.dev';
+          let ok=false;for(let i=0;i<8;i++){try{const r=await fetch(u+'/index.html');if(r.ok&&(await r.text()).includes('V30.4.10.22 QA')){ok=true;break}}catch{}await new Promise(r=>setTimeout(r,2000))}
+          assert(ok);assert.equal((await fetch(u+'/api/requests',{method:'POST',body:'{}'})).status,503);
+          assert.equal((await fetch(u+'/api/customer/me')).status,503);
+          console.log('VIA_WAIT_COMPACT_LIVE '+u);
+          NODE
+      - run: python3 -c "import runpy;m=runpy.run_path('scripts/v302-route-cache-qa.py');assert m['version'](m['WEB'])=='eb447f2d-4772-4ab6-9583-ee785bfa9621' and m['version'](m['API'])=='5ad845a7-beeb-44e5-9e52-6459bd1fbb8b';print('VIA_PRODUCTION_UNCHANGED')"
+  browser:
+    needs: package
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    timeout-minutes: 6
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - run: |
+          mkdir -p v30410-visual/evidence
+          node scripts/via-wait-compact-browser.mjs qa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: via-wait-compact-evidence
+          path: v30410-visual/evidence
+          if-no-files-found: ignore

@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import {chromium,webkit} from 'playwright';
+import {readFileSync} from 'node:fs';
+const mode=process.argv[2],root='https://via-traslados-wait-compact-qa.marcelof-gx.workers.dev',stage=root,remote=true,lat=-34.83696,lng=-56.01638;
+for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
+ const b=await engine.launch({headless:true,...(name==='chromium'?{args:['--no-sandbox']}:{})});
+ try{for(const [colorScheme,reducedMotion] of [['light','no-preference'],['dark','no-preference'],['dark','reduce']]){
+ const c=await b.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block',colorScheme,reducedMotion,...(name==='chromium'?{userAgent:'Mozilla/5.0 (Linux; Android 15; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36 SamsungBrowser/28.0'}:{})});
+ await c.addInitScript(({lat,lng})=>{
+  const pending=new Map();let seq=0;
+  const g={watchPosition(ok){const id=++seq;const ts=[setTimeout(()=>ok({coords:{latitude:lat,longitude:lng,accuracy:350},timestamp:Date.now()}),900),setTimeout(()=>ok({coords:{latitude:lat,longitude:lng,accuracy:12},timestamp:Date.now()}),2200)];pending.set(id,ts);return id},clearWatch(id){for(const t of pending.get(id)||[])clearTimeout(t);pending.delete(id)}};
+  Object.defineProperty(navigator,'geolocation',{value:g,configurable:true});
+  if(navigator.permissions)Object.defineProperty(navigator.permissions,'query',{value:async()=>({state:'granted'}),configurable:true});
+ },{lat,lng});
+ let reverseCalls=0;const retry=reducedMotion==='no-preference';
+ await c.route('**/*',async r=>{
+  const q=r.request(),u=new URL(q.url()),p=u.pathname;
+  if(p==='/api/direcciones'&&u.searchParams.get('mode')==='reverse'){reverseCalls++;await new Promise(x=>setTimeout(x,1100));return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:retry&&reverseCalls===1?[]:[{street:'Avenida de las Américas 100',city:'Ciudad de la Costa',department:'Canelones',lat,lng,distanceMeters:8,source:'synthetic'}]})}).catch(()=>{});}
+  if(p.startsWith('/api/')||!['GET','HEAD'].includes(q.method()))return r.abort();
+  if(u.origin===root){if(mode==='qa')return r.continue();const res=await fetch(stage+p+u.search,{signal:AbortSignal.timeout(20000)});return r.fulfill({status:res.status,contentType:res.headers.get('content-type')||'application/octet-stream',body:Buffer.from(await res.arrayBuffer())});}
+  if(!remote&&u.origin===root){const n=p.slice(1)||'index.html';if(!/^[\w./-]+$/.test(n)||n.includes('..'))return r.abort();try{const body=readFileSync('v30410-visual/assets/'+n),ext=n.split('.').pop(),type={html:'text/html',js:'application/javascript',mjs:'application/javascript',css:'text/css',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',svg:'image/svg+xml',woff2:'font/woff2',webmanifest:'application/manifest+json'}[ext]||'application/octet-stream';return r.fulfill({status:200,contentType:type,body})}catch{return r.abort()}}
+  return r.abort();
+ });
+ const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut'));
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.22 QA');
+ const button=p.locator('#location-shortcut'),note=p.locator('#via-gps-feedback');
+ await button.click();
+ await p.waitForFunction(()=>document.querySelector('#via-gps-feedback')?.dataset.viaWait==='gps'||[...document.querySelectorAll('#via-gps-feedback button')].some(b=>b.textContent==='Permitir ubicación'));
+ if(await p.getByRole('button',{name:'Permitir ubicación',exact:true}).count())await p.getByRole('button',{name:'Permitir ubicación',exact:true}).click();
+ for(const state of ['gps','precision','reverse']){
+  await p.waitForFunction(s=>document.querySelector('#via-gps-feedback')?.dataset.viaWait===s,state,{timeout:12000});
+  const rail=note.locator('.via-wait-track');assert(await rail.isVisible());assert.equal(await rail.getAttribute('aria-hidden'),'true');
+  const info=await rail.evaluate(e=>({h:e.getBoundingClientRect().height,animation:getComputedStyle(e,'::after').animationName}));
+  assert.equal(info.h,6);assert.equal(await note.locator('.via-gps-actions:visible').count(),0);assert.equal(await p.locator('.reference-home .via-map-shortcut:visible').count(),2);assert.notEqual(await rail.evaluate(e=>getComputedStyle(e,'::after').backgroundImage),'none');assert.equal(info.animation,reducedMotion==='reduce'?'none':'via-wait-satin');
+  assert.equal(await button.getAttribute('aria-busy'),'true');
+  if(state==='precision')assert.match(await note.innerText(),/350/);
+  if(reducedMotion==='no-preference')await p.screenshot({path:'v30410-visual/evidence/'+mode+'-wait-'+name+'-'+colorScheme+'-'+state+'.png',animations:'allow'});
+ }
+ await p.waitForFunction(()=>!document.getElementById('location-shortcut').disabled,{timeout:12000});
+ assert.equal(reverseCalls,retry?2:1);assert.equal(await note.locator('.via-wait-track').count(),0);
+ assert.match(await p.locator('#home-origin').inputValue(),/Américas/);
+ // Cancel by editing manually: no stale indicator or overwrite.
+ await button.click();await p.waitForFunction(()=>document.querySelector('#via-gps-feedback')?.dataset.viaWait==='gps');
+ await p.locator('#home-origin').fill('Dirección manual de prueba');
+ await p.waitForFunction(()=>!document.getElementById('location-shortcut').disabled);
+ assert.equal(await note.locator('.via-wait-track:visible').count(),0);
+ assert.equal(await p.locator('#home-origin').inputValue(),'Dirección manual de prueba');
+ console.log('VIA_WAIT_PASS '+JSON.stringify({name,colorScheme,reducedMotion,remote,states:['gps','precision','reverse'],cancel:true,synthetic:true,firstEmptyRecovered:retry,reverseCalls}));
+ await c.close();
+ }}finally{await b.close()}
+}
