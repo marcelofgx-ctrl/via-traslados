@@ -1,4 +1,4 @@
-/* Isolated GPS presentation V30.4.10.13; no changes to input or map actions. */
+/* Isolated GPS presentation V30.4.10.14; no changes to input or map actions. */
 html body .reference-home #location-shortcut#location-shortcut{
  --gps-ink:#fff;
  position:relative!important;display:inline-flex!important;flex-direction:row!important;
@@ -75,3 +75,34 @@ html body #via-gps-feedback[data-via-gps-presentation]:not([hidden]) .via-wait-t
 body.premium-page:not(.in-booking) .premium-main{overflow-y:auto!important}
 
 @media(prefers-reduced-motion:reduce){html body .reference-home #location-shortcut#location-shortcut::before{animation:none!important;transform:none!important}html body .reference-home #location-shortcut#location-shortcut{transition:none!important}}
+
+/* Search overlay only: use the full field width, not the narrow text input. */
+html body .reference-home :is(#home-origin,#home-destination){
+ font-size:16px!important;line-height:1.3!important;
+}
+html body .reference-home .reference-field .field-copy>strong{font-size:12px!important;line-height:1.2!important}
+html body #address-suggestions[data-via-compact="true"]{
+ box-sizing:border-box!important;
+ left:var(--via-suggest-left)!important;width:var(--via-suggest-width)!important;
+ max-width:calc(100vw - 16px)!important;
+ max-height:var(--via-suggest-height)!important;
+ overflow-y:auto!important;overflow-x:hidden!important;
+ overscroll-behavior-y:contain;touch-action:pan-y;
+ border-radius:14px!important;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice{
+ box-sizing:border-box!important;min-height:60px!important;height:auto!important;
+ padding:9px 10px!important;gap:7px!important;
+ text-align:left!important;white-space:normal!important;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice strong{
+ font-size:15px!important;line-height:1.25!important;font-weight:650!important;
+ overflow-wrap:anywhere;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice small{
+ font-size:12px!important;line-height:1.3!important;overflow-wrap:anywhere;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice :is([class*="distance"],[class*="Distance"]){
+ font-size:12px!important;line-height:1.2!important;white-space:nowrap!important;
+}
+html body #address-suggestions[data-via-compact="true"] .address-line{font-size:13px!important;line-height:1.35!important;padding:10px!important}
