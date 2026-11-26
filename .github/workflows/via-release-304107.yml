@@ -6,14 +6,36 @@ on:
 permissions:
   contents: read
   actions: read
-concurrency:
-  group: via-v30-poi-prod-api-web-atomic
-  cancel-in-progress: false
 jobs:
-  release:
-    if: "github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125' && github.event.head_commit.message == 'release: validate V30.4.10.7 graphics and GPS retry before promotion'"
+  retire-stalled-install:
+    if: github.event.head_commit.message == 'release: streamline V30.4.10.7 without repeating approved QA'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Cancel only the known old run if still installing browsers, before any upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo='${{ github.repository }}'
+          old=45797262909
+          jobs=$(gh api "repos/$repo/actions/runs/$old/jobs")
+          if printf '%s' "$jobs" | jq -e '.jobs[] | select(.id==139831011660) | (.steps | any(.name=="Install browser engines" and .status=="in_progress")) and (.steps | any(.name=="Upload immutable version without traffic" and .status as $status | ($status=="queued" or $status=="pending")) )' >/dev/null; then
+            echo 'Retiring stalled pre-upload install; no production traffic was changed by that run.'
+            gh api --method POST "repos/$repo/actions/runs/$old/cancel"
+          else
+            echo 'Old run not in verified pre-upload install state; do not cancel. Serialized release and baseline guard remain.'
+          fi
+  release:
+    needs: retire-stalled-install
+    concurrency:
+      group: via-v30-poi-prod-api-web-atomic
+      cancel-in-progress: false
+    if: "github.ref == 'refs/heads/via-v30410-visual-compat-qa-20261125' && github.event.head_commit.message == 'release: streamline V30.4.10.7 without repeating approved QA'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -27,16 +49,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test "$(gh api repos/${{ github.repository }}/actions/runs/45797042463 --jq .head_sha)" = b092d4df7dc2ac5a3bd978cabf722ac4c4ecaa05
-          gh run watch 45797042463 --repo "${{ github.repository }}" --exit-status --interval 10
           test "$(gh api repos/${{ github.repository }}/actions/runs/45797042463 --jq .conclusion)" = success
-      - name: Build visual correction from exact active production
-        run: python3 scripts/v30410-visual-build.py
-      - name: Install browser engines
+      - name: Verify approved source files are identical to tested QA commit
         run: |
-          npm install --no-save --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium firefox webkit >/dev/null
-      - name: Revalidate updated visual QA before any upload
-        run: node scripts/v30410-visual-browser.mjs
+          git diff --exit-code b092d4df7dc2ac5a3bd978cabf722ac4c4ecaa05 HEAD -- addons/via-visual-profile.js addons/via-visual-compat.css scripts/v30410-visual-build.py scripts/v30410-wait-browser.mjs scripts/v30410-visual-browser.mjs
+      - name: Install Playwright package
+        timeout-minutes: 2
+        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - name: Restore pinned browser cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.56.1-ubuntu-24.04-chromium-webkit
+      - name: Install required system libraries
+        timeout-minutes: 4
+        run: npx playwright install-deps chromium webkit
+      - name: Install only Chromium and WebKit, with visible download logs
+        timeout-minutes: 4
+        run: npx playwright install chromium webkit
       - name: Build exact production package and bindings
         run: |
           python3 scripts/via-release-304107-build.py
