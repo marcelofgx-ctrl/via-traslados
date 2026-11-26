@@ -55,7 +55,9 @@
   const panel=document.getElementById('address-suggestions');
   const fields=['home-origin','home-destination'].map(id=>document.getElementById(id)).filter(Boolean);
   if(!panel||!fields.length)return;
-  let active=null,frame=0,touchStart=null;
+  let active=null,frame=0,touchStart=null,hideTimer=0,editGeneration=0,pendingEdit=0;
+  const touchDevice=()=>navigator.maxTouchPoints>0||matchMedia('(pointer:coarse)').matches;
+  const cancelHide=()=>{clearTimeout(hideTimer);hideTimer=0};
   function layout(){
    frame=0;
    if(!active||panel.classList.contains('hidden'))return;
@@ -64,6 +66,17 @@
    const left=v?.offsetLeft||0,top=v?.offsetTop||0,w=v?.width||innerWidth,h=v?.height||innerHeight;
    const width=Math.min(r.width,w-16),x=Math.max(left+8,Math.min(r.left,left+w-width-8));
    if(width<=0)return;
+   if(panel.dataset.viaResultsReady==='true'){
+    const below=Math.max(0,top+h-r.bottom-8),above=Math.max(0,r.top-top-8);
+    const useAbove=below<132&&above>below;
+    const available=Math.max(42,Math.min(360,useAbove?above:below));
+    panel.style.setProperty('--via-suggest-left',x+'px');
+    panel.style.setProperty('--via-suggest-width',width+'px');
+    panel.style.setProperty('--via-suggest-height',available+'px');
+    const actual=Math.min(available,panel.scrollHeight+2);
+    panel.style.setProperty('--via-suggest-top',Math.max(top+4,useAbove?r.top-4-actual:r.bottom+4)+'px');
+    panel.dataset.viaCompact='true';return;
+   }
    const originalTop=parseFloat(panel.style.top);
    const y=Number.isFinite(originalTop)?originalTop:r.bottom;
    const available=panel.dataset.placement==='above'?Math.max(42,Math.min(r.top-top-12,parseFloat(panel.style.maxHeight)||260)):Math.max(42,top+h-y-8);
@@ -73,9 +86,32 @@
    panel.dataset.viaCompact='true';
   }
   function schedule(){if(!frame)frame=requestAnimationFrame(layout)}
-  fields.forEach(el=>{const activate=()=>{active=el;schedule()};el.addEventListener('focus',activate);el.addEventListener('input',activate)});
-  ['origin','destination'].forEach(id=>document.getElementById(id)?.addEventListener('focus',()=>{active=null;delete panel.dataset.viaCompact}));
-  new MutationObserver(schedule).observe(panel,{attributes:true,attributeFilter:['class'],childList:true});
+  fields.forEach(el=>{
+   el.addEventListener('focus',()=>{cancelHide();pendingEdit=0;active=el;delete panel.dataset.viaResultsReady;schedule()});
+   el.addEventListener('input',()=>{cancelHide();active=el;pendingEdit=++editGeneration;delete panel.dataset.viaResultsReady;schedule()});
+  });
+  ['origin','destination'].forEach(id=>document.getElementById(id)?.addEventListener('focus',()=>{cancelHide();pendingEdit=0;active=null;delete panel.dataset.viaCompact;delete panel.dataset.viaResultsReady}));
+  function onResults(){
+   schedule();cancelHide();
+   if(panel.classList.contains('hidden')||!panel.querySelector('.address-choice')){
+    delete panel.dataset.viaResultsReady;return;
+   }
+   if(!active||!pendingEdit||!touchDevice()||document.activeElement!==active)return;
+   const input=active,generation=pendingEdit,value=input.value;
+   // Only after actual selectable results and a brief typing pause.
+   hideTimer=setTimeout(()=>{
+    hideTimer=0;
+    if(active!==input||pendingEdit!==generation||input.value!==value||
+       document.activeElement!==input||panel.classList.contains('hidden')||
+       !panel.querySelector('.address-choice'))return;
+    pendingEdit=0;
+    panel.dataset.viaResultsReady='true';
+    input.blur();schedule();
+    // Android/iOS keyboard closes asynchronously; visualViewport also triggers layout.
+    setTimeout(schedule,250);
+   },420);
+  }
+  new MutationObserver(onResults).observe(panel,{attributes:true,attributeFilter:['class'],childList:true});
   window.addEventListener('resize',schedule,{passive:true});
   window.addEventListener('scroll',schedule,{passive:true,capture:true});
   window.visualViewport?.addEventListener('resize',schedule,{passive:true});

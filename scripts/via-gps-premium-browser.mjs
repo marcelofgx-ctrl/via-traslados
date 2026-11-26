@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium,firefox,webkit} from 'playwright';
 import {mkdirSync} from 'node:fs';
-const root='https://via-traslados-route-card-qa.marcelof-gx.workers.dev';
+const root='https://via-traslados-search-refined-qa.marcelof-gx.workers.dev';
 const old='https://via-traslados-geo-integral-qa.marcelof-gx.workers.dev';
 mkdirSync('gps-premium-evidence',{recursive:true});
 for(const n of ['reference.js','geo-v2/core.mjs','address-autocomplete.js','map-point-picker.js','app.js','store.js','via-visual-compat.css']){
@@ -30,7 +30,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   return r.abort();
  });
  const p=await c.newPage();await p.goto(root+'/index.html',{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.ViaAddress&&document.querySelector('#location-shortcut')?.dataset.viaGpsState==='idle');
- assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.17 QA');
+ assert.equal((await p.locator('#via-visible-release').innerText()).trim(),'V30.4.10.18 QA');
  const button=p.locator('#location-shortcut'),state=s=>p.waitForFunction(x=>document.querySelector('#location-shortcut')?.dataset.viaGpsState===x,s,{timeout:12000});
  assert.equal(await p.locator('#home-origin').getAttribute('placeholder'),'¿Dónde te recogemos?');
  for(const id of ['home-origin','home-destination']){
@@ -39,6 +39,7 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
   await p.locator('#'+id).focus();assert.equal(await p.locator('#'+id).evaluate(e=>getComputedStyle(e).fontSize),'16px');
   await p.locator('#'+id).blur();
  }
+ await p.waitForFunction(()=>document.querySelectorAll('.reference-home .via-map-shortcut').length===2&&window.ViaMapPicker);
  const route=await p.locator('.reference-home .reference-route-fields').evaluate(e=>{
   const a=e.querySelector('#home-origin').closest('.reference-field'),b=e.querySelector('#home-destination').closest('.reference-field'),d=e.querySelector('.route-dash');
   const r=e.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),rd=d.getBoundingClientRect();
@@ -61,7 +62,19 @@ for(const [name,engine,ua,width,reducedMotion] of profiles){
  await searchPage.waitForFunction(()=>document.querySelector('#address-suggestions')?.dataset.viaCompact==='true'&&!document.querySelector('#address-suggestions')?.classList.contains('hidden'));
  const bounds=await list.evaluate(e=>({width:e.getBoundingClientRect().width,field:document.querySelector('#home-destination').closest('.reference-field').getBoundingClientRect().width,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right,viewport:innerWidth}));
  assert(Math.abs(bounds.width-bounds.field)<3&&bounds.left>=0&&bounds.right<=bounds.viewport+1,JSON.stringify(bounds));
- assert(await dest.evaluate(e=>e===document.activeElement));
+ await searchPage.waitForFunction(()=>document.querySelector('#address-suggestions')?.dataset.viaResultsReady==='true'&&document.activeElement!==document.querySelector('#home-destination'));
+ const resultStyle=await list.locator('.address-choice strong').first().evaluate(e=>({size:getComputedStyle(e).fontSize,weight:getComputedStyle(e).fontWeight}));
+ assert.deepEqual(resultStyle,{size:'13px',weight:'600'});
+ assert(await list.isVisible());
+ await dest.focus();assert(await dest.evaluate(e=>e===document.activeElement));
+ await searchPage.waitForFunction(()=>document.querySelectorAll('#address-suggestions .address-choice').length>0);
+ await searchPage.waitForTimeout(650);
+ assert(await dest.evaluate(e=>e===document.activeElement),'Refocusing unchanged text must not dismiss keyboard');
+ await dest.fill('Aeropuerto de prueba');
+ await searchPage.waitForFunction(()=>document.querySelector('#address-suggestions')?.dataset.viaResultsReady==='true'&&document.activeElement!==document.querySelector('#home-destination'));
+ await list.locator('.address-choice').first().click();
+ await searchPage.waitForFunction(()=>Number.isFinite(ViaAddress.get('home-destination').lat));
+ assert(await list.isHidden());
  await searchPage.screenshot({path:'gps-premium-evidence/'+name+'-search.png',animations:'disabled'});
  await searchPage.close();
  const visual=await button.evaluate(e=>({border:parseFloat(getComputedStyle(e).borderLeftWidth),iconSize:parseFloat(getComputedStyle(e,'::before').width),clip:getComputedStyle(e).backgroundClip,icon:getComputedStyle(e,'::before').backgroundImage,label:getComputedStyle(e,'::after').content,scroll:document.documentElement.scrollWidth,width:innerWidth}));

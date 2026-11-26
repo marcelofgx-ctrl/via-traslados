@@ -1,4 +1,4 @@
-/* Isolated GPS presentation V30.4.10.17; no changes to input or map actions. */
+/* Isolated GPS presentation V30.4.10.18; no changes to input or map actions. */
 html body .reference-home #location-shortcut#location-shortcut{
  --gps-ink:#fff;
  position:relative!important;display:inline-flex!important;flex-direction:row!important;
@@ -204,4 +204,22 @@ html body .reference-home :is(#home-origin,#home-destination):placeholder-shown:
 }
 html body .reference-home :is(#home-origin,#home-destination):focus{
  font-size:16px!important;font-weight:500!important;
+}
+
+
+/* Refined place results: compact, legible and touch-friendly. */
+html body #address-suggestions[data-via-compact="true"] .address-choice{
+ min-height:48px!important;padding:7px 10px!important;gap:6px!important;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice strong{
+ font-size:13px!important;font-weight:600!important;line-height:1.25!important;letter-spacing:-.12px!important;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice small{
+ font-size:11px!important;font-weight:400!important;line-height:1.35!important;
+}
+html body #address-suggestions[data-via-compact="true"] .address-choice :is([class*="distance"],[class*="Distance"]){
+ font-size:10.5px!important;font-weight:600!important;line-height:1.2!important;
+}
+html body #address-suggestions[data-via-compact="true"][data-via-results-ready="true"]{
+ top:var(--via-suggest-top)!important;bottom:auto!important;
 }
