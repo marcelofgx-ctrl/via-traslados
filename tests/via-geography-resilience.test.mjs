@@ -24,3 +24,17 @@ test('resolve never trusts another portal with wrong number or locality',async()
  const r=await addressRace(new Request('https://viatraslados.com/api/direcciones?mode=resolve&q='+encodeURIComponent(q)),{VIA_POI_API:{fetch:async()=>res({results:[]})}},{fetch:async()=>res({results:[{...good.results[0],street:'Arenal Grande 2202'}]})},null,{lead:5,deadline:80});
  assert.deepEqual((await r.json()).results,[]);
 });
+
+test('a verified suggested portal is reusable by resolve even when both providers go offline',async()=>{
+ const store=new Map(),pending=[];
+ const db={prepare(sql){return {bind(...args){this.args=args;return this},async first(){const [slot,key]=this.args;const r=store.get(slot);return r?.key===key?{payload:r.payload}:null},async run(){const [slot,key,payload]=this.args;store.set(slot,{key,payload});return{success:true}}}}};
+ const env={POI_CACHE:db,VIA_POI_API:{fetch:async()=>res(good)}};
+ const c={waitUntil(p){pending.push(p)}};
+ await addressRace(req(),env,{fetch:async()=>res(good)},c,{lead:5,deadline:80});
+ await Promise.all(pending);
+ const resolveReq=new Request('https://viatraslados.com/api/direcciones?mode=resolve&q='+encodeURIComponent(q));
+ const dead={fetch:async()=>{throw Error('provider offline')}};
+ const result=await addressRace(resolveReq,{...env,VIA_POI_API:dead},dead,c,{lead:5,deadline:80});
+ assert.equal(result.headers.get('X-Via-Address-Source'),'cache');
+ assert.deepEqual((await result.json()).results.map(x=>x.accuracy),['portal']);
+});

@@ -15,7 +15,8 @@ for(let i=0;i<3;i++){
  if(i===2)assert.equal(source,'cache','Verified portal cache not reusable');
 }
 const resolve=await get(root+'/api/direcciones?'+new URLSearchParams({mode:'resolve',q}));
-assert(resolve.r.ok&&resolve.j.results?.length===1&&resolve.j.results[0].accuracy==='portal');
+console.log('VIA_RESILIENCE_RESOLVE '+JSON.stringify({phase:process.argv[2],status:resolve.r.status,source:resolve.r.headers.get('X-Via-Address-Source'),count:resolve.j.results?.length||0}));
+assert(resolve.r.ok&&resolve.j.results?.length===1&&resolve.j.results[0].accuracy==='portal'&&resolve.r.headers.get('X-Via-Address-Source')==='cache');
 const poi=await get(root+'/api/direcciones?'+new URLSearchParams({mode:'places',q:'Costa urbana',lat:'-34.85',lng:'-56.02'}));
 assert(poi.r.ok&&poi.j.results?.some(x=>/costa urbana/i.test(x.name||x.label||x.street||'')),'POI regression');
 const reverse=await get(root+'/api/direcciones?mode=reverse&lat=-34.9061&lng=-56.1999');

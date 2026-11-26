@@ -6,7 +6,7 @@ const streetKey=s=>fold(s).replace(/^(calle|avenida|av|bulevar|blvr|boulevard|pa
 const valid=(a,b)=>a!=null&&b!=null&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Number(a)>=-36&&Number(a)<=-30&&Number(b)>=-59&&Number(b)<=-52;
 const json=(body,status=200,tag='')=>Response.json(body,{status,headers:{'Cache-Control':'no-store','X-Via-Address-Source':tag}});
 async function identity(q,mode,lat,lng){
- const h=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('via-address-v1|'+fold(q)+'|'+mode+'|'+(valid(lat,lng)?Number(lat).toFixed(2)+','+Number(lng).toFixed(2):'uy'))));
+ const h=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('via-address-v2|'+fold(q)+'|'+(valid(lat,lng)?Number(lat).toFixed(2)+','+Number(lng).toFixed(2):'uy'))));
  return {key:[...h].map(x=>x.toString(16).padStart(2,'0')).join(''),slot:((h[0]<<8)|h[1])%4096};
 }
 function cacheable(rows,q){
