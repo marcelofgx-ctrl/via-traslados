@@ -90,8 +90,12 @@ public final class MainActivity extends Activity {
     private String alertSequenceAccount="";
     private boolean alertServiceAttempted=false;
     private long lastMonitorAttempt=0;
-    private TextView monitorStatusLabel;
-    private final Runnable monitorStatusTick=new Runnable(){ public void run(){ if(!visible)return; if(monitorStatusLabel!=null)monitorStatusLabel.setText(monitorStatusText()); handler.postDelayed(this,1500); }};
+    private TextView monitorStatusLabel,externalPermissionLabel;
+    private static final int GUIDE_NOTIFICATION=3591, GUIDE_OVERLAY=3592;
+    private static final String GUIDE_PREF="via_alert_permissions_setup_v359";
+    private boolean permissionsGuideActive=false;
+    private final Runnable initialPermissionsGuide=()->maybeGuideAlertPermissions();
+    private final Runnable monitorStatusTick=new Runnable(){ public void run(){ if(!visible)return; if(monitorStatusLabel!=null)monitorStatusLabel.setText(monitorStatusText());if(externalPermissionLabel!=null)externalPermissionLabel.setText(externalPermissionText()); handler.postDelayed(this,1500); }};
     private final Runnable advanceRequestAlerts=()->notifyNewRequests(bookings);
     private void scheduleRequestAlerts(){
         handler.removeCallbacks(advanceRequestAlerts);
@@ -163,12 +167,13 @@ public final class MainActivity extends Activity {
 
     @Override public void onWindowFocusChanged(boolean focused){
         super.onWindowFocusChanged(focused);
-        if(focused)scheduleRequestAlerts();
+        if(focused){scheduleRequestAlerts();schedulePermissionsGuide();}
     }
     @Override protected void onPause() {
         visible = false;
         RequestMonitorService.setForeground(false);
         handler.removeCallbacks(monitorStatusTick);
+        handler.removeCallbacks(initialPermissionsGuide);
         handler.removeCallbacks(advanceRequestAlerts);
         handler.removeCallbacks(poll);
         if (acceptanceDialog != null) acceptanceDialog.dismiss();
@@ -182,6 +187,7 @@ public final class MainActivity extends Activity {
         staffRefreshToken = null;
         handler.removeCallbacks(advanceRequestAlerts);
         handler.removeCallbacks(monitorStatusTick);
+        handler.removeCallbacks(initialPermissionsGuide);
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -474,6 +480,10 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==GUIDE_OVERLAY&&BuildConfig.VIA_PRODUCTION){
+            finishPermissionsGuide();
+            return;
+        }
         if(!BuildConfig.VIA_ONBOARD_QA||resultCode!=RESULT_OK||data==null||
             (requestCode!=QA_IMAGE_CAMERA&&requestCode!=QA_IMAGE_GALLERY))return;
         try{
@@ -1388,7 +1398,7 @@ public final class MainActivity extends Activity {
 
     private void notifyNewRequests(JSONArray rows){
         if(!BuildConfig.VIA_PRODUCTION||staffToken==null||!RequestMonitorService.desired(this,staffUserId))return;
-        if(!visible||isFinishing()||rows==null||authFlow||reviewRequestsOnRefresh||
+        if(!visible||isFinishing()||rows==null||authFlow||reviewRequestsOnRefresh||permissionsGuideActive||
             (operatorKey==null&&staffToken==null))return;
         if(newRequestDialog!=null){
             boolean stillOpen=false;
@@ -1588,20 +1598,61 @@ public final class MainActivity extends Activity {
         if(!RequestMonitorService.runningFor(staffUserId))return "Avisos internos · "+RequestMonitorService.status();
         return android.provider.Settings.canDrawOverlays(this)?(RequestMonitorService.autoOpen(this,staffUserId)?"Monitoreo activo · apertura automática":"Monitoreo activo · emergente externo"):"Monitoreo activo · notificación Android";
     }
+    private String externalPermissionText(){
+        if(!requestNotificationPermission())return "Configurar permisos de avisos";
+        return android.provider.Settings.canDrawOverlays(this)?"Emergente externo autorizado":"Completar permiso de emergente externo";
+    }
+    private boolean overlayAllowed(){return android.provider.Settings.canDrawOverlays(this);}
+    private void schedulePermissionsGuide(){
+        handler.removeCallbacks(initialPermissionsGuide);
+        if(BuildConfig.VIA_PRODUCTION&&visible&&!isFinishing()&&!isDestroyed())handler.postDelayed(initialPermissionsGuide,350);
+    }
+    private void maybeGuideAlertPermissions(){
+        if(!BuildConfig.VIA_PRODUCTION||!visible||isFinishing()||isDestroyed()||!hasWindowFocus()||permissionsGuideActive||newRequestDialog!=null||acceptanceDialog!=null)return;
+        if(getSharedPreferences(GUIDE_PREF,MODE_PRIVATE).getBoolean("explained",false))return;
+        if(requestNotificationPermission()&&overlayAllowed()){
+            getSharedPreferences(GUIDE_PREF,MODE_PRIVATE).edit().putBoolean("explained",true).apply();return;
+        }
+        showAlertPermissionsGuide();
+    }
+    private void showAlertPermissionsGuide(){
+        if(!BuildConfig.VIA_PRODUCTION||permissionsGuideActive||isFinishing()||isDestroyed())return;
+        permissionsGuideActive=true;
+        new AlertDialog.Builder(this).setTitle("Configurá tus avisos")
+            .setMessage("Para recibir nuevas solicitudes aunque uses otra aplicación, Vía Traslados necesita autorización de Android para las notificaciones y para mostrar el aviso sobre otras apps. Te guiamos en dos pasos. Podés continuar sin permisos y consultar las solicitudes dentro de la aplicación.")
+            .setNegativeButton("Más tarde",(d,w)->finishPermissionsGuide())
+            .setPositiveButton("Continuar",(d,w)->{
+                if(!requestNotificationPermission()&&android.os.Build.VERSION.SDK_INT>=33){
+                    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},GUIDE_NOTIFICATION);
+                }else guideOverlayStep();
+            }).setOnCancelListener(d->finishPermissionsGuide()).show();
+    }
+    private void guideOverlayStep(){
+        if(isFinishing()||isDestroyed()){permissionsGuideActive=false;return;}
+        if(overlayAllowed()){finishPermissionsGuide();return;}
+        new AlertDialog.Builder(this).setTitle("Permitir avisos sobre otras apps")
+            .setMessage("Android abrirá sus ajustes. Si aparece una lista, elegí Vía Traslados y activá Mostrar sobre otras aplicaciones. Después regresá con Atrás. Este permiso no autoriza acceder al contenido de otras apps.")
+            .setNegativeButton("Más tarde",(d,w)->finishPermissionsGuide())
+            .setPositiveButton("Abrir ajustes",(d,w)->{
+                try{startActivityForResult(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),GUIDE_OVERLAY);}
+                catch(RuntimeException e){finishPermissionsGuide();message("No se pudieron abrir los ajustes de Android. Podés reintentar desde Configurar permisos de avisos.");}
+            }).setOnCancelListener(d->finishPermissionsGuide()).show();
+    }
+    private void finishPermissionsGuide(){
+        permissionsGuideActive=false;
+        getSharedPreferences(GUIDE_PREF,MODE_PRIVATE).edit().putBoolean("explained",true).apply();
+        if(externalPermissionLabel!=null)externalPermissionLabel.setText(externalPermissionText());
+        if(monitorStatusLabel!=null)monitorStatusLabel.setText(monitorStatusText());
+        if(visible&&staffToken!=null&&RequestMonitorService.desired(this,staffUserId)){
+            lastMonitorAttempt=0;startRequestMonitor();
+        }
+        scheduleRequestAlerts();
+    }
     private void configureExternalPopup(){
-        if(!requestNotificationPermission()){
-            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},354);return;
+        if(requestNotificationPermission()&&overlayAllowed()){
+            message("Notificaciones y emergente externo autorizados.");return;
         }
-        if(android.provider.Settings.canDrawOverlays(this)){
-            message("Emergente externo autorizado. Android controla su aparición sobre otras apps.");
-            return;
-        }
-        new AlertDialog.Builder(this).setTitle("Avisos sobre otras aplicaciones")
-          .setMessage("Permití mostrar sobre otras apps para recibir un aviso compacto de Vía Traslados mientras usás Uber o Cabify. No se mostrarán datos del pasajero. Podés revocar este permiso en Android.")
-          .setNegativeButton("Ahora no",null).setPositiveButton("Configurar",(d,w)->{
-              try{startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:"+getPackageName())));}
-              catch(Exception e){message("Configurá Mostrar sobre otras aplicaciones en Ajustes de Android.");}
-          }).show();
+        showAlertPermissionsGuide();
     }
     private void configureAlertMode(){
         final String account=staffUserId;
@@ -1626,8 +1677,12 @@ public final class MainActivity extends Activity {
         addLine(label,on?"●  Disponible":"○  No disponible",13,on?TEAL_DARK:MUTED,true,1);
         monitorStatusLabel=text(monitorStatusText(),10,MUTED,false);
         label.addView(monitorStatusLabel);
-        if(on){TextView external=text(android.provider.Settings.canDrawOverlays(this)?"Emergente externo autorizado":"Activar emergente externo",10,TEAL_DARK,true);
-            external.setPadding(0,dp(3),0,dp(3));external.setOnClickListener(v->configureExternalPopup());label.addView(external);
+        externalPermissionLabel=null;
+        if(on||!requestNotificationPermission()||!overlayAllowed()){
+            externalPermissionLabel=text(externalPermissionText(),11,TEAL_DARK,true);
+            externalPermissionLabel.setPadding(0,dp(5),0,dp(5));externalPermissionLabel.setOnClickListener(v->configureExternalPopup());label.addView(externalPermissionLabel);
+        }
+        if(on){
             TextView mode=text(RequestMonitorService.autoOpen(this,staffUserId)?"Modo: Automático  ›":"Modo: Discreto  ›",11,TEAL_DARK,true);
             mode.setPadding(0,dp(5),0,dp(5));mode.setOnClickListener(v->configureAlertMode());label.addView(mode);}
         line.addView(label,new LinearLayout.LayoutParams(0,-2,1));
@@ -1638,6 +1693,10 @@ public final class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
         super.onRequestPermissionsResult(code,permissions,results);
+        if(code==GUIDE_NOTIFICATION&&BuildConfig.VIA_PRODUCTION){
+            // Do not change availability merely because a system permission was granted.
+            guideOverlayStep();return;
+        }
         if(code==354&&results.length>0&&results[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)changeRequestAvailability(true);
     }
 
