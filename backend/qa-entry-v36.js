@@ -45,7 +45,15 @@ export default {async fetch(req,env,ctx){
    const r=await env.DB.prepare("SELECT p.staff_id AS id,u.display_name AS name,p.revision,p.review_state AS state,p.plate,p.make,p.model,p.color FROM driver_identity_profiles p JOIN staff_users u ON u.id=p.staff_id WHERE p.staff_id=? AND p.review_state='pending'").bind(actor.id).all();
    return reply({profiles:r.results||[]});
   }
-  if(path==='/api/staff/driver-profile'&&['GET','POST'].includes(method))return worker.fetch(req,env,ctx);
+  if(path==='/api/staff/driver-profile'&&method==='GET'){
+   // Synthetic registered car for QA only; never read production or overwrite an existing record.
+   await env.DB.batch([
+    env.DB.prepare("INSERT OR IGNORE INTO driver_vehicle_profiles(staff_id,license_plate,make,model,passenger_capacity,luggage_capacity) SELECT ?, '', 'Toyota','Corolla',4,3 WHERE NOT EXISTS (SELECT 1 FROM driver_identity_profiles WHERE staff_id=?)").bind(actor.id,actor.id),
+    env.DB.prepare("INSERT OR IGNORE INTO driver_vehicle_prefill(staff_id,make,model,color,model_year,vehicle_type) SELECT staff_id,make,model,'Gris',2024,'Sedán' FROM driver_vehicle_profiles WHERE staff_id=? AND make='Toyota' AND model='Corolla' AND license_plate=''").bind(actor.id)
+   ]);
+   return worker.fetch(req,env,ctx);
+  }
+  if(path==='/api/staff/driver-profile'&&method==='POST')return worker.fetch(req,env,ctx);
   if(path==='/api/admin/driver-profiles/'+actor.id&&['GET','PATCH'].includes(method))return worker.fetch(req,env,ctx);
   return reply({error:'Ruta fuera de este ensayo privado'},404);
  }catch(e){console.error('v36-profile-qa',e?.name||'Error');return reply({error:'No se pudo completar la prueba'},500)}

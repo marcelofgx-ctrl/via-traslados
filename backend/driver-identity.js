@@ -61,9 +61,10 @@ export async function driverIdentityRoutes(req,env,path,send,err){
  if(!actor||actor.master||!ID.test(actor.id)||!['driver','admin'].includes(actor.role))return err('No autorizado',401);
  if(own&&req.method==='GET'){
   const r=await env.DB.prepare('SELECT '+META+' FROM driver_identity_profiles WHERE staff_id=?').bind(actor.id).first();
-  const v=await env.DB.prepare('SELECT license_plate AS plate,make,model FROM driver_vehicle_profiles WHERE staff_id=?').bind(actor.id).first();
+  const v=await env.DB.prepare('SELECT v.license_plate AS plate,v.make,v.model,v.passenger_capacity AS passengerCapacity,v.luggage_capacity AS luggageCapacity,d.color,d.model_year AS year,d.vehicle_type AS type FROM driver_vehicle_profiles v LEFT JOIN driver_vehicle_prefill d ON d.staff_id=v.staff_id AND d.make=v.make AND d.model=v.model WHERE v.staff_id=?').bind(actor.id).first();
   const info=metadata(r);if(r?.review_state==='approved'&&(!v||normalizePlate(v.plate)!==r.plate||v.make!==r.make||v.model!==r.model)){info.state='vehicle_changed';info.missing=['front','rear','plate'];}
-  return send({...info,vehicle:v||null});
+  const vehicle=v?{...v,color:v.color||(r&&r.make===v.make&&r.model===v.model?r.color:'')}:null;
+  return send({...info,vehicle});
  }
  if(own&&req.method==='POST'){
   let p;try{p=validateProfile(await body(req))}catch(e){return err(e.message||'Fotos inválidas',400)}

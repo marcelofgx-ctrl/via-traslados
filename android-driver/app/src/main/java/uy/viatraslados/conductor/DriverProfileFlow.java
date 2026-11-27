@@ -30,6 +30,7 @@ final class DriverProfileFlow {
     private long nextReminder=0;private int epoch=0,slot=-1;
     private File capture;private Uri captureUri;
     private EditText plate,make,model,color;
+    private TextView plateStatus,stepIndicator;private LinearLayout[] steps;private Button nextAction;private int currentStep;private CheckBox consentBox;
     private final String[] jpeg={"","",""},signal={"review","review","review"},plates={"",""};
     private final ImageView[] previews=new ImageView[3];private final TextView[] feedback=new TextView[3];
     DriverProfileFlow(Activity a,Api api){this.a=a;this.api=api;File dir=new File(a.getCacheDir(),"profile_capture");File[] stale=dir.listFiles();if(stale!=null)for(File x:stale)x.delete();}
@@ -79,29 +80,98 @@ final class DriverProfileFlow {
         ScrollView scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.addView(content);outer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         d.setContentView(outer);d.show();if(d.getWindow()!=null)d.getWindow().setLayout(-1,-1);return d;
     }
+    private android.graphics.drawable.GradientDrawable rounded(int fill,int stroke,int radius){
+        android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();d.setColor(fill);d.setCornerRadius(dp(radius));if(stroke!=0)d.setStroke(dp(1),stroke);return d;
+    }
+    private LinearLayout section(LinearLayout parent){
+        LinearLayout card=column();card.setPadding(dp(14),dp(12),dp(14),dp(12));card.setBackground(rounded(0xffffffff,0xffdce9e4,16));
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(10);parent.addView(card,p);return card;
+    }
+    private Button action(LinearLayout parent,String label,boolean primary,Runnable click){
+        Button b=new Button(a);b.setText(label);b.setAllCaps(false);b.setTextSize(14);b.setTypeface(null,Typeface.BOLD);b.setTextColor(primary?0xffffffff:TEAL);b.setBackground(rounded(primary?TEAL:0xfff0f7f4,primary?0:0xffd7e7df,12));b.setPadding(dp(8),0,dp(8),0);
+        parent.addView(b,new LinearLayout.LayoutParams(-1,dp(50)));b.setOnClickListener(v->click.run());return b;
+    }
+    private EditText neatField(LinearLayout parent,String title,String initial,String hint){
+        line(parent,title,11,MUTED,true);EditText e=new EditText(a);e.setSingleLine(true);e.setTextSize(16);e.setTextColor(INK);e.setHintTextColor(0xff8a9995);e.setHint(hint);e.setText(initial);e.setPadding(dp(12),0,dp(12),0);e.setBackground(rounded(0xfff8fbf9,0xffdce9e4,11));
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(49));p.bottomMargin=dp(5);parent.addView(e,p);return e;
+    }
+    private String value(JSONObject j,String key){String v=j.optString(key,"").trim();return v.equals("null")?"":v;}
+    private String first(String... values){for(String v:values)if(v!=null&&!v.isEmpty())return v;return "";}
+    private void photoTile(LinearLayout parent,int k,String title,String hint,boolean wide){
+        LinearLayout card=column();card.setPadding(dp(10),dp(8),dp(10),dp(10));card.setBackground(rounded(0xfff7faf8,0xffdce9e4,13));
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(wide?-1:0,-2,wide?0:1);if(k==2)cp.leftMargin=dp(8);parent.addView(card,cp);
+        line(card,title,14,INK,true);line(card,hint,12,MUTED,false);
+        FrameLayout frame=new FrameLayout(a);frame.setBackground(rounded(SOFT,0,10));frame.setClipToOutline(true);card.addView(frame,new LinearLayout.LayoutParams(-1,dp(wide?150:98)));
+        TextView placeholder=new TextView(a);placeholder.setText(k==0?"＋\nRetrato":"＋\nFoto");placeholder.setTextSize(14);placeholder.setGravity(Gravity.CENTER);placeholder.setTextColor(TEAL);frame.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));
+        ImageView img=new ImageView(a);img.setScaleType(ImageView.ScaleType.CENTER_INSIDE);frame.addView(img,new FrameLayout.LayoutParams(-1,-1));previews[k]=img;
+        feedback[k]=line(card,"Pendiente",12,MUTED,true);feedback[k].setMinLines(2);
+        action(card,"Agregar foto",false,()->choose(k));frame.setOnClickListener(v->choose(k));
+    }
+    private void refreshPlate(){
+        if(plate==null||plateStatus==null)return;
+        String displayed=plate.getText().toString(),p=UruguayPlate.compact(displayed);
+        boolean valid=!p.isEmpty(),mismatch=valid&&((!plates[0].isEmpty()&&!plates[0].equals(p))||(!plates[1].isEmpty()&&!plates[1].equals(p)));
+        boolean match=valid&&p.equals(plates[0])&&p.equals(plates[1]);
+        plateStatus.setText(!valid?"Formato obligatorio · AAA-1234":mismatch?"La lectura de una foto no coincide · revisar":match?"Matrícula válida · coincide con ambas fotos":"Matrícula válida · confirmá que sea correcta");
+        plateStatus.setTextColor(mismatch?0xffa45e21:valid?TEAL:MUTED);
+        plate.setBackground(rounded(0xffffffff,mismatch?0xffd9a475:valid?0xff7eb9a5:0xffdce9e4,11));
+    }
+    private void switchStep(int index,ScrollView scroll){
+        if(busy)return;currentStep=index;steps[0].setVisibility(index==0?View.VISIBLE:View.GONE);steps[1].setVisibility(index==1?View.VISIBLE:View.GONE);
+        stepIndicator.setText(index==0?"1 DE 2  ·  CONDUCTOR     ━━━  ───":"2 DE 2  ·  VEHÍCULO     ━━━  ━━━");
+        nextAction.setText(index==0?"Continuar  →":"Enviar ficha para revisión");
+        if(index==1)plate.clearFocus();scroll.post(()->scroll.scrollTo(0,0));
+    }
     private void showForm(){
         if(panel!=null||account.isEmpty())return;
-        LinearLayout l=column();
-        line(l,"QA · Usá únicamente fotografías y datos de prueba.",12,MUTED,true);
+        Dialog d=new Dialog(a,android.R.style.Theme_Material_Light_NoActionBar);
+        LinearLayout outer=column();outer.setBackgroundColor(0xfff5f9f7);outer.setPadding(dp(16),dp(10),dp(16),dp(12));outer.setFocusableInTouchMode(true);
+        LinearLayout header=new LinearLayout(a);header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView back=new TextView(a);back.setText("‹");back.setTextSize(32);back.setTextColor(TEAL);back.setGravity(Gravity.CENTER);header.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        TextView title=new TextView(a);title.setText("Mi ficha de conductor");title.setTextColor(INK);title.setTextSize(20);title.setTypeface(null,Typeface.BOLD);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        TextView ver=new TextView(a);ver.setText("V36.2 QA");ver.setTextColor(MUTED);ver.setTextSize(11);header.addView(ver);outer.addView(header);
+        stepIndicator=line(outer,"",12,TEAL,true);line(outer,"Entorno de prueba · solo datos ficticios",11,MUTED,false);
+        ScrollView scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.setClipToPadding(false);scroll.setPadding(0,dp(5),0,dp(5));LinearLayout holder=column();scroll.addView(holder);outer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        steps=new LinearLayout[]{column(),column()};holder.addView(steps[0]);holder.addView(steps[1]);
         String state=meta.optString("state","missing");
-        if(state.equals("approved")||state.equals("pending")){
-            line(l,state.equals("approved")?"Ficha aprobada":"En revisión administrativa",17,TEAL,true);
-            line(l,"Matrícula: "+meta.optString("plate")+" · "+meta.optString("make")+" "+meta.optString("model"),14,INK,false);
-            line(l,"Si cambiaste de vehículo o necesitás actualizar las fotos, enviá las tres imágenes nuevamente. La ficha anterior dejará de mostrarse hasta la revisión.",13,MUTED,false);
-        }
-        if(state.equals("rejected"))line(l,meta.optString("reviewNote"),14,INK,true);
+        LinearLayout firstCard=section(steps[0]);line(firstCard,"Tu presentación",21,INK,true);line(firstCard,"Una foto clara ayuda al pasajero a reconocerte.",13,MUTED,false);
+        if(state.equals("approved")||state.equals("pending"))line(firstCard,state.equals("approved")?"Ficha aprobada · actualizar requiere nueva revisión":"Ficha enviada · pendiente de revisión",13,TEAL,true);
+        if(state.equals("rejected"))line(firstCard,value(meta,"reviewNote"),13,0xffa45e21,true);
+        photoTile(firstCard,0,"Foto del conductor","Una sola cara, bien iluminada.",true);
         JSONObject old=meta.optJSONObject("vehicle");if(old==null)old=new JSONObject();
-        make=field(l,"MARCA",meta.optString("make",old.optString("make")));model=field(l,"MODELO",meta.optString("model",old.optString("model")));color=field(l,"COLOR",meta.optString("color"));plate=field(l,"MATRÍCULA · confirmá la lectura",meta.optString("plate",old.optString("plate")));
-        String[] title={"Foto del conductor","Frente del automóvil","Parte trasera del automóvil"};
-        String[] hint={"Una sola cara, bien iluminada.","Automóvil completo con matrícula visible.","Mismo vehículo, matrícula visible."};
-        for(int i=0;i<3;i++){
-            final int k=i;line(l,title[i],17,INK,true);line(l,hint[i],13,MUTED,false);
-            ImageView image=new ImageView(a);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setBackgroundColor(SOFT);l.addView(image,new LinearLayout.LayoutParams(-1,dp(118)));previews[i]=image;
-            feedback[i]=line(l,"Pendiente",12,MUTED,false);button(l,"Tomar foto o elegir imagen",()->choose(k));
+        boolean changed=state.equals("vehicle_changed"),initial=state.equals("missing")||changed;
+        String existingMake=initial?first(value(old,"make"),value(meta,"make")):first(value(meta,"make"),value(old,"make"));
+        String existingModel=initial?first(value(old,"model"),value(meta,"model")):first(value(meta,"model"),value(old,"model"));
+        String existingColor=initial?first(value(old,"color"),changed?"":value(meta,"color")):first(value(meta,"color"),value(old,"color"));
+        LinearLayout data=section(steps[1]);line(data,"Tu vehículo",21,INK,true);
+        boolean prefilled=!existingMake.isEmpty()&&!existingModel.isEmpty();
+        line(data,prefilled?"Datos precargados de tu ficha. Revisalos si cambiaste de auto.":"Todavía no tenemos un vehículo registrado. Completá sus datos.",13,MUTED,false);
+        make=neatField(data,"MARCA",existingMake,"Marca");model=neatField(data,"MODELO",existingModel,"Modelo");color=neatField(data,"COLOR",existingColor,"Color");
+        String year=value(old,"year"),type=value(old,"type"),pax=value(old,"passengerCapacity"),bags=value(old,"luggageCapacity");
+        boolean same=existingMake.equals(value(old,"make"))&&existingModel.equals(value(old,"model"));
+        if(same&&(!year.isEmpty()||!type.isEmpty()||!pax.isEmpty()||!bags.isEmpty())){
+            TextView extra=line(data,(!year.isEmpty()?year+"  ·  ":"")+(!type.isEmpty()?type+"  ·  ":"")+(!pax.isEmpty()?pax+" pasajeros  ":"")+(!bags.isEmpty()?bags+" valijas":""),13,TEAL,true);
+            android.text.TextWatcher watch=new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int b,int c){extra.setVisibility(make.getText().toString().trim().equals(existingMake)&&model.getText().toString().trim().equals(existingModel)?View.VISIBLE:View.GONE);}public void afterTextChanged(android.text.Editable e){}};
+            make.addTextChangedListener(watch);model.addTextChangedListener(watch);
         }
-        CheckBox consent=new CheckBox(a);consent.setText("Autorizo mostrar mi foto, las del vehículo y su matrícula únicamente a pasajeros de mis reservas confirmadas activas.");l.addView(consent);
-        button(l,"Enviar ficha para revisión",()->submit(consent.isChecked()));
-        Dialog d=page("Mi ficha de conductor",l);panel=d;
+        LinearLayout plateCard=section(steps[1]);line(plateCard,"Matrícula",18,INK,true);line(plateCard,"Ingresá las tres letras y los cuatro números.",13,MUTED,false);
+        plate=neatField(plateCard,"MATRÍCULA URUGUAYA",initial?"":UruguayPlate.format(value(meta,"plate")),"AAA-1234");
+        plate.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        plate.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);plate.setTextSize(25);plate.setGravity(Gravity.CENTER);plate.setLetterSpacing(.12f);
+        plateStatus=line(plateCard,"",12,MUTED,false);
+        plate.addTextChangedListener(new android.text.TextWatcher(){boolean adjusting=false;public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int b,int c){}public void afterTextChanged(android.text.Editable e){
+            if(adjusting)return;String raw=e.toString(),formatted=UruguayPlate.format(raw);
+            if(!raw.equals(formatted)){adjusting=true;int pos=Math.max(0,plate.getSelectionStart());String prefix=UruguayPlate.format(raw.substring(0,Math.min(pos,raw.length())));plate.setText(formatted);plate.setSelection(Math.min(prefix.length(),formatted.length()));adjusting=false;}refreshPlate();
+        }});refreshPlate();
+        LinearLayout photos=section(steps[1]);line(photos,"Fotos del automóvil",18,INK,true);line(photos,"Dos vistas del mismo auto, con las matrículas legibles.",13,MUTED,false);
+        LinearLayout pair=new LinearLayout(a);photos.addView(pair,new LinearLayout.LayoutParams(-1,-2));
+        photoTile(pair,1,"Frente","Matrícula visible",false);photoTile(pair,2,"Trasera","Matrícula visible",false);
+        consentBox=new CheckBox(a);consentBox.setText("Autorizo mostrar las fotos y matrícula únicamente a pasajeros de mis reservas confirmadas activas.");consentBox.setTextColor(INK);consentBox.setTextSize(13);steps[1].addView(consentBox);
+        nextAction=action(outer,"Continuar  →",true,()->{if(busy)return;if(currentStep==0){if(jpeg[0].isEmpty()){msg("Agregá primero la foto del conductor.");return;}switchStep(1,scroll);}else submit(consentBox.isChecked());});
+        back.setOnClickListener(v->{if(busy)return;if(currentStep==1)switchStep(0,scroll);else d.dismiss();});
+        d.setOnKeyListener((dialog,key,event)->{if(key==KeyEvent.KEYCODE_BACK&&event.getAction()==KeyEvent.ACTION_UP&&currentStep==1){switchStep(0,scroll);return true;}return false;});
+        panel=d;switchStep(0,scroll);
+        d.setContentView(outer);d.show();if(d.getWindow()!=null){d.getWindow().setLayout(-1,-1);d.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}outer.requestFocus();
         d.setOnDismissListener(x->{if(panel==d){panel=null;Arrays.fill(jpeg,"");Arrays.fill(signal,"review");Arrays.fill(plates,"");clearCapture();busy=false;slot=-1;}});
     }
     private void choose(int index){
@@ -152,18 +222,19 @@ final class DriverProfileFlow {
                 ui.post(()->{if(!alive(e)||panel!=owner)return;busy=false;clearCapture();feedback[k].setText(r.message);
                     if(r.reject){previews[k].setImageDrawable(null);return;}
                     jpeg[k]=encoded;signal[k]=r.state;previews[k].setImageBitmap(preview);
-                    if(k>0){plates[k-1]=r.plate;if(plate.getText().toString().trim().isEmpty()&&!r.plate.isEmpty())plate.setText(r.plate);}
+                    if(k>0){plates[k-1]=r.plate;if(plate.getText().toString().trim().isEmpty()&&!r.plate.isEmpty())plate.setText(UruguayPlate.format(r.plate));refreshPlate();}
                 });
             }catch(Exception ex){ui.post(()->{if(alive(e)&&panel==owner){busy=false;clearCapture();feedback[k].setText("No se pudo leer la foto. Elegí otra imagen.");}});}
         });return true;
     }
     private void submit(boolean consent){
         if(busy||panel==null)return;
-        String p=plate.getText().toString().toUpperCase(Locale.ROOT).replaceAll("[ -]","");
-        if(!p.matches("[A-Z]{3}[0-9]{4}")||make.length()==0||model.length()==0||color.length()==0){msg("Completá marca, modelo, color y matrícula.");return;}
+        String p=UruguayPlate.compact(plate.getText().toString());
+        if(p.isEmpty()){plate.requestFocus();plate.setError("Usá AAA-1234");msg("Ingresá una matrícula válida (ej. SBG-1234).");return;}
+        if(make.getText().toString().trim().isEmpty()||model.getText().toString().trim().isEmpty()||color.getText().toString().trim().isEmpty()){msg("Completá marca, modelo y color.");return;}
         if(Arrays.stream(jpeg).anyMatch(String::isEmpty)||!consent){msg("Agregá las tres fotos y autorizá su uso.");return;}
         String mismatch=(!plates[0].isEmpty()&&!plates[0].equals(p))||(!plates[1].isEmpty()&&!plates[1].equals(p))?" Las lecturas no coinciden con la matrícula escrita. Administración deberá revisarlo.":"";
-        new AlertDialog.Builder(a).setTitle("Confirmá la matrícula").setMessage(p.substring(0,3)+" "+p.substring(3)+" · "+make.getText()+" "+model.getText()+"."+mismatch)
+        new AlertDialog.Builder(a).setTitle("Confirmá la matrícula").setMessage(UruguayPlate.format(p)+" · "+make.getText()+" "+model.getText()+"."+mismatch)
           .setNegativeButton("Corregir",null).setPositiveButton("Enviar",(d,w)->send(p)).show();
     }
     private void send(String p){
@@ -183,7 +254,7 @@ final class DriverProfileFlow {
             if(!alive(e))return;if(status!=200){msg("Revisión no disponible. "+error);return;}
             try{JSONArray rows=new JSONObject(body).getJSONArray("profiles");LinearLayout l=column();
                 if(rows.length()==0)line(l,"No hay fichas pendientes.",15,MUTED,false);
-                for(int i=0;i<rows.length();i++){JSONObject r=rows.getJSONObject(i);button(l,r.optString("name")+" · "+r.optString("plate"),()->reviewOne(r.optString("id")));}
+                for(int i=0;i<rows.length();i++){JSONObject r=rows.getJSONObject(i);button(l,r.optString("name")+" · "+UruguayPlate.format(r.optString("plate")),()->reviewOne(r.optString("id")));}
                 Dialog d=page("Revisar fichas",l);review=d;d.setOnDismissListener(x->{if(review==d)review=null;});
             }catch(Exception ex){msg("No se pudo leer la lista.");}
         });
@@ -193,7 +264,7 @@ final class DriverProfileFlow {
         api.call("GET",ADMIN+"/"+Uri.encode(id),null,(status,body,error)->{
             if(!alive(e))return;if(status!=200){msg(error);return;}
             try{JSONObject p=new JSONObject(body);if(review!=null)review.dismiss();LinearLayout l=column();
-                line(l,p.optString("name"),19,INK,true);line(l,p.optString("plate")+" · "+p.optString("make")+" "+p.optString("model")+" · "+p.optString("color"),15,INK,false);
+                line(l,p.optString("name"),19,INK,true);line(l,UruguayPlate.format(p.optString("plate"))+" · "+p.optString("make")+" "+p.optString("model")+" · "+p.optString("color"),15,INK,false);
                 line(l,"Comprobá el rostro, las dos vistas, el vehículo declarado y la matrícula. Las señales del teléfono no son prueba de identidad.",13,MUTED,false);
                 JSONObject photos=p.getJSONObject("photos");for(String k:new String[]{"driver","front","rear"}){
                     line(l,k.equals("driver")?"Conductor":k.equals("front")?"Frente":"Trasera",14,TEAL,true);

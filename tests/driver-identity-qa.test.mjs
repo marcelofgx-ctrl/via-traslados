@@ -79,7 +79,7 @@ test('full authorized lifecycle; no photos before confirmation, after cancellati
 test('web presentation never uses arbitrary URLs or unescaped name, only active confirmed status',()=>{
  const b={status:'confirmed',driverProfile:{reviewed:true,name:'<script>evil</script>',plate:'ABC1234',make:'QA',model:'QA',color:'Blanco',photos:payload().photos}};
  const render=globalThis.ViaDriverConfirmation.render;
- assert.match(render(b),/ABC 1234/);assert.match(render(b),/&lt;script&gt;/);assert(!render(b).includes('<script>'));
+ assert.match(render(b),/ABC-1234/);assert.match(render(b),/&lt;script&gt;/);assert(!render(b).includes('<script>'));
  assert.equal(render({...b,status:'cancelled'}),'');assert.equal(render({...b,status:'accepted'}),'');
  assert(!render({...b,driverProfile:{...b.driverProfile,photos:{...b.driverProfile.photos,front:'https://example.com/photo'}}}).includes('<img'));
 });

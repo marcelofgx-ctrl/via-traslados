@@ -1813,7 +1813,7 @@ public final class MainActivity extends Activity {
             scheduleProfileCheck(800);
         }
         if (BuildConfig.VIA_ONLINE_QA) {
-            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36.1 · FICHA DE CONDUCTOR · QA PRIVADA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
+            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36.2 · FICHA DE CONDUCTOR · QA PRIVADA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
                 (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
                 "V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
                 10,TEAL_DARK,true);
