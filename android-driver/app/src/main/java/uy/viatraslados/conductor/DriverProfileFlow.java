@@ -29,7 +29,7 @@ final class DriverProfileFlow {
     private boolean checking=false,busy=false,destroyed=false;
     private long nextReminder=0;private int epoch=0,slot=-1;
     private File capture;private Uri captureUri;
-    private EditText plate,make,model,color;
+    private EditText plate,year;private TextView make,model,color;
     private TextView plateStatus,stepIndicator;private LinearLayout[] steps;private Button nextAction;private int currentStep;private CheckBox consentBox;
     private final String[] jpeg={"","",""},signal={"review","review","review"},plates={"",""};
     private final ImageView[] previews=new ImageView[3];private final TextView[] feedback=new TextView[3];
@@ -97,13 +97,45 @@ final class DriverProfileFlow {
     }
     private String value(JSONObject j,String key){String v=j.optString(key,"").trim();return v.equals("null")?"":v;}
     private String first(String... values){for(String v:values)if(v!=null&&!v.isEmpty())return v;return "";}
+    private TextView selector(LinearLayout parent,String title,String initial,String hint){
+        line(parent,title,11,MUTED,true);
+        LinearLayout box=new LinearLayout(a);box.setGravity(Gravity.CENTER_VERTICAL);box.setPadding(dp(12),0,dp(12),0);box.setBackground(rounded(0xfff8fbf9,0xffdce9e4,11));box.setFocusable(true);
+        TextView text=new TextView(a);text.setTextSize(16);text.setTextColor(INK);text.setSingleLine();text.setEllipsize(android.text.TextUtils.TruncateAt.END);text.setHint(hint);text.setHintTextColor(0xff8a9995);text.setText(initial);box.addView(text,new LinearLayout.LayoutParams(0,-2,1));
+        TextView arrow=new TextView(a);arrow.setText("⌄");arrow.setTextSize(23);arrow.setTextColor(TEAL);box.addView(arrow);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(50));p.bottomMargin=dp(6);parent.addView(box,p);box.setContentDescription(title+", selector");return text;
+    }
+    private interface Pick {void selected(String value);}
+    private void chooseOption(String title,String[] choices,String current,Pick pick){
+        if(busy)return;
+        java.util.ArrayList<String> all=new java.util.ArrayList<>(Arrays.asList(choices));
+        if(!current.isEmpty()&&!all.contains(current))all.add(0,current);
+        LinearLayout content=column();content.setPadding(dp(16),dp(8),dp(16),0);
+        EditText search=new EditText(a);search.setSingleLine(true);search.setHint("Buscar "+title.toLowerCase(Locale.ROOT));search.setTextSize(16);search.setPadding(dp(12),0,dp(12),0);search.setBackground(rounded(0xfff5f9f7,0xffdce9e4,10));content.addView(search,new LinearLayout.LayoutParams(-1,dp(48)));
+        ListView list=new ListView(a);content.addView(list,new LinearLayout.LayoutParams(-1,dp(310)));
+        ArrayAdapter<String> adapter=new ArrayAdapter<>(a,android.R.layout.simple_list_item_1,new java.util.ArrayList<>());list.setAdapter(adapter);
+        Runnable filter=()->{String needle=fold(search.getText().toString());adapter.clear();for(String value:all)if(value.equals(ViaVehicleCatalog.OTHER)||fold(value).contains(needle))adapter.add(value);adapter.notifyDataSetChanged();};
+        search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int b,int c){filter.run();}public void afterTextChanged(android.text.Editable e){}});
+        AlertDialog dialog=new AlertDialog.Builder(a).setTitle("Elegí "+title.toLowerCase(Locale.ROOT)).setView(content).setNegativeButton("Cancelar",null).create();
+        list.setOnItemClickListener((parent,view,position,id)->{String selected=adapter.getItem(position);dialog.dismiss();if(ViaVehicleCatalog.OTHER.equals(selected)){
+            EditText custom=new EditText(a);custom.setSingleLine();custom.setHint(title);custom.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(title.equals("Color")?35:45)});
+            AlertDialog edit=new AlertDialog.Builder(a).setTitle("Ingresá "+title.toLowerCase(Locale.ROOT)).setView(custom).setNegativeButton("Cancelar",null).setPositiveButton("Guardar",null).create();edit.show();
+            edit.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String value=custom.getText().toString().trim();if(value.isEmpty()){custom.setError("Completá este dato");return;}pick.selected(value);edit.dismiss();});
+        }else if(selected!=null)pick.selected(selected);});
+        filter.run();dialog.show();if(dialog.getWindow()!=null)dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN|WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    }
+    private String fold(String text){return java.text.Normalizer.normalize(text,java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+","").toLowerCase(Locale.ROOT);}
     private void photoTile(LinearLayout parent,int k,String title,String hint,boolean wide){
         LinearLayout card=column();card.setPadding(dp(10),dp(8),dp(10),dp(10));card.setBackground(rounded(0xfff7faf8,0xffdce9e4,13));
         LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(wide?-1:0,-2,wide?0:1);if(k==2)cp.leftMargin=dp(8);parent.addView(card,cp);
         line(card,title,14,INK,true);line(card,hint,12,MUTED,false);
-        FrameLayout frame=new FrameLayout(a);frame.setBackground(rounded(SOFT,0,10));frame.setClipToOutline(true);card.addView(frame,new LinearLayout.LayoutParams(-1,dp(wide?150:98)));
+        FrameLayout frame=new FrameLayout(a);
+        if(k==0){
+            android.graphics.drawable.GradientDrawable circle=new android.graphics.drawable.GradientDrawable();circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);circle.setColor(SOFT);circle.setStroke(dp(2),0xffa5c8bc);frame.setBackground(circle);
+            LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(dp(144),dp(144));fp.gravity=Gravity.CENTER_HORIZONTAL;fp.topMargin=dp(8);fp.bottomMargin=dp(6);card.addView(frame,fp);
+        }else{frame.setBackground(rounded(SOFT,0,10));card.addView(frame,new LinearLayout.LayoutParams(-1,dp(98)));}
+        frame.setClipToOutline(true);
         TextView placeholder=new TextView(a);placeholder.setText(k==0?"＋\nRetrato":"＋\nFoto");placeholder.setTextSize(14);placeholder.setGravity(Gravity.CENTER);placeholder.setTextColor(TEAL);frame.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));
-        ImageView img=new ImageView(a);img.setScaleType(ImageView.ScaleType.CENTER_INSIDE);frame.addView(img,new FrameLayout.LayoutParams(-1,-1));previews[k]=img;
+        ImageView img=new ImageView(a);img.setScaleType(k==0?ImageView.ScaleType.CENTER_CROP:ImageView.ScaleType.CENTER_INSIDE);frame.addView(img,new FrameLayout.LayoutParams(-1,-1));previews[k]=img;
         feedback[k]=line(card,"Pendiente",12,MUTED,true);feedback[k].setMinLines(2);
         action(card,"Agregar foto",false,()->choose(k));frame.setOnClickListener(v->choose(k));
     }
@@ -129,7 +161,7 @@ final class DriverProfileFlow {
         LinearLayout header=new LinearLayout(a);header.setGravity(Gravity.CENTER_VERTICAL);
         TextView back=new TextView(a);back.setText("‹");back.setTextSize(32);back.setTextColor(TEAL);back.setGravity(Gravity.CENTER);header.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
         TextView title=new TextView(a);title.setText("Mi ficha de conductor");title.setTextColor(INK);title.setTextSize(20);title.setTypeface(null,Typeface.BOLD);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        TextView ver=new TextView(a);ver.setText("V36.2 QA");ver.setTextColor(MUTED);ver.setTextSize(11);header.addView(ver);outer.addView(header);
+        TextView ver=new TextView(a);ver.setText("V36.3 QA");ver.setTextColor(MUTED);ver.setTextSize(11);header.addView(ver);outer.addView(header);
         stepIndicator=line(outer,"",12,TEAL,true);line(outer,"Entorno de prueba · solo datos ficticios",11,MUTED,false);
         ScrollView scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.setClipToPadding(false);scroll.setPadding(0,dp(5),0,dp(5));LinearLayout holder=column();scroll.addView(holder);outer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         steps=new LinearLayout[]{column(),column()};holder.addView(steps[0]);holder.addView(steps[1]);
@@ -146,14 +178,23 @@ final class DriverProfileFlow {
         LinearLayout data=section(steps[1]);line(data,"Tu vehículo",21,INK,true);
         boolean prefilled=!existingMake.isEmpty()&&!existingModel.isEmpty();
         line(data,prefilled?"Datos precargados de tu ficha. Revisalos si cambiaste de auto.":"Todavía no tenemos un vehículo registrado. Completá sus datos.",13,MUTED,false);
-        make=neatField(data,"MARCA",existingMake,"Marca");model=neatField(data,"MODELO",existingModel,"Modelo");color=neatField(data,"COLOR",existingColor,"Color");
-        String year=value(old,"year"),type=value(old,"type"),pax=value(old,"passengerCapacity"),bags=value(old,"luggageCapacity");
+        make=selector(data,"MARCA",existingMake,"Seleccioná marca");
+        model=selector(data,"MODELO",existingModel,"Seleccioná modelo");
+        color=selector(data,"COLOR",existingColor,"Seleccioná color");
+        String registeredYear=value(old,"year");
+        String initialYear=initial?registeredYear:first(value(meta,"year"),registeredYear);
+        year=neatField(data,"AÑO",initialYear,"Ej. 2024");year.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);year.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4)});
+        line(data,"Catálogo orientado a vehículos de los últimos 10 años.",11,MUTED,false);
+        String type=value(old,"type"),pax=value(old,"passengerCapacity"),bags=value(old,"luggageCapacity");
         boolean same=existingMake.equals(value(old,"make"))&&existingModel.equals(value(old,"model"));
-        if(same&&(!year.isEmpty()||!type.isEmpty()||!pax.isEmpty()||!bags.isEmpty())){
-            TextView extra=line(data,(!year.isEmpty()?year+"  ·  ":"")+(!type.isEmpty()?type+"  ·  ":"")+(!pax.isEmpty()?pax+" pasajeros  ":"")+(!bags.isEmpty()?bags+" valijas":""),13,TEAL,true);
-            android.text.TextWatcher watch=new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int b,int c){extra.setVisibility(make.getText().toString().trim().equals(existingMake)&&model.getText().toString().trim().equals(existingModel)?View.VISIBLE:View.GONE);}public void afterTextChanged(android.text.Editable e){}};
-            make.addTextChangedListener(watch);model.addTextChangedListener(watch);
-        }
+        TextView extra=line(data,same?(!type.isEmpty()?type+"  ·  ":"")+(!pax.isEmpty()?pax+" pasajeros  ":"")+(!bags.isEmpty()?bags+" valijas":""):"",12,TEAL,true);
+        if(extra.getText().length()==0)extra.setVisibility(View.GONE);
+        Runnable changedVehicle=()->{year.setText("");extra.setVisibility(View.GONE);};
+        ((View)make.getParent()).setOnClickListener(v->chooseOption("Marca",ViaVehicleCatalog.brands(),make.getText().toString(),picked->{
+            if(!picked.equals(make.getText().toString())){make.setText(picked);model.setText("");changedVehicle.run();}
+        }));
+        ((View)model.getParent()).setOnClickListener(v->{if(make.getText().length()==0){msg("Elegí primero la marca.");return;}chooseOption("Modelo",ViaVehicleCatalog.modelsFor(make.getText().toString()),model.getText().toString(),picked->{if(!picked.equals(model.getText().toString())){model.setText(picked);changedVehicle.run();}});});
+        ((View)color.getParent()).setOnClickListener(v->chooseOption("Color",ViaVehicleCatalog.colors(),color.getText().toString(),picked->color.setText(picked)));
         LinearLayout plateCard=section(steps[1]);line(plateCard,"Matrícula",18,INK,true);line(plateCard,"Ingresá las tres letras y los cuatro números.",13,MUTED,false);
         plate=neatField(plateCard,"MATRÍCULA URUGUAYA",initial?"":UruguayPlate.format(value(meta,"plate")),"AAA-1234");
         plate.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -232,6 +273,8 @@ final class DriverProfileFlow {
         String p=UruguayPlate.compact(plate.getText().toString());
         if(p.isEmpty()){plate.requestFocus();plate.setError("Usá AAA-1234");msg("Ingresá una matrícula válida (ej. SBG-1234).");return;}
         if(make.getText().toString().trim().isEmpty()||model.getText().toString().trim().isEmpty()||color.getText().toString().trim().isEmpty()){msg("Completá marca, modelo y color.");return;}
+        int y;try{y=Integer.parseInt(year.getText().toString());}catch(Exception ex){year.setError("Ingresá cuatro números");return;}
+        if(y<1900||y>Calendar.getInstance().get(Calendar.YEAR)+1){year.setError("Año inválido");return;}
         if(Arrays.stream(jpeg).anyMatch(String::isEmpty)||!consent){msg("Agregá las tres fotos y autorizá su uso.");return;}
         String mismatch=(!plates[0].isEmpty()&&!plates[0].equals(p))||(!plates[1].isEmpty()&&!plates[1].equals(p))?" Las lecturas no coinciden con la matrícula escrita. Administración deberá revisarlo.":"";
         new AlertDialog.Builder(a).setTitle("Confirmá la matrícula").setMessage(UruguayPlate.format(p)+" · "+make.getText()+" "+model.getText()+"."+mismatch)
@@ -240,7 +283,7 @@ final class DriverProfileFlow {
     private void send(String p){
         if(busy||panel==null)return;int e=epoch;Dialog owner=panel;busy=true;
         try{
-            JSONObject payload=new JSONObject().put("plate",p).put("make",make.getText().toString()).put("model",model.getText().toString()).put("color",color.getText().toString()).put("consent",true)
+            JSONObject payload=new JSONObject().put("plate",p).put("make",make.getText().toString()).put("model",model.getText().toString()).put("color",color.getText().toString()).put("year",Integer.parseInt(year.getText().toString())).put("consent",true)
              .put("photos",new JSONObject().put("driver",jpeg[0]).put("front",jpeg[1]).put("rear",jpeg[2]))
              .put("recognition",new JSONObject().put("face",signal[0]).put("front",signal[1]).put("rear",signal[2]).put("frontPlate",plates[0]).put("rearPlate",plates[1]));
             api.call("POST",PATH,payload,(status,body,error)->{if(!alive(e)||panel!=owner)return;busy=false;
@@ -264,7 +307,7 @@ final class DriverProfileFlow {
         api.call("GET",ADMIN+"/"+Uri.encode(id),null,(status,body,error)->{
             if(!alive(e))return;if(status!=200){msg(error);return;}
             try{JSONObject p=new JSONObject(body);if(review!=null)review.dismiss();LinearLayout l=column();
-                line(l,p.optString("name"),19,INK,true);line(l,UruguayPlate.format(p.optString("plate"))+" · "+p.optString("make")+" "+p.optString("model")+" · "+p.optString("color"),15,INK,false);
+                line(l,p.optString("name"),19,INK,true);line(l,UruguayPlate.format(p.optString("plate"))+" · "+p.optString("make")+" "+p.optString("model")+" · "+p.optString("color")+(p.isNull("year")?"":" · "+p.optString("year")),15,INK,false);
                 line(l,"Comprobá el rostro, las dos vistas, el vehículo declarado y la matrícula. Las señales del teléfono no son prueba de identidad.",13,MUTED,false);
                 JSONObject photos=p.getJSONObject("photos");for(String k:new String[]{"driver","front","rear"}){
                     line(l,k.equals("driver")?"Conductor":k.equals("front")?"Frente":"Trasera",14,TEAL,true);

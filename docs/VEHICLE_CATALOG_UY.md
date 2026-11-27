@@ -1,0 +1,2 @@
+# Catálogo orientativo Uruguay V36.3
+Selección manual ampliada a partir del catálogo V34 y referencias del mercado uruguayo 2016–2026: https://www.acau.com.uy/ ; https://www.autoblog.com.uy/2026/01/ventas-diciembre-y-totales-2025.html ; https://www.autoblog.com.uy/2025/01/ventas-diciembre-y-totales-2024.html ; https://autos.mercadolibre.com.uy/usado/desde-2016/ . No representa un padrón oficial ni verifica el año de comercialización de cada variante; incluye opciones importadas y admite Otro. Año manual, no limita elegibilidad por antigüedad. Datos locales, sin API paga.

@@ -13,7 +13,7 @@ const customerTokens=['a'.repeat(64),'b'.repeat(64)];
 const names=['Conductor QA','Administrador QA','Otro conductor QA'];
 // Synthetic JPEG headers only, no real faces, vehicles, or personal data.
 const jpeg=n=>Buffer.from([255,216,255,192,0,11,8,1,224,2,128,1,1,17,n,255,218,0,8,1,1,0,0,63,0,2,255,217]).toString('base64');
-const payload=()=>({consent:true,plate:'abc 1234',make:'Marca QA',model:'Modelo QA',color:'Blanco',photos:{driver:jpeg(1),front:jpeg(2),rear:jpeg(3)},recognition:{face:'pass',front:'pass',rear:'review',frontPlate:'ABC 1234',rearPlate:'ABC1234'}});
+const payload=()=>({consent:true,plate:'abc 1234',make:'Marca QA',model:'Modelo QA',color:'Blanco',year:2022,photos:{driver:jpeg(1),front:jpeg(2),rear:jpeg(3)},recognition:{face:'pass',front:'pass',rear:'review',frontPlate:'ABC 1234',rearPlate:'ABC1234'}});
 function environment(){
  const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');db.exec(readFileSync(new URL('../backend/schema.sql',import.meta.url),'utf8'));
  const prepare=sql=>{let args=[];return {bind(...a){args=a;return this},async first(){return db.prepare(sql).get(...args)||null},async all(){return {results:db.prepare(sql).all(...args)}},async run(){return {success:true,meta:{changes:Number(db.prepare(sql).run(...args).changes)}}},execute(){return /RETURNING/i.test(sql)?{results:db.prepare(sql).all(...args)}:{success:true,meta:{changes:Number(db.prepare(sql).run(...args).changes)}}}}};
@@ -40,7 +40,7 @@ test('validate bounded JPEG, unique photos, consent and explicit plate',()=>{
  assert.equal(validateProfile(payload()).recognition.plateMatch,true);
  assert.throws(()=>validateProfile({...payload(),consent:false}));
  assert.throws(()=>validateProfile({...payload(),photos:{driver:jpeg(1),front:jpeg(1),rear:jpeg(3)}}));
- assert.throws(()=>validateProfile({...payload(),plate:'ABC'}));
+ assert.throws(()=>validateProfile({...payload(),plate:'ABC'}));assert.throws(()=>validateProfile({...payload(),year:9999}));assert.equal(validateProfile(payload()).recognition.vehicleYear,2022);
  const p=payload();p.recognition.rearPlate='XYZ9999';assert.equal(validateProfile(p).recognition.plateMatch,false);
 });
 test('full authorized lifecycle; no photos before confirmation, after cancellation or for wrong passenger',async()=>{
@@ -48,12 +48,13 @@ test('full authorized lifecycle; no photos before confirmation, after cancellati
  assert.equal((await call(own)).status,401);
  assert.equal((await call(own,'GET',tokens[0])).body.state,'missing');
  assert.equal((await call(own,'POST',tokens[0],payload())).status,201);
- const ownResult=await call(own,'GET',tokens[0]);const rev=ownResult.body.revision;assert.equal(ownResult.body.state,'pending');assert(!('photos' in ownResult.body));
+ const ownResult=await call(own,'GET',tokens[0]);const rev=ownResult.body.revision;assert.equal(ownResult.body.state,'pending');assert.equal(ownResult.body.year,2022);assert(!('photos' in ownResult.body));
  assert.equal((await call(admin,'GET',tokens[2])).status,403);
  assert.equal((await call(admin+'/'+ids[0],'GET',tokens[2])).status,403);
  assert.equal((await call(admin+'/'+ids[0],'GET',tokens[1])).body.photos.driver,jpeg(1));
  assert.equal((await call(booking,'GET',customerTokens[0])).body.driverProfile,null);
  assert.equal((await call(admin+'/'+ids[0],'PATCH',tokens[1],{state:'approved',revision:rev})).status,200);
+ assert.equal((await call(own,'GET',tokens[0])).body.vehicle.year,2022);
  assert.equal(db.prepare('SELECT passenger_capacity AS n FROM driver_vehicle_profiles WHERE staff_id=?').get(ids[0]).n,4);
  assert.equal((await call(booking,'GET',customerTokens[0])).body.driverProfile,null);
  db.prepare("UPDATE bookings SET status='confirmed' WHERE id='VIA-QA-0001'").run();

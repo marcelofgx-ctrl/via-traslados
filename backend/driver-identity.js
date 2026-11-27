@@ -38,6 +38,8 @@ export function validateProfile(p){
  if(p?.consent!==true)throw Error('Autorizá mostrar las fotos al pasajero de una reserva confirmada');
  const plate=normalizePlate(p.plate),make=clean(p.make,45),model=clean(p.model,45),color=clean(p.color,35);
  if(!validPlate(plate)||!make||!model||!color)throw Error('Completá matrícula uruguaya, marca, modelo y color');
+ const year=p.year==null?null:Number(p.year);
+ if(year!==null&&(!Number.isInteger(year)||year<1900||year>new Date().getUTCFullYear()+1))throw Error('Año de vehículo inválido');
  const photos=['driver','front','rear'].map(k=>p.photos?.[k]);
  if(!photos.every(jpegSize)||new Set(photos).size!==3)throw Error('Se necesitan tres fotos JPEG distintas y legibles');
  const r=p.recognition||{};
@@ -45,12 +47,12 @@ export function validateProfile(p){
  const frontPlate=normalizePlate(r.frontPlate),rearPlate=normalizePlate(r.rearPlate);
  const recognition={face:signal(r.face),front:signal(r.front),rear:signal(r.rear),
   frontPlate:validPlate(frontPlate)?frontPlate:'',rearPlate:validPlate(rearPlate)?rearPlate:'',
-  plateMatch:frontPlate===plate&&rearPlate===plate};
+  plateMatch:frontPlate===plate&&rearPlate===plate,vehicleYear:year};
  return {plate,make,model,color,photos,recognition};
 }
 const metadata=r=>r?{revision:r.revision,state:r.review_state,plate:r.plate,make:r.make,model:r.model,color:r.color,
- missing:[],reviewNote:r.review_note||'',updatedAt:r.updated_at}: {state:'missing',missing:['driver','front','rear','plate']};
-const META='revision,review_state,plate,make,model,color,review_note,updated_at';
+ year:r.vehicle_year??(r.recognition_json?JSON.parse(r.recognition_json).vehicleYear??null:null),missing:[],reviewNote:r.review_note||'',updatedAt:r.updated_at}: {state:'missing',missing:['driver','front','rear','plate']};
+const META="revision,review_state,plate,make,model,color,review_note,updated_at,json_extract(recognition_json,'$.vehicleYear') AS vehicle_year";
 export async function driverIdentityRoutes(req,env,path,send,err){
  const own=path==='/api/staff/driver-profile';
  const list=path==='/api/admin/driver-profiles';
@@ -94,7 +96,8 @@ export async function driverIdentityRoutes(req,env,path,send,err){
   if(p.state==='approved'){
    // Keep operational capacity unchanged; synchronize only identity of the car.
    const v=env.DB.prepare("INSERT INTO driver_vehicle_profiles(staff_id,license_plate,make,model) SELECT staff_id,plate,make,model FROM driver_identity_profiles WHERE staff_id=? AND revision=? AND review_state='approved' AND review_action=? ON CONFLICT(staff_id) DO UPDATE SET license_plate=excluded.license_plate,make=excluded.make,model=excluded.model,updated_at=unixepoch()").bind(match[1],p.revision,action);
-   const result=await env.DB.batch([q,v]);if(!result[0]?.results?.length)return err('La ficha cambió. Actualizá la revisión.',409);
+   const descriptors=env.DB.prepare("INSERT INTO driver_vehicle_prefill(staff_id,make,model,color,model_year,vehicle_type) SELECT p.staff_id,p.make,p.model,p.color,COALESCE(json_extract(p.recognition_json,'$.vehicleYear'),CASE WHEN d.make=p.make AND d.model=p.model THEN d.model_year END),CASE WHEN d.make=p.make AND d.model=p.model THEN COALESCE(d.vehicle_type,'') ELSE '' END FROM driver_identity_profiles p LEFT JOIN driver_vehicle_prefill d ON d.staff_id=p.staff_id WHERE p.staff_id=? AND p.revision=? AND p.review_state='approved' AND p.review_action=? ON CONFLICT(staff_id) DO UPDATE SET make=excluded.make,model=excluded.model,color=excluded.color,model_year=excluded.model_year,vehicle_type=excluded.vehicle_type").bind(match[1],p.revision,action);
+   const result=await env.DB.batch([q,v,descriptors]);if(!result[0]?.results?.length)return err('La ficha cambió. Actualizá la revisión.',409);
   }else if(!await q.first())return err('La ficha cambió. Actualizá la revisión.',409);
   return send({state:p.state,revision:p.revision});
  }

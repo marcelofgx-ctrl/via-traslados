@@ -1,0 +1,88 @@
+name: Vía V36.3 — private QA login, live profile, direct APK
+on:
+  push:
+    branches: [via-v36-onboarding-integral-qa-20261127]
+    paths: ['.github/workflows/via-v363-private-qa.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Test before deployment
+        run: |
+          npm install --no-audit --no-fund
+          node --test tests/driver-identity-qa.test.mjs
+          node --check backend/qa-entry-v36.js
+      - name: Provision independent QA only
+        run: |
+          node scripts/v36-provision.mjs
+          grep -Fx 'name = "via-traslados-api-v36-qa"' wrangler.v36qa.toml
+          grep -Fx 'database_name = "via-traslados-v36-qa-db"' wrangler.v36qa.toml
+          grep -Fx 'main = "backend/qa-entry-v36.js"' wrangler.v36qa.toml
+          grep -Fx 'VIA_QA_MODE = "V36_PROFILE_PRIVATE"' wrangler.v36qa.toml
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-v36-qa-db --remote --config wrangler.v36qa.toml --file backend/schema.sql
+          node scripts/v36-worker-bootstrap.mjs
+          npx --yes wrangler@4.160.1 deploy --config wrangler.v36qa.toml
+      - name: Verify real QA session, private photos, approval
+        run: |
+          for i in $(seq 1 10); do if curl -fsS --max-time 10 https://via-traslados-api-v36-qa.marcelof-gx.workers.dev/api/health | grep -q V36-PROFILE-PRIVATE; then break; fi; sleep 2; done
+          node scripts/v36-live-profile-smoke.mjs
+          curl -fsS --max-time 15 https://via-traslados-api.marcelof-gx.workers.dev/api/health | grep -q '"ok":true'
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - run: |
+          mkdir -p /tmp/plate-test
+          javac -d /tmp/plate-test android-driver/app/src/main/java/uy/viatraslados/conductor/UruguayPlate.java tests/UruguayPlateTest.java
+          java -cp /tmp/plate-test uy.viatraslados.conductor.UruguayPlateTest
+          javac -d /tmp/plate-test android-driver/app/src/main/java/uy/viatraslados/conductor/ViaVehicleCatalog.java tests/ViaVehicleCatalogTest.java
+          java -cp /tmp/plate-test uy.viatraslados.conductor.ViaVehicleCatalogTest
+          gradle -p android-driver :app:assembleDebug -PviaDriverProfileQa=true --no-daemon
+          cfg=android-driver/app/build/generated/source/buildConfig/debug/uy/viatraslados/conductor/BuildConfig.java
+          grep -Eq 'VIA_PRODUCTION = false;' "$cfg"
+          grep -Eq 'VIA_DRIVER_PROFILE_QA = true;' "$cfg"
+          grep -q 'uy.viatraslados.conductor.v363profileqa' "$cfg"
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-v363-profile-qa.apk
+          cd dist && sha256sum *.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v363-profile-qa
+          path: dist/
+          retention-days: 14
+  publish:
+    needs: [qa,android]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: via-v363-profile-qa,path: dist}
+      - name: Publish direct verified APK only after live QA passes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+          tag=via-v363-profile-qa-20261127
+          apk=via-traslados-v363-profile-qa.apk
+          gh release create "$tag" "$apk" SHA256SUMS.txt --target "$GH_SHA" --title "Vía Traslados V36.3 — ficha privada QA" --notes "QA aislada, sin viajes ni datos reales. Sesión privada por instalación. Fotos de prueba únicamente. No reemplaza producción." --prerelease
+          curl -fLsS --retry 3 --max-time 90 "https://github.com/$GH_REPO/releases/download/$tag/$apk" -o /tmp/v363.apk
+          cmp "$apk" /tmp/v363.apk

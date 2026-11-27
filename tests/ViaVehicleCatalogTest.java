@@ -27,7 +27,8 @@ public final class ViaVehicleCatalogTest {
 
     public static void main(String[] args){
         String[] brands=ViaVehicleCatalog.brands();
-        check(brands.length>=25,"Faltan marcas sugeridas");
+        check(ViaVehicleCatalog.modelCount()>=300,"Catálogo incompleto");
+        check(brands.length>=50,"Faltan marcas sugeridas");
         checkDistinct(brands,"marcas");
         check(brands[brands.length-1].equals(ViaVehicleCatalog.OTHER),
             "Falta entrada para otras marcas");
@@ -63,6 +64,6 @@ public final class ViaVehicleCatalogTest {
                 "Los años deben ordenarse de más nuevo a más viejo");
         }
         System.out.println("OK V33: "+(brands.length-1)+
-            " marcas, modelos relacionados, colores editables y años");
+            " marcas, "+ViaVehicleCatalog.modelCount()+" modelos, colores editables y años");
     }
 }
