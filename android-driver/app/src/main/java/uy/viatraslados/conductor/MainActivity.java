@@ -46,6 +46,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final String API = "https://via-traslados-api.marcelof-gx.workers.dev";
     private static final String API_QA = "https://via-traslados-api-qa.marcelof-gx.workers.dev";
+    private static final String PROFILE_QA_API = "https://via-traslados-api-v36-qa.marcelof-gx.workers.dev";
     private static final int TEAL = Color.rgb(3, 116, 109);
     private static final int TEAL_DARK = Color.rgb(0, 96, 91);
     private static final int BORDER = Color.rgb(223, 234, 230);
@@ -561,7 +562,14 @@ public final class MainActivity extends Activity {
         loading.addView(retry,new LinearLayout.LayoutParams(-1,dp(46)));
         root.addView(loading,new LinearLayout.LayoutParams(-1,-2));
         JSONObject request=new JSONObject();
-        try{request.put("role",persona);}catch(Exception ignored){}
+        try{request.put("role",persona);
+            if(BuildConfig.VIA_DRIVER_PROFILE_QA){
+                android.content.SharedPreferences pref=getSharedPreferences("via_private_profile_qa",MODE_PRIVATE);
+                String key=pref.getString("session_key","");
+                if(!key.matches("[a-f0-9]{64}")){byte[] bytes=new byte[32];new java.security.SecureRandom().nextBytes(bytes);StringBuilder hex=new StringBuilder();for(byte b:bytes)hex.append(String.format(java.util.Locale.ROOT,"%02x",b&255));key=hex.toString();pref.edit().putString("session_key",key).commit();}
+                request.put("installKey",key);
+            }
+        }catch(Exception ignored){}
         api("POST","/api/qa/session",request,(status,result,error)->{
             if(status!=200){
                 addLine(loading,"No se pudo acceder al servidor QA: "+
@@ -1177,7 +1185,7 @@ public final class MainActivity extends Activity {
             String error = "";
             try {
                 okhttp3.Request.Builder builder = new okhttp3.Request.Builder()
-                    .url((BuildConfig.VIA_ONLINE_QA ? API_QA : API) + path)
+                    .url((BuildConfig.VIA_DRIVER_PROFILE_QA ? PROFILE_QA_API : BuildConfig.VIA_ONLINE_QA ? API_QA : API) + path)
                     .header("Accept", "application/json")
                     .header("Cache-Control", "no-cache");
                 if (token != null && !token.isEmpty()) builder.header("Authorization", "Bearer " + token);
@@ -1805,7 +1813,7 @@ public final class MainActivity extends Activity {
             scheduleProfileCheck(800);
         }
         if (BuildConfig.VIA_ONLINE_QA) {
-            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36 · FICHA DE CONDUCTOR · QA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
+            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36.1 · FICHA DE CONDUCTOR · QA PRIVADA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
                 (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
                 "V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
                 10,TEAL_DARK,true);
@@ -1846,6 +1854,14 @@ public final class MainActivity extends Activity {
         LinearLayout content = column();
         content.setPadding(dp("solicitudes".equals(tab)?13:17),dp(10),dp("solicitudes".equals(tab)?13:17),dp(12));
         scroll.addView(content);
+        if(BuildConfig.VIA_DRIVER_PROFILE_QA){
+            addLine(content,"Prueba aislada de ficha",21,INK,true,10);
+            addLine(content,"Esta cuenta de ensayo es privada de esta instalación. No incluye viajes reales ni datos de otros conductores. Usá solo fotos de prueba.",14,MUTED,false,16);
+            content.addView(button("Completar o actualizar mi ficha",true,v->driverProfile.open()),new LinearLayout.LayoutParams(-1,dp(48)));
+            content.addView(button("Revisar ficha de prueba",false,v->driverProfile.reviewList()),new LinearLayout.LayoutParams(-1,dp(48)));
+            content.addView(button("Consultar estado de ficha",false,v->driverProfile.open()),new LinearLayout.LayoutParams(-1,dp(48)));
+            return;
+        }
         if ("administrar".equals(tab)) manage(content);
         else if ("ajustes".equals(tab)) settings(content);
         else if ("historial".equals(tab)) lists(content, "historial");
