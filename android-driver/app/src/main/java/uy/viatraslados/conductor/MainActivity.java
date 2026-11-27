@@ -57,6 +57,8 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout root;
+    private DriverProfileFlow driverProfile;
+    private final Runnable profileCheck=()->checkDriverProfile();
     private static final int QA_IMAGE_CAMERA=9303;
     private static final int QA_IMAGE_GALLERY=9304;
     private String qaPhotoData="";
@@ -131,6 +133,7 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(LIGHT);
         setContentView(root);
+        if(BuildConfig.VIA_DRIVER_PROFILE_QA)driverProfile=new DriverProfileFlow(this,(method,path,payload,done)->api(method,path,payload,done::call));
         // La variante productiva nunca puede iniciar una sesión QA pública.
         if(BuildConfig.VIA_PRODUCTION && (BuildConfig.VIA_ONLINE_QA || BuildConfig.VIA_PREVIEW))
             throw new IllegalStateException("Compilación productiva con indicadores QA");
@@ -173,14 +176,16 @@ public final class MainActivity extends Activity {
         handler.removeCallbacks(poll);
         handler.postDelayed(poll, tripWatch==null?20000:5000);
         if (operatorKey != null || staffToken != null) fetchBookings(false);
+        if(driverProfile!=null){driverProfile.onResume();scheduleProfileCheck(800);}
     }
 
     @Override public void onWindowFocusChanged(boolean focused){
         super.onWindowFocusChanged(focused);
-        if(focused){scheduleRequestAlerts();schedulePermissionsGuide();}
+        if(focused){scheduleRequestAlerts();schedulePermissionsGuide();if(driverProfile!=null)scheduleProfileCheck(800);}
     }
     @Override protected void onPause() {
         visible = false;
+        handler.removeCallbacks(profileCheck);
         RequestMonitorService.setForeground(false);
         handler.removeCallbacks(monitorStatusTick);
         handler.removeCallbacks(initialPermissionsGuide);
@@ -192,6 +197,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        handler.removeCallbacks(profileCheck);if(driverProfile!=null)driverProfile.destroy();
         clearTripWatch();
         if(liveTripNotice!=null)liveTripNotice.dismiss();
         operatorKey = null;
@@ -492,6 +498,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         super.onActivityResult(requestCode,resultCode,data);
+        if(driverProfile!=null&&driverProfile.onResult(requestCode,resultCode,data))return;
         if(requestCode==GUIDE_OVERLAY&&BuildConfig.VIA_PRODUCTION){
             finishPermissionsGuide();
             return;
@@ -989,6 +996,7 @@ public final class MainActivity extends Activity {
     }
 
     private void loginScreen() {
+        if(driverProfile!=null)driverProfile.clearAccount();
         clearTripWatch();if(liveTripNotice!=null)liveTripNotice.dismiss();
         if(newRequestDialog!=null)newRequestDialog.dismiss();
         if(!staffUserId.isEmpty())RequestMonitorService.stop(this);
@@ -1723,6 +1731,16 @@ public final class MainActivity extends Activity {
         return tile;
     }
 
+    private void scheduleProfileCheck(long delay){
+        handler.removeCallbacks(profileCheck);
+        if(driverProfile!=null&&visible)handler.postDelayed(profileCheck,delay);
+    }
+    private void checkDriverProfile(){
+        if(driverProfile==null||!visible||isFinishing()||staffToken==null||staffUserId.isEmpty())return;
+        boolean idle=hasWindowFocus()&&!authFlow&&tripWatch==null&&liveTripNotice==null&&newRequestDialog==null&&acceptanceDialog==null;
+        driverProfile.setAccount(staffUserId);if(idle)driverProfile.checkReminder();
+        scheduleProfileCheck(60000);
+    }
     private void dashboard() {
         if (operatorKey == null && staffToken == null) return;
         authFlow = false;
@@ -1777,8 +1795,16 @@ public final class MainActivity extends Activity {
         }
         root.addView(header,new LinearLayout.LayoutParams(-1,-2));
         addRequestAvailability();
+        if(driverProfile!=null&&staffToken!=null&&!staffUserId.isEmpty()){
+            driverProfile.setAccount(staffUserId);
+            LinearLayout profileActions=row();profileActions.setPadding(dp(14),dp(3),dp(14),dp(3));
+            profileActions.addView(button("Mi ficha · fotos y matrícula",false,v->driverProfile.open()),new LinearLayout.LayoutParams(0,dp(45),1));
+            if("admin".equals(staffRole))profileActions.addView(button("Revisar fichas",false,v->driverProfile.reviewList()),new LinearLayout.LayoutParams(0,dp(45),1));
+            root.addView(profileActions);
+            scheduleProfileCheck(800);
+        }
         if (BuildConfig.VIA_ONLINE_QA) {
-            TextView qa=text(BuildConfig.VIA_ONBOARD_QA?
+            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36 · FICHA DE CONDUCTOR · QA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
                 (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
                 "V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
                 10,TEAL_DARK,true);

@@ -60,7 +60,8 @@ export async function driverIdentityRoutes(req,env,path,send,err){
  if(own&&req.method==='GET'){
   const r=await env.DB.prepare('SELECT '+META+' FROM driver_identity_profiles WHERE staff_id=?').bind(actor.id).first();
   const v=await env.DB.prepare('SELECT license_plate AS plate,make,model FROM driver_vehicle_profiles WHERE staff_id=?').bind(actor.id).first();
-  return send({...metadata(r),vehicle:v||null});
+  const info=metadata(r);if(r?.review_state==='approved'&&(!v||normalizePlate(v.plate)!==r.plate||v.make!==r.make||v.model!==r.model)){info.state='vehicle_changed';info.missing=['front','rear','plate'];}
+  return send({...info,vehicle:v||null});
  }
  if(own&&req.method==='POST'){
   let p;try{p=validateProfile(await body(req))}catch(e){return err(e.message||'Fotos inválidas',400)}

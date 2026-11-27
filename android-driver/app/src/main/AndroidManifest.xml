@@ -12,6 +12,9 @@
     android:usesCleartextTraffic="false"
     android:theme="@style/AppTheme"
     android:icon="@drawable/driver_icon">
+    <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.profilephotos" android:exported="false" android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/profile_photo_paths" />
+    </provider>
     <service android:name=".RequestMonitorService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync" />
     <activity android:name=".MainActivity"
       android:exported="true"
