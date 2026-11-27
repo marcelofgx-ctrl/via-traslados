@@ -42,5 +42,28 @@ final class AlertSignal {
             }catch(RuntimeException ignored){}
         }
     }
+    static boolean replayExternal(Context c){
+        ensureChannel(c);NotificationManager nm=c.getSystemService(NotificationManager.class);
+        if(nm==null||!nm.areNotificationsEnabled()||nm.getCurrentInterruptionFilter()!=NotificationManager.INTERRUPTION_FILTER_ALL)return false;
+        NotificationChannel ch=nm.getNotificationChannel(CHANNEL);
+        AudioManager audio=c.getSystemService(AudioManager.class);
+        if(ch==null||ch.getImportance()<NotificationManager.IMPORTANCE_DEFAULT||audio==null||audio.getRingerMode()==AudioManager.RINGER_MODE_SILENT)return false;
+        stop(c);
+        boolean played=false;
+        if(audio.getRingerMode()==AudioManager.RINGER_MODE_NORMAL&&ch.getSound()!=null&&audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION)>0){
+            try{tone=RingtoneManager.getRingtone(c,ch.getSound());if(tone!=null){tone.setAudioAttributes(attrs());tone.play();played=true;}}catch(RuntimeException ignored){}
+        }
+        if(ch.shouldVibrate()){
+            try{
+                if(Build.VERSION.SDK_INT>=31){VibratorManager vm=c.getSystemService(VibratorManager.class);motor=vm==null?null:vm.getDefaultVibrator();}else motor=c.getSystemService(Vibrator.class);
+                if(motor!=null&&motor.hasVibrator()){
+                    long[] wave=ch.getVibrationPattern();
+                    if(wave==null||wave.length==0||java.util.Arrays.equals(wave,PULSE))wave=new long[]{0,1200,200,1200,200,1200,200,1200};
+                    motor.vibrate(VibrationEffect.createWaveform(wave,-1),attrs());played=true;
+                }
+            }catch(RuntimeException ignored){}
+        }
+        return played;
+    }
     static void stop(Context c){if(tone!=null){try{tone.stop();}catch(RuntimeException ignored){}tone=null;}if(motor!=null){try{motor.cancel();}catch(RuntimeException ignored){}motor=null;}}
 }

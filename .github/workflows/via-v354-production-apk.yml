@@ -1,7 +1,7 @@
-name: Vía Traslados V35.10 — external sheet layout and persistent collapsible tab
+name: Vía Traslados V35.11 — compact interactive external tab
 on:
   push:
-    branches: [via-v3510-prod-sheet-fix-20261127]
+    branches: [via-v3511-prod-compact-tab-20261127]
     paths: ['.github/workflows/via-v354-production-apk.yml']
 permissions:
   contents: read
@@ -27,12 +27,14 @@ jobs:
           mkdir -p /tmp/alert-tests
           javac -d /tmp/alert-tests android-driver/app/src/main/java/uy/viatraslados/conductor/RequestAlertQueue.java tests/RequestAlertQueueTest.java
           java -cp /tmp/alert-tests uy.viatraslados.conductor.RequestAlertQueueTest
-          git worktree add --detach /tmp/via-rollback 295346f0a1be9a333e41d9ebe3377e3af3c88f26
+          javac -d /tmp/alert-tests android-driver/app/src/main/java/uy/viatraslados/conductor/OverlayGesture.java tests/OverlayGestureTest.java
+          java -cp /tmp/alert-tests uy.viatraslados.conductor.OverlayGestureTest
+          git worktree add --detach /tmp/via-rollback 25d56198ab20757ddb98b920865ff2ef5d9cf315
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/via-rollback/android-driver/app/build.gradle')
-          s=p.read_text();assert "versionCode viaProductionRelease ? 362" in s
-          p.write_text(s.replace("versionCode viaProductionRelease ? 362","versionCode viaProductionRelease ? 365").replace("versionName viaProductionRelease ? '0.35.9'","versionName viaProductionRelease ? '0.35.9-rollback'"))
+          s=p.read_text();assert "versionCode viaProductionRelease ? 364" in s
+          p.write_text(s.replace("versionCode viaProductionRelease ? 364","versionCode viaProductionRelease ? 367").replace("versionName viaProductionRelease ? '0.35.10'","versionName viaProductionRelease ? '0.35.10-rollback'"))
           PY
       - name: Build production package and rollback package
         run: |
@@ -96,15 +98,15 @@ jobs:
           for mode in pilot rollback; do
             if [ "$mode" = pilot ]; then
               src=android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
-              dest=direct-apk/assets/via-traslados-conductor-v3510.apk
-              code=364
-              version=0.35.10
+              dest=direct-apk/assets/via-traslados-conductor-v3511.apk
+              code=366
+              version=0.35.11
               root=android-driver
             else
               src=/tmp/via-rollback/android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
-              dest=direct-apk/assets/via-traslados-conductor-v359-rollback.apk
-              code=365
-              version=0.35.9-rollback
+              dest=direct-apk/assets/via-traslados-conductor-v3510-rollback.apk
+              code=367
+              version=0.35.10-rollback
               root=/tmp/via-rollback/android-driver
             fi
             echo "PHASE: $mode generated production build flags"
@@ -151,13 +153,13 @@ jobs:
             X-Content-Type-Options: nosniff
           EOF
           cat > direct-apk/wrangler.jsonc <<'EOF'
-          {"name":"via-traslados-conductor-v3510","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
+          {"name":"via-traslados-conductor-v3511","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
           EOF
           npx --yes wrangler@4.160.1 deploy --config direct-apk/wrangler.jsonc
       - name: Verify both public APKs byte for byte
         run: |
           for file in direct-apk/assets/*.apk; do
-            url="https://via-traslados-conductor-v3510.marcelof-gx.workers.dev/$(basename "$file")"
+            url="https://via-traslados-conductor-v3511.marcelof-gx.workers.dev/$(basename "$file")"
             curl -fLsS --retry 8 --retry-all-errors --retry-delay 3 -D /tmp/apk-headers "$url" -o /tmp/apk-check
             cmp "$file" /tmp/apk-check
             grep -i 'content-type: application/vnd.android.package-archive' /tmp/apk-headers
@@ -166,5 +168,5 @@ jobs:
           curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{if(!JSON.parse(s).ok)process.exit(1)})'
       - uses: actions/upload-artifact@v4
         with:
-          name: via-v3510-signed-production-and-rollback
+          name: via-v3511-signed-production-and-rollback
           path: direct-apk/assets/*.apk
