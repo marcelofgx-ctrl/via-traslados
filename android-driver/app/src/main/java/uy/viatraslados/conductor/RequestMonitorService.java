@@ -27,7 +27,9 @@ public final class RequestMonitorService extends Service {
     private static volatile RequestMonitorService instance;
     private final Handler ui=new Handler(Looper.getMainLooper());
     private View overlay;
-    private TextView overlayTitle,overlayDescription,tabTitle;
+    private TextView tabTitle;
+    private final Map<String,JSONObject> pendingDetails=new LinkedHashMap<>();
+    private boolean dismissed=false;
     private LinearLayout overlayBody;
     private WindowManager.LayoutParams overlayParams;
     private int latestPending=0;
@@ -112,7 +114,7 @@ public final class RequestMonitorService extends Service {
             // Retire individual notifications left by earlier versions. Only one summary per account.
             for(android.service.notification.StatusBarNotification n:nm.getActiveNotifications())
                 if(n.getId()==ALERT_ID&&n.getTag()!=null&&n.getTag().startsWith("via_req_"+a+"_"))nm.cancel(n.getTag(),ALERT_ID);
-            if(batch.pending==0){nm.cancel(batchTag(a),ALERT_ID);ui.post(()->{if(valid(a)){latestPending=0;removeOverlay();}});return;}
+            if(batch.pending==0){nm.cancel(batchTag(a),ALERT_ID);ui.post(()->{if(valid(a)){latestPending=0;pendingDetails.clear();dismissed=false;removeOverlay();}});return;}
             boolean alreadyActive=false;
             for(android.service.notification.StatusBarNotification n:nm.getActiveNotifications())
                 if(n.getId()==ALERT_ID&&batchTag(a).equals(n.getTag()))alreadyActive=true;
@@ -120,12 +122,14 @@ public final class RequestMonitorService extends Service {
             if(channel==null||channel.getImportance()==NotificationManager.IMPORTANCE_NONE)return;
             boolean audible=false;
             for(String id:batch.unannounced)if(!AlertSignal.wasSounded(this,RequestAlertQueue.key(a,id)))audible=true;
+            final boolean directSignal=audible&&canPresent(a);
+            if(directSignal)ui.post(()->{if(valid(a)&&!foreground)AlertSignal.playExternal(this);});
             String heading=batch.pending==1?"Nueva solicitud de traslado":batch.pending+" solicitudes pendientes";
             // A new batch replaces the previous summary, allowing one sound per batch.
             // Ordinary refreshes preserve the active notification and do not sound again.
             if(!batch.unannounced.isEmpty()||alreadyActive){
                 if(audible)nm.cancel(batchTag(a),ALERT_ID);
-                String notificationChannel=audible?ALERTS:"via_requests_quiet_v2";
+                String notificationChannel=audible&&!directSignal?ALERTS:"via_requests_quiet_v2";
                 if(!audible&&alreadyActive&&batch.unannounced.isEmpty()){
                     for(android.service.notification.StatusBarNotification n:nm.getActiveNotifications())
                         if(n.getId()==ALERT_ID&&batchTag(a).equals(n.getTag()))notificationChannel=n.getNotification().getChannelId();
@@ -140,7 +144,9 @@ public final class RequestMonitorService extends Service {
                 for(String id:batch.unannounced){String key=RequestAlertQueue.key(a,id);edit.putBoolean(key,true);AlertSignal.markSounded(this,key);}
                 edit.apply();
             }
-            ui.post(()->{if(valid(a)&&!foreground){latestPending=batch.pending;if(!canPresent(a)){removeOverlay();return;}if(!batch.unannounced.isEmpty())presentBatch(a,batch.pending);else updateOverlay(batch.pending);}});
+            final Map<String,JSONObject> details=new LinkedHashMap<>();
+            for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);if(x!=null&&"requested".equals(x.optString("status"))&&x.optBoolean("canQuote",false)){String id=x.optString("id","");if(id.matches("[A-Za-z0-9_-]{12,100}")&&!seen.getBoolean(RequestAlertQueue.key(a,id),false))details.put(id,x);}}
+            ui.post(()->{if(valid(a)&&!foreground){pendingDetails.clear();for(Map.Entry<String,JSONObject> e:details.entrySet())if(!seen.getBoolean(RequestAlertQueue.key(a,e.getKey()),false))pendingDetails.put(e.getKey(),e.getValue());latestPending=pendingDetails.size();if(!canPresent(a)||latestPending==0){removeOverlay();return;}if(!batch.unannounced.isEmpty()){dismissed=false;presentBatch(a,latestPending);}else if(!dismissed)updateOverlay(latestPending);}});
         }catch(Exception ignored){/* reconnect on next bounded poll; no secrets or request data in logs */}
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -149,9 +155,8 @@ public final class RequestMonitorService extends Service {
     private void updateOverlay(int count){
         if(overlay==null)return;
         if(count<=0){removeOverlay();return;}
-        overlayTitle.setText(count==1?"Nueva solicitud de traslado":count+" solicitudes pendientes");
-        overlayDescription.setText(count==1?"Tenés un traslado pendiente de revisar.":"Tenés traslados pendientes de revisar.");
-        tabTitle.setText("Vía Traslados · "+count+(count==1?" solicitud pendiente":" solicitudes pendientes")+"  "+(collapsed?"⌃":"⌄"));
+        tabTitle.setText(count==1?"Nuevo traslado  "+(collapsed?"⌃":"⌄"):count+" traslados nuevos  "+(collapsed?"⌃":"⌄"));
+        if(!collapsed)renderDetails();
     }
     private boolean canPresent(String a){
         if(!valid(a)||foreground||!Settings.canDrawOverlays(this))return false;
@@ -160,15 +165,16 @@ public final class RequestMonitorService extends Service {
         return kg!=null&&!kg.isKeyguardLocked()&&pm!=null&&pm.isInteractive()&&nm!=null&&nm.getCurrentInterruptionFilter()==NotificationManager.INTERRUPTION_FILTER_ALL;
     }
     private void presentBatch(String a,int count){
-        if(!canPresent(a)||count<=0)return;
+        if(!canPresent(a)||count<=0||dismissed)return;
         if(!autoOpen(this,a)){showOverlay(a,count);return;}
         try{startActivity(new Intent(this,MainActivity.class).setAction(REVIEW).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));}
         catch(RuntimeException e){showOverlay(a,count);return;}
         // Android can silently deny a background start. Keep the approved sheet as fallback.
-        ui.postDelayed(()->{if(valid(a)&&!foreground&&latestPending>0)showOverlay(a,latestPending);},900);
+        ui.postDelayed(()->{if(valid(a)&&!foreground&&!dismissed&&latestPending>0)showOverlay(a,latestPending);},900);
     }
     private void setCollapsed(boolean value){
         if(overlay==null||overlayBody==null||overlayParams==null)return;
+        if(!value&&!canPresent(actor)){removeOverlay();return;}
         collapsed=value;overlayBody.setVisibility(value?View.GONE:View.VISIBLE);
         updateOverlay(latestPending);
         // Resize the actual window, not a translated child. No transparent touch-blocking area.
@@ -194,52 +200,51 @@ public final class RequestMonitorService extends Service {
             }
         });
     }
-    private void showOverlay(String a,int count){
-        if(!canPresent(a)||count<=0)return;
-        latestPending=count;
-        if(overlay!=null){setCollapsed(false);return;}
-        collapsed=false;
-        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(16),dp(7),dp(16),dp(10));
-        GradientDrawable satin=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{Color.WHITE,0xfff5faf7});
-        satin.setCornerRadii(new float[]{dp(24),dp(24),dp(24),dp(24),0,0,0,0});satin.setStroke(dp(1),0xffd9e3df);
-        box.setBackground(satin);box.setElevation(dp(8));
-        LinearLayout handle=new LinearLayout(this);handle.setOrientation(LinearLayout.VERTICAL);handle.setGravity(Gravity.CENTER_HORIZONTAL);
-        View grip=new View(this);grip.setBackground(shape(0xffaebfb7,3));
-        LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(dp(36),dp(4));gp.gravity=Gravity.CENTER_HORIZONTAL;gp.topMargin=dp(2);handle.addView(grip,gp);
-        tabTitle=label("",12,0xff086361,true);tabTitle.setGravity(Gravity.CENTER);tabTitle.setPadding(0,dp(5),0,dp(5));
-        handle.addView(tabTitle,new LinearLayout.LayoutParams(-1,dp(35)));
-        handle.setContentDescription("Pestaña de solicitudes. Tocá o deslizá para expandir o minimizar.");
-        box.addView(handle,new LinearLayout.LayoutParams(-1,dp(45)));attachTabGesture(handle);
-        LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);overlayBody=body;
-        LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
-        overlayTitle=label("",19,0xff193334,true);header.addView(overlayTitle,new LinearLayout.LayoutParams(0,-2,1));
-        TextView close=label("×",24,0xff657970,false);close.setGravity(Gravity.CENTER);close.setContentDescription("Minimizar sin marcar como visto");
-        header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));close.setOnClickListener(v->setCollapsed(true));body.addView(header);
-        overlayDescription=label("",13,0xff506361,false);overlayDescription.setPadding(0,0,0,0);body.addView(overlayDescription);
-        LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(12),0,0);
-        TextView later=label("Ahora no",14,0xff086361,true);later.setGravity(Gravity.CENTER);
-        GradientDrawable secondary=shape(Color.WHITE,12);secondary.setStroke(dp(1),0xffd4e1db);later.setBackground(secondary);
-        actions.addView(later,new LinearLayout.LayoutParams(0,dp(48),1));
-        TextView open=label("Ver solicitudes",14,Color.WHITE,true);open.setGravity(Gravity.CENTER);open.setBackground(shape(0xff086361,12));
-        LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(0,dp(48),2);op.leftMargin=dp(8);actions.addView(open,op);body.addView(actions);box.addView(body,new LinearLayout.LayoutParams(-1,-2));
-        later.setOnClickListener(v->setCollapsed(true));
-        open.setOnClickListener(v->{
-            if(!valid(a)){removeOverlay();return;}
-            // Keep the visible overlay attached until Activity actually resumes.
-            try{startActivity(new Intent(this,MainActivity.class).setAction(REVIEW).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));}
-            catch(RuntimeException e){try{open().send();}catch(PendingIntent.CanceledException ignored){}}
-        });
-        WindowManager wm=getSystemService(WindowManager.class);if(wm==null)return;
-        WindowManager.LayoutParams lp=new WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
-        lp.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;lp.y=0;
-        if(Build.VERSION.SDK_INT>=30){lp.setFitInsetsTypes(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());lp.setFitInsetsSides(WindowInsets.Side.all());lp.setFitInsetsIgnoringVisibility(true);}
-        // Set all text before the first layout, so the measured height includes the full card.
-        overlay=box;overlayParams=lp;updateOverlay(count);
-        try{wm.addView(box,lp);}
-        catch(RuntimeException e){removeOverlay();}
+    private static final int INK=0xff183934, TEAL=0xff08655d, MUTED=0xff627b72, PAPER=0xfffaf8f2;
+    private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
+    private GradientDrawable satin(int top,int bottom,int radius){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{top,bottom});d.setCornerRadius(dp(radius));d.setStroke(dp(1),0xffd3e0d8);return d;}
+    private void space(LinearLayout l,int height){l.addView(new View(this),new LinearLayout.LayoutParams(1,dp(height)));}
+    private void closeOverlay(){dismissed=true;AlertSignal.stop(this);removeOverlay();}
+    private JSONObject nextDetails(){List<RequestAlertQueue.Entry> es=new ArrayList<>();for(JSONObject x:pendingDetails.values())es.add(new RequestAlertQueue.Entry(x.optString("id"),x.optString("created_at")));RequestAlertQueue.Selection sel=RequestAlertQueue.next(es,id->false);return sel==null?null:pendingDetails.get(sel.id);}
+    private void line(LinearLayout parent,String value,int size,int color,boolean bold){TextView t=label(value,size,color,bold);t.setMaxLines(2);t.setEllipsize(android.text.TextUtils.TruncateAt.END);parent.addView(t);}
+    private void point(LinearLayout parent,String key,String address,boolean first){
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);TextView dot=label(first?"●":"◆",19,TEAL,true);dot.setGravity(Gravity.CENTER);row.addView(dot,new LinearLayout.LayoutParams(dp(28),dp(38)));
+        LinearLayout info=column();line(info,key,10,MUTED,true);line(info,address.isEmpty()?"Sin dirección":address,14,INK,true);row.addView(info,new LinearLayout.LayoutParams(0,-2,1));parent.addView(row);}
+    private android.graphics.Bitmap portrait(JSONObject x){String v=x.optString("passengerPhotoJpegBase64","");if(!x.optBoolean("passengerPhotoAuthorized",false)||v.isEmpty()||v.length()>350000)return null;try{byte[] b=Base64.decode(v,Base64.DEFAULT);if(b.length<4||b.length>260000||(b[0]&255)!=255||(b[1]&255)!=216)return null;android.graphics.BitmapFactory.Options o=new android.graphics.BitmapFactory.Options();o.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(b,0,b.length,o);if(o.outWidth<1||o.outHeight<1||o.outWidth>4096||o.outHeight>4096)return null;o.inSampleSize=1;while(Math.max(o.outWidth,o.outHeight)/o.inSampleSize>256)o.inSampleSize*=2;o.inJustDecodeBounds=false;return android.graphics.BitmapFactory.decodeByteArray(b,0,b.length,o);}catch(Exception e){return null;}}
+    private void renderDetails(){
+        if(overlayBody==null)return;overlayBody.removeAllViews();JSONObject x=nextDetails();if(x==null)return;
+        String id=x.optString("id"),name=x.isNull("name")?"":x.optString("name","").trim();if(name.isEmpty())name="Pasajero";
+        LinearLayout details=column();details.setPadding(0,dp(5),0,dp(4));
+        LinearLayout person=new LinearLayout(this);person.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout avatar=new FrameLayout(this);avatar.setBackground(shape(0xffdcebe2,25));avatar.setClipToOutline(true);TextView initials=label(name.substring(0,1).toUpperCase(java.util.Locale.ROOT),20,TEAL,true);initials.setGravity(Gravity.CENTER);avatar.addView(initials,new FrameLayout.LayoutParams(-1,-1));android.graphics.Bitmap photo=portrait(x);if(photo!=null){ImageView image=new ImageView(this);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setImageBitmap(photo);avatar.addView(image,new FrameLayout.LayoutParams(-1,-1));}person.addView(avatar,new LinearLayout.LayoutParams(dp(47),dp(47)));
+        LinearLayout who=column();who.setPadding(dp(11),0,0,0);line(who,name,18,INK,true);line(who,"Pasajero · solicitud de traslado",12,MUTED,false);person.addView(who,new LinearLayout.LayoutParams(0,-2,1));details.addView(person);space(details,10);
+        LinearLayout trip=column();trip.setPadding(dp(9),dp(9),dp(9),dp(9));trip.setBackground(satin(0xfff9fcf8,0xffeaf3ed,16));point(trip,"ORIGEN",x.optString("origin"),true);space(trip,5);point(trip,"DESTINO",x.optString("destination"),false);details.addView(trip);space(details,10);
+        JSONObject route=x.optJSONObject("route");double km=route==null?Double.NaN:route.optDouble("distanceKm",Double.NaN);int min=route==null?-1:route.optInt("durationMinutes",-1);
+        String dist=Double.isFinite(km)&&km>0?String.format(new java.util.Locale("es","UY"),"%.1f km",km):"—";String time=min>0?min+" min":"—";
+        line(details,dist+"  ·  "+time,17,TEAL,true);String date=x.optString("date"),hour=x.optString("time");line(details,date+"  ·  "+hour+"     |     "+x.optInt("passengers",1)+" pax · "+x.optInt("bags",0)+" val.",13,MUTED,false);
+        ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);scroll.addView(details,new ScrollView.LayoutParams(-1,-2));int max=Math.max(dp(110),getResources().getDisplayMetrics().heightPixels/2-dp(110));int width=Math.max(dp(100),getResources().getDisplayMetrics().widthPixels-dp(60));scroll.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(max,View.MeasureSpec.AT_MOST));overlayBody.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(max,scroll.getMeasuredHeight())));
+        LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(10),0,0);
+        TextView seen=label("Visto",14,TEAL,true);seen.setGravity(Gravity.CENTER);seen.setBackground(satin(PAPER,0xffedf4ee,14));actions.addView(seen,new LinearLayout.LayoutParams(0,dp(48),1));seen.setOnClickListener(v->{if(!valid(actor))return;getSharedPreferences(SEEN,MODE_PRIVATE).edit().putBoolean(RequestAlertQueue.key(actor,id),true).apply();AlertSignal.stop(this);pendingDetails.remove(id);latestPending=pendingDetails.size();if(latestPending==0){NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.cancel(batchTag(actor),ALERT_ID);removeOverlay();}else updateOverlay(latestPending);});
+        TextView open=label("Ver solicitud  ›",14,Color.WHITE,true);open.setGravity(Gravity.CENTER);open.setBackground(satin(0xff0b766b,0xff07564e,14));LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(0,dp(48),2);op.leftMargin=dp(8);actions.addView(open,op);open.setOnClickListener(v->{AlertSignal.stop(this);closeOverlay();try{startActivity(new Intent(this,MainActivity.class).setAction(REVIEW).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));}catch(RuntimeException e){try{open().send();}catch(PendingIntent.CanceledException ignored){}}});overlayBody.addView(actions);
     }
-    private void removeOverlay(){View old=overlay;overlay=null;overlayTitle=null;overlayDescription=null;tabTitle=null;overlayBody=null;overlayParams=null;collapsed=false;if(old!=null){try{WindowManager wm=getSystemService(WindowManager.class);if(wm!=null)wm.removeViewImmediate(old);}catch(RuntimeException ignored){}}}
-    private void shutdown(){stopped=true;running=false;activeActor="";token="";nextToken="";nextActor="";removeOverlay();if(executor!=null)executor.shutdownNow();client.dispatcher().cancelAll();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
+    private void showOverlay(String a,int count){
+        if(!canPresent(a)||count<=0||dismissed)return;latestPending=count;
+        if(overlay!=null){updateOverlay(count);return;}collapsed=true;
+        LinearLayout box=column();box.setPadding(dp(12),dp(5),dp(12),dp(9));box.setBackground(satin(0xfffffdf7,0xffedf5ee,23));box.setElevation(dp(9));
+        LinearLayout handle=column();handle.setGravity(Gravity.CENTER_HORIZONTAL);View grip=new View(this);grip.setBackground(shape(0xffa1b8ad,4));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(dp(34),dp(4));gp.gravity=Gravity.CENTER_HORIZONTAL;handle.addView(grip,gp);
+        LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView logo=label("V",19,Color.WHITE,true);logo.setGravity(Gravity.CENTER);logo.setBackground(satin(0xff137c70,0xff064c44,11));head.addView(logo,new LinearLayout.LayoutParams(dp(35),dp(35)));
+        LinearLayout titles=column();titles.setPadding(dp(10),0,0,0);line(titles,"VÍA TRASLADOS",10,MUTED,true);tabTitle=label("",15,INK,true);titles.addView(tabTitle);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
+        TextView close=label("×",24,MUTED,false);close.setGravity(Gravity.CENTER);close.setContentDescription("Cerrar pestaña sin marcar solicitudes vistas");close.setOnClickListener(v->closeOverlay());head.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));handle.addView(head,new LinearLayout.LayoutParams(-1,dp(47)));box.addView(handle);attachTabGesture(handle);attachTabGesture(titles);attachTabGesture(logo);
+        overlayBody=column();overlayBody.setVisibility(View.GONE);box.addView(overlayBody,new LinearLayout.LayoutParams(-1,-2));
+        WindowManager wm=getSystemService(WindowManager.class);if(wm==null)return;int width=Math.min(dp(440),getResources().getDisplayMetrics().widthPixels-dp(16));
+        WindowManager.LayoutParams lp=new WindowManager.LayoutParams(width,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
+        lp.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;lp.y=dp(6);if(Build.VERSION.SDK_INT>=30){lp.setFitInsetsTypes(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());lp.setFitInsetsSides(WindowInsets.Side.all());lp.setFitInsetsIgnoringVisibility(true);}
+        overlay=box;overlayParams=lp;updateOverlay(count);try{wm.addView(box,lp);}catch(RuntimeException e){removeOverlay();}
+    }
+    private void removeOverlay(){View old=overlay;overlay=null;tabTitle=null;overlayBody=null;overlayParams=null;collapsed=false;if(old!=null){try{WindowManager wm=getSystemService(WindowManager.class);if(wm!=null)wm.removeViewImmediate(old);}catch(RuntimeException ignored){}}}
+    @Override public void onTaskRemoved(Intent rootIntent){closeOverlay();super.onTaskRemoved(rootIntent);}
+    private void shutdown(){AlertSignal.stop(this);pendingDetails.clear();stopped=true;running=false;activeActor="";token="";nextToken="";nextActor="";removeOverlay();if(executor!=null)executor.shutdownNow();client.dispatcher().cancelAll();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
     @Override public void onTimeout(int startId,int fgsType){state="límite Android · reactivar externo";shutdown();}
-    @Override public void onDestroy(){stopped=true;running=false;activeActor="";token="";removeOverlay();if(instance==this)instance=null;if(executor!=null)executor.shutdownNow();client.dispatcher().cancelAll();super.onDestroy();}
+    @Override public void onDestroy(){AlertSignal.stop(this);pendingDetails.clear();stopped=true;running=false;activeActor="";token="";removeOverlay();if(instance==this)instance=null;if(executor!=null)executor.shutdownNow();client.dispatcher().cancelAll();super.onDestroy();}
 }
