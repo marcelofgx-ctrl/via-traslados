@@ -86,6 +86,8 @@ public final class MainActivity extends Activity {
     private Dialog newRequestDialog;
     private String newRequestDialogId="";
     private boolean reviewRequestsOnRefresh=false;
+    private int alertSequenceReviewed=0;
+    private String alertSequenceAccount="";
     private boolean alertServiceAttempted=false;
     private long lastMonitorAttempt=0;
     private TextView monitorStatusLabel;
@@ -1408,7 +1410,9 @@ public final class MainActivity extends Activity {
             byId.putIfAbsent(id,r);
         }
         RequestAlertQueue.Selection next=RequestAlertQueue.next(entries,id->newRequestPrefs().getBoolean(newRequestKey(id),false));
+        if(!staffUserId.equals(alertSequenceAccount)){alertSequenceAccount=staffUserId;alertSequenceReviewed=0;}
         if(next!=null)showNewRequestDialog(byId.get(next.id),next.count);
+        else alertSequenceReviewed=0;
     }
 
     private GradientDrawable requestAlertSatin(int top,int bottom,int radius,int border){
@@ -1420,91 +1424,121 @@ public final class MainActivity extends Activity {
     }
 
     private void showNewRequestDialog(JSONObject booking,int pending){
-        if(!visible||isFinishing()||newRequestDialog!=null)return;
-        String id=booking.optString("id",""),seenKey=newRequestKey(id);
+        if(!visible||isFinishing()||newRequestDialog!=null||booking==null)return;
+        final String account=staffUserId,id=booking.optString("id",""),seenKey=newRequestKey(id);
         if(seenKey.isEmpty())return;
         Dialog dialog=new Dialog(this);
-        LinearLayout sheet=column();
-        sheet.setPadding(dp(15),dp(10),dp(15),dp(12));
-        sheet.setBackground(requestAlertSatin(Color.WHITE,Color.rgb(250,253,251),22,BORDER));
-        View grip=new View(this);grip.setBackground(bg(Color.rgb(196,212,204),4,0));
-        LinearLayout.LayoutParams gripParams=new LinearLayout.LayoutParams(dp(32),dp(4));
-        gripParams.gravity=Gravity.CENTER_HORIZONTAL;gripParams.bottomMargin=dp(8);sheet.addView(grip,gripParams);
-        LinearLayout header=row();
-        LinearLayout head=column();
-        addLine(head,"VÍA TRASLADOS",10,TEAL_DARK,true,2);
-        addLine(head,pending>1?"Nueva solicitud · "+pending+" por ver":"Nueva solicitud · última por ver",18,INK,true,0);
-        header.addView(head,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout sheet=column();sheet.setPadding(dp(15),dp(12),dp(15),dp(14));
+        sheet.setBackground(requestAlertSatin(Color.WHITE,0xfff9fcfa,24,BORDER));
+        final boolean[] acknowledged={false};
         Runnable acknowledge=()->{
+            if(acknowledged[0]||!account.equals(staffUserId))return;
+            acknowledged[0]=true;alertSequenceReviewed++;
             newRequestPrefs().edit().putBoolean(seenKey,true).apply();
-            RequestMonitorService.cancelAlert(this,staffUserId,id);
-            AlertSignal.stop(this);
+            RequestMonitorService.cancelAlert(this,account,id);AlertSignal.stop(this);
         };
-        TextView close=text("×",24,MUTED,false);close.setGravity(Gravity.CENTER);
-        close.setContentDescription("Cerrar aviso");close.setOnClickListener(v->{acknowledge.run();dialog.dismiss();});
-        header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));
-        sheet.addView(header);
-        // Use the name already present in the authorized request. No invented photo.
-        String name=booking.isNull("name")?"":booking.optString("name","").trim();
-        if(name.isEmpty())name="Pasajero";
-        LinearLayout passenger=row();
-        TextView initials=text(passengerInitials(name),15,TEAL_DARK,true);
-        initials.setGravity(Gravity.CENTER);initials.setBackground(bg(SOFT,24,BORDER));
-        initials.setContentDescription("Avatar con iniciales del pasajero");
-        passenger.addView(initials,new LinearLayout.LayoutParams(dp(42),dp(42)));
-        LinearLayout person=column();LinearLayout.LayoutParams personParams=new LinearLayout.LayoutParams(0,-2,1);personParams.leftMargin=dp(10);
-        TextView passengerName=text(name,15,INK,true);passengerName.setMaxLines(1);passengerName.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        person.addView(passengerName);addLine(person,"Pasajero · "+booking.optInt("passengers",1)+" persona(s)",11,MUTED,false,0);
-        passenger.addView(person,personParams);sheet.addView(passenger);
-        spacer(sheet,9);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
-        LinearLayout content=column(),trip=column();
-        trip.setPadding(dp(10),dp(8),dp(10),dp(8));
-        trip.setBackground(requestAlertSatin(Color.rgb(249,253,250),Color.rgb(232,244,237),13,BORDER));
-        compactAlertPoint(trip,"●",booking.optString("origin"),"Origen");
-        spacer(trip,5);compactAlertPoint(trip,"◆",booking.optString("destination"),"Destino");
-        spacer(trip,6);addLine(trip,routeMetrics(booking.optJSONObject("route")),12,TEAL_DARK,true,0);
-        content.addView(trip,new LinearLayout.LayoutParams(-1,-2));
-        spacer(content,7);addLine(content,compactDate(booking.optString("date"))+" · "+booking.optString("time")+"  ·  "+booking.optInt("bags",0)+" valija(s)",12,INK,true,0);
-        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
-        int maxBody=Math.max(dp(82),Math.min(dp(160),(int)(getResources().getDisplayMetrics().heightPixels*.22)));
-        scroll.measure(View.MeasureSpec.makeMeasureSpec(Math.max(dp(160),getResources().getDisplayMetrics().widthPixels-dp(50)),View.MeasureSpec.AT_MOST),View.MeasureSpec.makeMeasureSpec(maxBody,View.MeasureSpec.AT_MOST));
-        sheet.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(maxBody,scroll.getMeasuredHeight())));
-        spacer(sheet,9);LinearLayout actions=row();
-        actions.addView(button("Visto",false,v->{acknowledge.run();dialog.dismiss();}),new LinearLayout.LayoutParams(0,dp(48),1));
-        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(48),2);ap.leftMargin=dp(8);
-        actions.addView(button("Ver solicitud",true,v->{
-            JSONObject current=null;
-            for(int i=0;i<bookings.length();i++){
-                JSONObject r=bookings.optJSONObject(i);
-                if(newRequestEligible(r)&&id.equals(r.optString("id")))current=r;
+        LinearLayout content=column();
+        LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout badge=new FrameLayout(this);badge.setBackground(requestAlertSatin(0xff087d75,0xff00564f,14,0xff08786f));
+        AlertGlyph bell=new AlertGlyph(this,"bell",Color.WHITE);
+        FrameLayout.LayoutParams bp=new FrameLayout.LayoutParams(dp(29),dp(29),Gravity.CENTER);badge.addView(bell,bp);
+        header.addView(badge,new LinearLayout.LayoutParams(dp(47),dp(47)));
+        LinearLayout head=column();LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(0,-2,1);hp.leftMargin=dp(11);header.addView(head,hp);
+        addLine(head,"Nueva solicitud",20,INK,true,2);
+        int position=alertSequenceReviewed+1,total=alertSequenceReviewed+pending;
+        addLine(head,total==1?"1 solicitud pendiente":"Solicitud "+position+" de "+total+" · "+pending+" pendientes",12,MUTED,false,0);
+        TextView close=text("×",25,MUTED,false);close.setGravity(Gravity.CENTER);close.setContentDescription("Cerrar aviso visto");close.setOnClickListener(v->{acknowledge.run();dialog.dismiss();});
+        header.addView(close,new LinearLayout.LayoutParams(dp(36),dp(44)));content.addView(header);
+        if(total>1){
+            LinearLayout progress=row();progress.setGravity(Gravity.CENTER);int shown=Math.min(5,total);
+            for(int i=0;i<shown;i++){
+                View dot=new View(this);dot.setBackground(bg(i==Math.min(shown-1,position-1)?TEAL_DARK:i<position-1?0xff7ab8ad:0xffd1ddd8,8,0));
+                progress.addView(dot,new LinearLayout.LayoutParams(dp(8),dp(8)));
+                if(i<shown-1){View connector=new View(this);connector.setBackgroundColor(0xffd3e0db);progress.addView(connector,new LinearLayout.LayoutParams(dp(20),dp(1)));}
             }
-            acknowledge.run();dialog.dismiss();tab="solicitudes";subtab="nuevas";dashboard();
-            if(current!=null)details(current);
-        }),ap);
-        sheet.addView(actions);
-        newRequestDialog=dialog;newRequestDialogId=id;
-        dialog.setCancelable(true);dialog.setCanceledOnTouchOutside(false);
-        // Explicit back/cancel is a viewed alert; lifecycle dismissals are not.
-        dialog.setOnCancelListener(d->acknowledge.run());
-        dialog.setOnDismissListener(d->{
-            if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}
-            // A detail dialog owns focus until it closes; do not interrupt it.
-            scheduleRequestAlerts();
-        });
-        dialog.setContentView(sheet);dialog.show();
-        AlertSignal.playInside(this,seenKey);
-        Window w=dialog.getWindow();
-        if(w!=null){
-            w.setBackgroundDrawableResource(android.R.color.transparent);
-            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams p=w.getAttributes();
-            p.width=Math.min(dp(460),getResources().getDisplayMetrics().widthPixels-dp(20));
-            p.height=WindowManager.LayoutParams.WRAP_CONTENT;
-            p.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;p.dimAmount=.12f;p.y=dp(8);
-            w.setAttributes(p);
-            w.setWindowAnimations(android.R.style.Animation_InputMethod);
+            LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,dp(18));pp.topMargin=dp(4);content.addView(progress,pp);
         }
+        spacer(content,10);
+        String name=booking.isNull("name")?"":booking.optString("name","").trim();
+        boolean named=!name.isEmpty();if(!named)name="Pasajero";
+        LinearLayout passenger=row();passenger.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout avatar=new FrameLayout(this);avatar.setBackground(bg(SOFT,28,BORDER));avatar.setClipToOutline(true);
+        TextView initials=text(named?passengerInitials(name):"P",16,TEAL_DARK,true);initials.setGravity(Gravity.CENTER);
+        avatar.addView(initials,new FrameLayout.LayoutParams(-1,-1));avatar.setContentDescription("Avatar del pasajero");
+        // Only consume an explicitly authorized inline passenger photo, never fetch from arbitrary URLs.
+        Bitmap photo=named?authorizedPassengerPhoto(booking):null;
+        if(photo!=null){ImageView portrait=new ImageView(this);portrait.setScaleType(ImageView.ScaleType.CENTER_CROP);portrait.setImageBitmap(photo);avatar.addView(portrait,new FrameLayout.LayoutParams(-1,-1));}
+        passenger.addView(avatar,new LinearLayout.LayoutParams(dp(43),dp(43)));
+        LinearLayout person=column();LinearLayout.LayoutParams personParams=new LinearLayout.LayoutParams(0,-2,1);personParams.leftMargin=dp(10);
+        TextView passengerName=text(name,15,INK,true);passengerName.setMaxLines(2);passengerName.setEllipsize(android.text.TextUtils.TruncateAt.END);person.addView(passengerName);
+        addLine(person,"Pasajero",11,MUTED,false,0);passenger.addView(person,personParams);content.addView(passenger);
+        spacer(content,10);
+        LinearLayout trip=column();trip.setPadding(dp(12),dp(11),dp(12),dp(11));
+        trip.setBackground(requestAlertSatin(0xfff9fcfa,0xffedf6f1,16,0xffc9dad3));
+        premiumAlertPoint(trip,"A","Origen",booking.optString("origin"),true);
+        LinearLayout link=row();link.setPadding(dp(11),0,0,0);View dashed=new View(this){
+            @Override protected void onDraw(android.graphics.Canvas c){android.graphics.Paint paint=new android.graphics.Paint(3);paint.setColor(0xff67a99e);paint.setStrokeWidth(dp(2));paint.setPathEffect(new android.graphics.DashPathEffect(new float[]{dp(3),dp(3)},0));c.drawLine(getWidth()/2f,0,getWidth()/2f,getHeight(),paint);}
+        };link.addView(dashed,new LinearLayout.LayoutParams(dp(2),dp(13)));trip.addView(link);
+        premiumAlertPoint(trip,"B","Destino",booking.optString("destination"),false);
+        content.addView(trip);spacer(content,8);
+        String date=compactDate(booking.optString("date"));try{if(java.time.LocalDate.parse(booking.optString("date")).equals(java.time.LocalDate.now(java.time.ZoneId.of("America/Montevideo"))))date="Hoy";}catch(Exception ignored){}
+        LinearLayout when=row();alertMetric(when,"calendar","Fecha",date.isEmpty()?"—":date,0);String time=booking.optString("time");alertMetric(when,"clock","Hora",time.isEmpty()?"—":time,7);content.addView(when);
+        spacer(content,7);
+        JSONObject route=routeResults.get(id);if(route==null)route=booking.optJSONObject("route");
+        double km=route==null?Double.NaN:route.optDouble("distanceKm",Double.NaN);int minutes=route==null?-1:route.optInt("durationMinutes",-1);
+        String distance=Double.isFinite(km)&&km>0?String.format(new java.util.Locale("es","UY"),"%.1f km",km):"Pendiente";
+        String duration=minutes>0?(minutes>=60?(minutes/60)+" h "+(minutes%60)+" m":minutes+" min"):"Pendiente";
+        LinearLayout metrics=row();alertMetric(metrics,"route","Distancia",distance,0);alertMetric(metrics,"car","Duración",duration,6);
+        alertMetric(metrics,"people","Pasajeros",booking.optInt("passengers",1)+" pax · "+booking.optInt("bags",0)+" val.",6);content.addView(metrics);
+        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
+        int width=Math.min(dp(460),getResources().getDisplayMetrics().widthPixels-dp(20));
+        int maxBody=Math.max(dp(130),Math.min(dp(600),(int)(getResources().getDisplayMetrics().heightPixels*.79)-dp(86)));
+        scroll.measure(View.MeasureSpec.makeMeasureSpec(Math.max(dp(120),width-dp(30)),View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(maxBody,View.MeasureSpec.AT_MOST));
+        sheet.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(maxBody,scroll.getMeasuredHeight())));
+        spacer(sheet,12);LinearLayout actions=row();
+        Button later=button("Ahora no",false,v->{acknowledge.run();dialog.dismiss();});later.setContentDescription("Marcar aviso como visto y mostrar el siguiente");
+        later.setBackground(ripple(Color.WHITE,0xff8db7ad,13));actions.addView(later,new LinearLayout.LayoutParams(0,dp(50),1));
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(50),1);ap.leftMargin=dp(8);
+        actions.addView(button("Ver solicitud  ›",true,v->{
+            JSONObject current=null;
+            for(int i=0;i<bookings.length();i++){JSONObject r=bookings.optJSONObject(i);if(newRequestEligible(r)&&id.equals(r.optString("id")))current=r;}
+            acknowledge.run();dialog.dismiss();tab="solicitudes";subtab="nuevas";dashboard();if(current!=null)details(current);
+        }),ap);sheet.addView(actions);
+        newRequestDialog=dialog;newRequestDialogId=id;
+        dialog.setCancelable(true);dialog.setCanceledOnTouchOutside(false);dialog.setOnCancelListener(d->acknowledge.run());
+        dialog.setOnDismissListener(d->{if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}scheduleRequestAlerts();});
+        dialog.setContentView(sheet);dialog.show();AlertSignal.playInside(this,seenKey);
+        Window w=dialog.getWindow();if(w!=null){
+            w.setBackgroundDrawableResource(android.R.color.transparent);w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params=w.getAttributes();params.width=width;params.height=WindowManager.LayoutParams.WRAP_CONTENT;
+            params.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;params.dimAmount=.25f;params.y=dp(8);w.setAttributes(params);w.setWindowAnimations(android.R.style.Animation_InputMethod);
+        }
+    }
+    private Bitmap authorizedPassengerPhoto(JSONObject booking){
+        String value=booking.optString("passengerPhotoJpegBase64","");
+        if(!booking.optBoolean("passengerPhotoAuthorized",false)||value.isEmpty()||value.length()>350000)return null;
+        try{byte[] bytes=Base64.decode(value,Base64.DEFAULT);if(bytes.length<4||bytes.length>260000||(bytes[0]&255)!=255||(bytes[1]&255)!=216)return null;
+            BitmapFactory.Options opt=new BitmapFactory.Options();opt.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(bytes,0,bytes.length,opt);
+            if(opt.outWidth<1||opt.outHeight<1||opt.outWidth>4096||opt.outHeight>4096)return null;
+            opt.inSampleSize=1;while(Math.max(opt.outWidth,opt.outHeight)/opt.inSampleSize>256)opt.inSampleSize*=2;
+            opt.inJustDecodeBounds=false;return BitmapFactory.decodeByteArray(bytes,0,bytes.length,opt);
+        }catch(RuntimeException ignored){return null;}
+    }
+    private void premiumAlertPoint(LinearLayout parent,String marker,String title,String address,boolean origin){
+        LinearLayout line=row();line.setGravity(Gravity.TOP);
+        TextView pin=text(marker,12,Color.WHITE,true);pin.setGravity(Gravity.CENTER);pin.setBackground(bg(origin?TEAL_DARK:0xff228f85,18,0));
+        LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(dp(25),dp(25));pp.topMargin=dp(5);line.addView(pin,pp);
+        LinearLayout words=column();LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(0,-2,1);wp.leftMargin=dp(9);line.addView(words,wp);
+        addLine(words,title,11,MUTED,false,2);addLine(words,prettyAddress(address),15,INK,true,0);parent.addView(line);
+    }
+    private void alertMetric(LinearLayout parent,String glyph,String title,String value,int margin){
+        LinearLayout tile=row();tile.setGravity(Gravity.CENTER_VERTICAL);tile.setPadding(dp(7),dp(9),dp(6),dp(9));
+        tile.setBackground(requestAlertSatin(0xffedf6f2,0xffe2efea,12,0xffe0ece7));
+        AlertGlyph icon=new AlertGlyph(this,glyph,TEAL_DARK);tile.addView(icon,new LinearLayout.LayoutParams(dp(22),dp(23)));
+        LinearLayout words=column();LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(0,-2,1);wp.leftMargin=dp(5);tile.addView(words,wp);
+        addLine(words,title,10,MUTED,false,2);TextView v=text(value,13,INK,true);v.setMaxLines(2);words.addView(v);
+        LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-1,1);tp.leftMargin=dp(margin);parent.addView(tile,tp);
     }
 
     private String passengerInitials(String name){
@@ -1552,7 +1586,7 @@ public final class MainActivity extends Activity {
         if(!RequestMonitorService.desired(this,staffUserId))return "Avisos silenciados";
         if(!requestNotificationPermission())return "Activá notificaciones de Android";
         if(!RequestMonitorService.runningFor(staffUserId))return "Avisos internos · "+RequestMonitorService.status();
-        return android.provider.Settings.canDrawOverlays(this)?"Monitoreo activo · emergente externo":"Monitoreo activo · notificación Android";
+        return android.provider.Settings.canDrawOverlays(this)?(RequestMonitorService.autoOpen(this,staffUserId)?"Monitoreo activo · apertura automática":"Monitoreo activo · emergente externo"):"Monitoreo activo · notificación Android";
     }
     private void configureExternalPopup(){
         if(!requestNotificationPermission()){
@@ -1569,6 +1603,21 @@ public final class MainActivity extends Activity {
               catch(Exception e){message("Configurá Mostrar sobre otras aplicaciones en Ajustes de Android.");}
           }).show();
     }
+    private void configureAlertMode(){
+        final String account=staffUserId;
+        new AlertDialog.Builder(this).setTitle("Modo de alerta")
+            .setSingleChoiceItems(new String[]{"Discreto · emergente inferior","Automático · abrir Vía Traslados"},RequestMonitorService.autoOpen(this,account)?1:0,(d,index)->{
+                d.dismiss();if(!account.equals(staffUserId))return;
+                if(index==0){RequestMonitorService.setAutoOpen(this,account,false);dashboard();return;}
+                new AlertDialog.Builder(this).setTitle("Apertura automática")
+                  .setMessage("Vía Traslados intentará pasar a primer plano al llegar un pedido. Puede interrumpir otras apps. Usá este modo solo cuando no estés conduciendo ni siguiendo una navegación. Podés cambiarlo en cualquier momento.")
+                  .setNegativeButton("Cancelar",null).setPositiveButton("Activar",(confirm,which)->{
+                      if(!account.equals(staffUserId))return;
+                      RequestMonitorService.setAutoOpen(this,account,true);dashboard();
+                      if(!android.provider.Settings.canDrawOverlays(this))configureExternalPopup();
+                  }).show();
+            }).setNegativeButton("Cerrar",null).show();
+    }
     private void addRequestAvailability(){
         if(!BuildConfig.VIA_PRODUCTION||staffToken==null||staffUserId.isEmpty())return;
         boolean on=RequestMonitorService.desired(this,staffUserId),running=RequestMonitorService.runningFor(staffUserId);
@@ -1578,7 +1627,9 @@ public final class MainActivity extends Activity {
         monitorStatusLabel=text(monitorStatusText(),10,MUTED,false);
         label.addView(monitorStatusLabel);
         if(on){TextView external=text(android.provider.Settings.canDrawOverlays(this)?"Emergente externo autorizado":"Activar emergente externo",10,TEAL_DARK,true);
-            external.setPadding(0,dp(3),0,dp(3));external.setOnClickListener(v->configureExternalPopup());label.addView(external);}
+            external.setPadding(0,dp(3),0,dp(3));external.setOnClickListener(v->configureExternalPopup());label.addView(external);
+            TextView mode=text(RequestMonitorService.autoOpen(this,staffUserId)?"Modo: Automático  ›":"Modo: Discreto  ›",11,TEAL_DARK,true);
+            mode.setPadding(0,dp(5),0,dp(5));mode.setOnClickListener(v->configureAlertMode());label.addView(mode);}
         line.addView(label,new LinearLayout.LayoutParams(0,-2,1));
         if(on){TextView restart=actionText("↻",TEAL_DARK,v->{lastMonitorAttempt=0;if(!requestNotificationPermission()){requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},354);}else startRequestMonitor();});restart.setContentDescription("Reactivar monitoreo externo");line.addView(restart,new LinearLayout.LayoutParams(dp(44),dp(44)));}
         android.widget.Switch toggle=new android.widget.Switch(this);toggle.setChecked(on);toggle.setContentDescription("Disponibilidad para recibir solicitudes");

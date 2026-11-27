@@ -44,6 +44,8 @@ public final class RequestMonitorService extends Service {
     static boolean runningFor(String id){return running&&!id.isEmpty()&&id.equals(activeActor);}
     static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences(PREF,MODE_PRIVATE);}
     static boolean desired(Context c,String id){return id!=null&&!id.isEmpty()&&prefs(c).getBoolean("available_"+id,false);}
+    static boolean autoOpen(Context c,String id){return id!=null&&!id.isEmpty()&&prefs(c).getBoolean("auto_open_"+id,false);}
+    static void setAutoOpen(Context c,String id,boolean on){if(id!=null&&!id.isEmpty())prefs(c).edit().putBoolean("auto_open_"+id,on).apply();}
     static void setDesired(Context c,String id,boolean on){if(id!=null&&!id.isEmpty())prefs(c).edit().putBoolean("available_"+id,on).apply();}
     static void start(Context c,String id,String bearer){
         if(!BuildConfig.VIA_PRODUCTION||id==null||id.isEmpty()||!validBearer(bearer)){state="sesión no válida";return;}
@@ -134,7 +136,7 @@ public final class RequestMonitorService extends Service {
                 for(String id:batch.unannounced){String key=RequestAlertQueue.key(a,id);edit.putBoolean(key,true);AlertSignal.markSounded(this,key);}
                 edit.apply();
             }
-            ui.post(()->{if(valid(a)&&!foreground){if(!batch.unannounced.isEmpty())showOverlay(a,batch.pending);else updateOverlay(batch.pending);}});
+            ui.post(()->{if(valid(a)&&!foreground){if(!batch.unannounced.isEmpty())presentBatch(a,batch.pending);else updateOverlay(batch.pending);}});
         }catch(Exception ignored){/* reconnect on next bounded poll; no secrets or request data in logs */}
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -145,6 +147,20 @@ public final class RequestMonitorService extends Service {
         if(count<=0){removeOverlay();return;}
         overlayTitle.setText(count==1?"Nueva solicitud de traslado":count+" solicitudes pendientes");
         overlayDescription.setText(count==1?"Tenés un traslado pendiente de revisar.":"Tenés traslados pendientes de revisar.");
+    }
+    private boolean canPresent(String a){
+        if(!valid(a)||foreground||!Settings.canDrawOverlays(this))return false;
+        KeyguardManager kg=getSystemService(KeyguardManager.class);PowerManager pm=getSystemService(PowerManager.class);
+        NotificationManager nm=getSystemService(NotificationManager.class);
+        return kg!=null&&!kg.isKeyguardLocked()&&pm!=null&&pm.isInteractive()&&nm!=null&&nm.getCurrentInterruptionFilter()==NotificationManager.INTERRUPTION_FILTER_ALL;
+    }
+    private void presentBatch(String a,int count){
+        if(!canPresent(a)||count<=0)return;
+        if(!autoOpen(this,a)){showOverlay(a,count);return;}
+        try{startActivity(new Intent(this,MainActivity.class).setAction(REVIEW).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));}
+        catch(RuntimeException e){showOverlay(a,count);return;}
+        // Android can silently deny a background start. Keep the approved sheet as fallback.
+        ui.postDelayed(()->{if(valid(a)&&!foreground)showOverlay(a,count);},900);
     }
     private void showOverlay(String a,int count){
         if(!valid(a)||foreground||count<=0||!Settings.canDrawOverlays(this))return;
