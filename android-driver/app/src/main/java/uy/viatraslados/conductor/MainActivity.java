@@ -171,6 +171,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onPause() {
         visible = false;
+        AlertSignal.stop(this);
         RequestMonitorService.setForeground(false);
         handler.removeCallbacks(monitorStatusTick);
         handler.removeCallbacks(initialPermissionsGuide);
@@ -182,6 +183,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if(visible||newRequestDialog!=null)AlertSignal.stop(this);
         operatorKey = null;
         staffToken = null;
         staffRefreshToken = null;
@@ -1517,7 +1519,7 @@ public final class MainActivity extends Activity {
         }),ap);sheet.addView(actions);
         newRequestDialog=dialog;newRequestDialogId=id;
         dialog.setCancelable(true);dialog.setCanceledOnTouchOutside(false);dialog.setOnCancelListener(d->acknowledge.run());
-        dialog.setOnDismissListener(d->{if(newRequestDialog==dialog){newRequestDialog=null;newRequestDialogId="";}scheduleRequestAlerts();});
+        dialog.setOnDismissListener(d->{if(newRequestDialog==dialog){AlertSignal.stop(this);newRequestDialog=null;newRequestDialogId="";}scheduleRequestAlerts();});
         dialog.setContentView(sheet);dialog.show();AlertSignal.playInside(this,seenKey);
         Window w=dialog.getWindow();if(w!=null){
             w.setBackgroundDrawableResource(android.R.color.transparent);w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
