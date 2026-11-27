@@ -16,6 +16,18 @@ public final class RequestAlertQueueTest {
   var s=RequestAlertQueue.next(refresh,id->saved.contains(RequestAlertQueue.key("driver1",id)));
   check(s.id.equals("D")&&s.count==1);
   check(RequestAlertQueue.key("","A").isEmpty());
+  Set<String> announced=new HashSet<>();
+  var b=RequestAlertQueue.batch(rows,id->false,announced::contains);
+  check(b.pending==3&&b.unannounced.size()==3);
+  announced.addAll(b.unannounced);
+  b=RequestAlertQueue.batch(rows,id->false,announced::contains);
+  check(b.pending==3&&b.unannounced.isEmpty()); // Ahora no never marks viewed
+  b=RequestAlertQueue.batch(refresh,id->id.equals("A"),announced::contains);
+  check(b.pending==3&&b.unannounced.equals(List.of("D")));
+  b=RequestAlertQueue.batch(rows,id->true,announced::contains);
+  check(b.pending==0&&b.unannounced.isEmpty());
+  check(RequestAlertQueue.batch(rows,id->false,id->false).pending==3); // another account
+  System.out.println("VIA_EXTERNAL_BATCH_PASS pending count, dedupe, defer, new arrivals, seen, account isolation");
   System.out.println("VIA_REQUEST_QUEUE_PASS sequence 3/2/1/0, duplicate feed, refresh, separate account");
  }
 }

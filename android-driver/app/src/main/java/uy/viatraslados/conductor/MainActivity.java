@@ -85,6 +85,7 @@ public final class MainActivity extends Activity {
     private boolean visible = false;
     private Dialog newRequestDialog;
     private String newRequestDialogId="";
+    private boolean reviewRequestsOnRefresh=false;
     private boolean alertServiceAttempted=false;
     private long lastMonitorAttempt=0;
     private TextView monitorStatusLabel;
@@ -105,6 +106,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        reviewRequestsOnRefresh=BuildConfig.VIA_PRODUCTION&&RequestMonitorService.reviewIntent(getIntent());
         getWindow().setStatusBarColor(Color.WHITE);
         getWindow().setNavigationBarColor(LIGHT);
         getWindow().getDecorView().setSystemUiVisibility(
@@ -139,6 +141,13 @@ public final class MainActivity extends Activity {
         }
     }
 
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);setIntent(intent);
+        if(BuildConfig.VIA_PRODUCTION&&RequestMonitorService.reviewIntent(intent)){
+            reviewRequestsOnRefresh=true;
+            if(visible&&staffToken!=null)fetchBookings(false);
+        }
+    }
     @Override protected void onResume() {
         super.onResume();
         visible = true;
@@ -1192,7 +1201,9 @@ public final class MainActivity extends Activity {
                         }
                     }
                     bookings = next;
-                    if (login || !result.equals(lastPayload)) {
+                    boolean review=reviewRequestsOnRefresh&&BuildConfig.VIA_PRODUCTION;
+                    if(review){reviewRequestsOnRefresh=false;tab="solicitudes";subtab="nuevas";requestFilter="all";requestSearch="";}
+                    if (login || review || !result.equals(lastPayload)) {
                         lastPayload = result;
                         dashboard();
                     } else {
@@ -1202,7 +1213,7 @@ public final class MainActivity extends Activity {
                         RequestMonitorService.stopIfOther(this,staffUserId);
                         if(RequestMonitorService.desired(this,staffUserId))startRequestMonitor();
                     }
-                    notifyAcceptedProposals(next);
+                    if(!review)notifyAcceptedProposals(next);
                     notifyNewRequests(next);
                 } catch (Exception e) {
                     message("El servidor devolvió un formato incorrecto.");
@@ -1375,7 +1386,7 @@ public final class MainActivity extends Activity {
 
     private void notifyNewRequests(JSONArray rows){
         if(!BuildConfig.VIA_PRODUCTION||staffToken==null||!RequestMonitorService.desired(this,staffUserId))return;
-        if(!visible||isFinishing()||rows==null||authFlow||
+        if(!visible||isFinishing()||rows==null||authFlow||reviewRequestsOnRefresh||
             (operatorKey==null&&staffToken==null))return;
         if(newRequestDialog!=null){
             boolean stillOpen=false;

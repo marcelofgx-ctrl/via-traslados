@@ -27,7 +27,10 @@ public final class RequestMonitorService extends Service {
     private static volatile RequestMonitorService instance;
     private final Handler ui=new Handler(Looper.getMainLooper());
     private View overlay;
-    private String overlayId="";
+    private TextView overlayTitle,overlayDescription;
+    private static final String REVIEW="uy.viatraslados.REVIEW_REQUESTS";
+    static boolean reviewIntent(Intent i){return i!=null&&REVIEW.equals(i.getAction());}
+    private String batchTag(String a){return "via_batch_"+a;}
     private final Runnable hidePopup=()->removeOverlay();
     static String status(){return state;}
     static boolean validBearer(String value){return value!=null&&!value.isEmpty()&&value.length()<=8192&&value.chars().noneMatch(ch->ch<=32||ch==127);}
@@ -37,7 +40,7 @@ public final class RequestMonitorService extends Service {
     private volatile boolean stopped=false;
     private String actor="";private volatile String token="";
     private final OkHttpClient client=new OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(15,TimeUnit.SECONDS).callTimeout(20,TimeUnit.SECONDS).build();
-    static void setForeground(boolean on){foreground=on;RequestMonitorService service=instance;if(on&&service!=null)service.ui.post(()->service.removeOverlay());}
+    static void setForeground(boolean on){foreground=on;RequestMonitorService service=instance;if(on&&service!=null)service.ui.post(()->{service.removeOverlay();clearAlerts(service);});}
     static boolean runningFor(String id){return running&&!id.isEmpty()&&id.equals(activeActor);}
     static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences(PREF,MODE_PRIVATE);}
     static boolean desired(Context c,String id){return id!=null&&!id.isEmpty()&&prefs(c).getBoolean("available_"+id,false);}
@@ -77,7 +80,7 @@ public final class RequestMonitorService extends Service {
         executor.scheduleWithFixedDelay(()->poll(a),2,25,TimeUnit.SECONDS);
         return START_NOT_STICKY;
     }
-    private PendingIntent open(){return PendingIntent.getActivity(this,3541,new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);}
+    private PendingIntent open(){return PendingIntent.getActivity(this,3541,new Intent(this,MainActivity.class).setAction(REVIEW).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);}
     private boolean valid(String a){return !stopped&&running&&a.equals(activeActor)&&desired(this,a);}
     private void poll(String a){
         if(!valid(a)||foreground)return;
@@ -91,59 +94,96 @@ public final class RequestMonitorService extends Service {
             android.content.SharedPreferences seen=getSharedPreferences(SEEN,MODE_PRIVATE),posted=getSharedPreferences("via_alert_posted_v1",MODE_PRIVATE);
             NotificationManager nm=getSystemService(NotificationManager.class);if(nm==null||!nm.areNotificationsEnabled())return;
             if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)return;
-            Set<String> eligible=new HashSet<>();
-            List<JSONObject> sorted=new ArrayList<>();
-            for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item!=null)sorted.add(item);}
-            sorted.sort((left,right)->right.optString("created_at").compareTo(left.optString("created_at")));
-            boolean emitted=false;
-            for(JSONObject x:sorted){if(x==null||!"requested".equals(x.optString("status"))||!x.optBoolean("canQuote",false))continue;
-                String id=x.optString("id","");if(!id.matches("[A-Za-z0-9_-]{12,100}"))continue;
-                String key=RequestAlertQueue.key(a,id);eligible.add(tag(a,id));
-                if(!valid(a)||foreground)return;
-                if(seen.getBoolean(key,false)){cancelAlert(this,a,id);continue;}
-                if(posted.getBoolean(key,false)||emitted)continue;
-                NotificationChannel channel=nm.getNotificationChannel(ALERTS);
-                if(channel==null||channel.getImportance()==NotificationManager.IMPORTANCE_NONE)continue;
-                Notification.Builder builder=new Notification.Builder(this,AlertSignal.wasSounded(this,key)?"via_requests_quiet_v2":ALERTS).setSmallIcon(R.drawable.driver_icon)
-                  .setContentTitle("Vía Traslados · Nueva solicitud").setContentText("Hay un traslado pendiente de revisar.")
-                  .setCategory(Notification.CATEGORY_EVENT).setContentIntent(open()).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE);
-                nm.notify(tag(a,id),ALERT_ID,builder.build());posted.edit().putBoolean(key,true).apply();
-                AlertSignal.markSounded(this,key);emitted=true;
-                ui.post(()->showOverlay(a,id,key));
+            List<RequestAlertQueue.Entry> entries=new ArrayList<>();
+            for(int i=0;i<rows.length();i++){
+                JSONObject x=rows.optJSONObject(i);
+                if(x==null||!"requested".equals(x.optString("status"))||!x.optBoolean("canQuote",false))continue;
+                String id=x.optString("id","");
+                if(id.matches("[A-Za-z0-9_-]{12,100}"))entries.add(new RequestAlertQueue.Entry(id,x.optString("created_at")));
             }
+            RequestAlertQueue.Batch batch=RequestAlertQueue.batch(entries,id->seen.getBoolean(RequestAlertQueue.key(a,id),false),id->posted.getBoolean(RequestAlertQueue.key(a,id),false));
+            if(!valid(a)||foreground)return;
+            // Retire individual notifications left by earlier versions. Only one summary per account.
             for(android.service.notification.StatusBarNotification n:nm.getActiveNotifications())
-                if(n.getId()==ALERT_ID&&n.getTag()!=null&&n.getTag().startsWith("via_req_"+a+"_")&&!eligible.contains(n.getTag()))nm.cancel(n.getTag(),ALERT_ID);
+                if(n.getId()==ALERT_ID&&n.getTag()!=null&&n.getTag().startsWith("via_req_"+a+"_"))nm.cancel(n.getTag(),ALERT_ID);
+            if(batch.pending==0){nm.cancel(batchTag(a),ALERT_ID);ui.post(()->{if(valid(a))removeOverlay();});return;}
+            boolean alreadyActive=false;
+            for(android.service.notification.StatusBarNotification n:nm.getActiveNotifications())
+                if(n.getId()==ALERT_ID&&batchTag(a).equals(n.getTag()))alreadyActive=true;
+            NotificationChannel channel=nm.getNotificationChannel(ALERTS);
+            if(channel==null||channel.getImportance()==NotificationManager.IMPORTANCE_NONE)return;
+            boolean audible=false;
+            for(String id:batch.unannounced)if(!AlertSignal.wasSounded(this,RequestAlertQueue.key(a,id)))audible=true;
+            String heading=batch.pending==1?"Nueva solicitud de traslado":batch.pending+" solicitudes pendientes";
+            // A new batch replaces the previous summary, allowing one sound per batch.
+            // Ordinary refreshes preserve the active notification and do not sound again.
+            if(!batch.unannounced.isEmpty()||alreadyActive){
+                if(audible)nm.cancel(batchTag(a),ALERT_ID);
+                String notificationChannel=audible?ALERTS:"via_requests_quiet_v2";
+                if(!audible&&alreadyActive&&batch.unannounced.isEmpty()){
+                    for(android.service.notification.StatusBarNotification n:nm.getActiveNotifications())
+                        if(n.getId()==ALERT_ID&&batchTag(a).equals(n.getTag()))notificationChannel=n.getNotification().getChannelId();
+                }
+                Notification note=new Notification.Builder(this,notificationChannel).setSmallIcon(R.drawable.driver_icon)
+                    .setContentTitle("Vía Traslados · "+heading).setContentText("Abrí la aplicación para revisar los traslados.")
+                    .setCategory(Notification.CATEGORY_EVENT).setContentIntent(open()).setAutoCancel(true)
+                    .setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE).build();
+                if(!valid(a)||foreground)return;
+                nm.notify(batchTag(a),ALERT_ID,note);
+                android.content.SharedPreferences.Editor edit=posted.edit();
+                for(String id:batch.unannounced){String key=RequestAlertQueue.key(a,id);edit.putBoolean(key,true);AlertSignal.markSounded(this,key);}
+                edit.apply();
+            }
+            ui.post(()->{if(valid(a)&&!foreground){if(!batch.unannounced.isEmpty())showOverlay(a,batch.pending);else updateOverlay(batch.pending);}});
         }catch(Exception ignored){/* reconnect on next bounded poll; no secrets or request data in logs */}
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private GradientDrawable shape(int color,int corner){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(corner));return d;}
     private TextView label(String value,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,android.graphics.Typeface.BOLD);return t;}
-    private void showOverlay(String a,String id,String key){
-        if(!valid(a)||foreground||!Settings.canDrawOverlays(this)||getSharedPreferences(SEEN,MODE_PRIVATE).getBoolean(key,false))return;
+    private void updateOverlay(int count){
+        if(overlay==null)return;
+        if(count<=0){removeOverlay();return;}
+        overlayTitle.setText(count==1?"Nueva solicitud de traslado":count+" solicitudes pendientes");
+        overlayDescription.setText(count==1?"Tenés un traslado pendiente de revisar.":"Tenés traslados pendientes de revisar.");
+    }
+    private void showOverlay(String a,int count){
+        if(!valid(a)||foreground||count<=0||!Settings.canDrawOverlays(this))return;
         KeyguardManager kg=getSystemService(KeyguardManager.class);
         PowerManager pm=getSystemService(PowerManager.class);
         NotificationManager nm=getSystemService(NotificationManager.class);
         if(kg==null||kg.isKeyguardLocked()||pm==null||!pm.isInteractive()||nm==null||nm.getCurrentInterruptionFilter()!=NotificationManager.INTERRUPTION_FILTER_ALL)return;
-        if(overlay!=null)return;
-        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(15),dp(12),dp(15),dp(12));
-        box.setBackground(shape(0xfff9fcfa,18));box.setElevation(dp(10));
-        box.addView(label("VÍA TRASLADOS",11,0xff086361,true));
-        box.addView(label("Nueva solicitud de traslado",17,0xff193334,true));
-        box.addView(label("Tenés una solicitud pendiente de revisar.",13,0xff506361,false));
-        LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(8),0,0);
-        TextView seen=label("Visto",14,0xff086361,true);seen.setGravity(Gravity.CENTER);seen.setBackground(shape(0xffe6efeb,10));
-        actions.addView(seen,new LinearLayout.LayoutParams(0,dp(44),1));
-        TextView open=label("Abrir",14,Color.WHITE,true);open.setGravity(Gravity.CENTER);open.setBackground(shape(0xff086361,10));
-        LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(0,dp(44),1);op.leftMargin=dp(8);actions.addView(open,op);box.addView(actions);
-        seen.setOnClickListener(v->{if(valid(a)){getSharedPreferences(SEEN,MODE_PRIVATE).edit().putBoolean(key,true).apply();cancelAlert(this,a,id);}removeOverlay();});
-        open.setOnClickListener(v->{removeOverlay();try{open().send();}catch(PendingIntent.CanceledException ignored){}});
-        WindowManager wm=getSystemService(WindowManager.class);
-        if(wm==null)return;
-        WindowManager.LayoutParams lp=new WindowManager.LayoutParams(Math.min(dp(360),getResources().getDisplayMetrics().widthPixels-dp(24)),WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
-        lp.gravity=Gravity.TOP|Gravity.CENTER_HORIZONTAL;lp.y=dp(44);
-        try{wm.addView(box,lp);overlay=box;overlayId=id;ui.removeCallbacks(hidePopup);ui.postDelayed(hidePopup,12000);}catch(RuntimeException ignored){}
+        if(overlay!=null){updateOverlay(count);ui.removeCallbacks(hidePopup);ui.postDelayed(hidePopup,12000);return;}
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(16),dp(9),dp(16),dp(14));
+        GradientDrawable satin=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{Color.WHITE,0xfff5faf7});
+        satin.setCornerRadii(new float[]{dp(24),dp(24),dp(24),dp(24),0,0,0,0});satin.setStroke(dp(1),0xffd9e3df);
+        box.setBackground(satin);box.setElevation(dp(8));
+        View grip=new View(this);grip.setBackground(shape(0xffc1d0c8,3));
+        LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(dp(34),dp(4));gp.gravity=Gravity.CENTER_HORIZONTAL;gp.bottomMargin=dp(6);box.addView(grip,gp);
+        LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView brand=label("VÍA TRASLADOS",11,0xff086361,true);header.addView(brand,new LinearLayout.LayoutParams(0,dp(34),1));
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        TextView close=label("×",24,0xff657970,false);close.setGravity(Gravity.CENTER);close.setContentDescription("Cerrar sin marcar como visto");
+        header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));close.setOnClickListener(v->removeOverlay());box.addView(header);
+        overlayTitle=label("",19,0xff193334,true);box.addView(overlayTitle);
+        overlayDescription=label("",13,0xff506361,false);overlayDescription.setPadding(0,dp(4),0,0);box.addView(overlayDescription);
+        LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(12),0,0);
+        TextView later=label("Ahora no",14,0xff086361,true);later.setGravity(Gravity.CENTER);
+        GradientDrawable secondary=shape(Color.WHITE,12);secondary.setStroke(dp(1),0xffd4e1db);later.setBackground(secondary);
+        actions.addView(later,new LinearLayout.LayoutParams(0,dp(48),1));
+        TextView open=label("Ver solicitudes",14,Color.WHITE,true);open.setGravity(Gravity.CENTER);open.setBackground(shape(0xff086361,12));
+        LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(0,dp(48),2);op.leftMargin=dp(8);actions.addView(open,op);box.addView(actions);
+        later.setOnClickListener(v->removeOverlay());
+        open.setOnClickListener(v->{if(!valid(a)){removeOverlay();return;}removeOverlay();try{open().send();}catch(PendingIntent.CanceledException ignored){}});
+        WindowManager wm=getSystemService(WindowManager.class);if(wm==null)return;
+        WindowManager.LayoutParams lp=new WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
+        lp.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;lp.y=0;
+        try{
+            wm.addView(box,lp);overlay=box;updateOverlay(count);
+            box.setTranslationY(dp(240));box.post(()->{if(overlay==box){box.setTranslationY(box.getHeight());box.animate().translationY(0).setDuration(260).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();}});
+            ui.removeCallbacks(hidePopup);ui.postDelayed(hidePopup,12000);
+        }catch(RuntimeException ignored){overlayTitle=null;overlayDescription=null;}
     }
-    private void removeOverlay(){ui.removeCallbacks(hidePopup);View old=overlay;overlay=null;overlayId="";if(old!=null){try{WindowManager wm=getSystemService(WindowManager.class);if(wm!=null)wm.removeViewImmediate(old);}catch(RuntimeException ignored){}}}
+    private void removeOverlay(){ui.removeCallbacks(hidePopup);View old=overlay;overlay=null;overlayTitle=null;overlayDescription=null;if(old!=null){old.animate().cancel();try{WindowManager wm=getSystemService(WindowManager.class);if(wm!=null)wm.removeViewImmediate(old);}catch(RuntimeException ignored){}}}
     private void shutdown(){stopped=true;running=false;activeActor="";token="";nextToken="";nextActor="";removeOverlay();if(executor!=null)executor.shutdownNow();client.dispatcher().cancelAll();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
     @Override public void onTimeout(int startId,int fgsType){state="límite Android · reactivar externo";shutdown();}
     @Override public void onDestroy(){stopped=true;running=false;activeActor="";token="";removeOverlay();if(instance==this)instance=null;if(executor!=null)executor.shutdownNow();client.dispatcher().cancelAll();super.onDestroy();}

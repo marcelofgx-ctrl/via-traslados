@@ -15,6 +15,19 @@ final class RequestAlertQueue {
         final String id;final int count;
         Selection(String id,int count){this.id=id;this.count=count;}
     }
+    static final class Batch {
+        final int pending;final List<String> unannounced;
+        Batch(int pending,List<String> unannounced){this.pending=pending;this.unannounced=unannounced;}
+    }
+    static Batch batch(List<Entry> entries,Predicate<String> seen,Predicate<String> announced){
+        Set<String> distinct=new HashSet<>();List<String> fresh=new java.util.ArrayList<>();
+        int count=0;
+        for(Entry e:entries){
+            if(e==null||e.id==null||e.id.isEmpty()||!distinct.add(e.id)||seen.test(e.id))continue;
+            count++;if(!announced.test(e.id))fresh.add(e.id);
+        }
+        return new Batch(count,fresh);
+    }
     static String key(String account,String id){
         return account==null||account.isEmpty()||id==null||id.isEmpty()?"":"seen_"+account+"_"+id;
     }
