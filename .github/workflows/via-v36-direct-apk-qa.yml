@@ -1,0 +1,34 @@
+name: Vía V36 QA — direct APK download
+on:
+  push:
+    branches: [via-v36-onboarding-integral-qa-20261127]
+    paths: ['.github/workflows/via-v36-direct-apk-qa.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: via-v36-profile-qa-compile-only
+          run-id: 46034129899
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Verify original build and publish QA only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+          apk=via-traslados-v36-profile-qa.apk
+          test -s "$apk"
+          tag=via-v36-profile-qa-20261127
+          gh release create "$tag" "$apk" SHA256SUMS.txt --target 6143bf69ba9ac0ff3dc6e6ea5e0d10c4c5e1245e --title "Vía Traslados V36 — QA de perfil de conductor" --notes "APK QA independiente. No reemplaza producción. Backend de fotografías aún no desplegado; no introducir datos personales reales." --prerelease
+          curl -fLsS --retry 3 --max-time 90 "https://github.com/$GH_REPO/releases/download/$tag/$apk" -o /tmp/public-qa.apk
+          cmp "$apk" /tmp/public-qa.apk
+          echo "Direct APK verified byte for byte."
