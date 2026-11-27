@@ -27,7 +27,7 @@ public final class RequestMonitorService extends Service {
     private static volatile RequestMonitorService instance;
     private final Handler ui=new Handler(Looper.getMainLooper());
     private View overlay;
-    private TextView tabTitle;
+    private TextView tabTitle,tabChevron;
     private final Map<String,JSONObject> pendingDetails=new LinkedHashMap<>();
     private boolean dismissed=false;
     private LinearLayout overlayBody;
@@ -123,7 +123,7 @@ public final class RequestMonitorService extends Service {
             boolean audible=false;
             for(String id:batch.unannounced)if(!AlertSignal.wasSounded(this,RequestAlertQueue.key(a,id)))audible=true;
             final boolean directSignal=audible&&canPresent(a);
-            if(directSignal)ui.post(()->{if(valid(a)&&!foreground)AlertSignal.playExternal(this);});
+            
             String heading=batch.pending==1?"Nueva solicitud de traslado":batch.pending+" solicitudes pendientes";
             // A new batch replaces the previous summary, allowing one sound per batch.
             // Ordinary refreshes preserve the active notification and do not sound again.
@@ -146,7 +146,7 @@ public final class RequestMonitorService extends Service {
             }
             final Map<String,JSONObject> details=new LinkedHashMap<>();
             for(int i=0;i<rows.length();i++){JSONObject x=rows.optJSONObject(i);if(x!=null&&"requested".equals(x.optString("status"))&&x.optBoolean("canQuote",false)){String id=x.optString("id","");if(id.matches("[A-Za-z0-9_-]{12,100}")&&!seen.getBoolean(RequestAlertQueue.key(a,id),false))details.put(id,x);}}
-            ui.post(()->{if(valid(a)&&!foreground){pendingDetails.clear();for(Map.Entry<String,JSONObject> e:details.entrySet())if(!seen.getBoolean(RequestAlertQueue.key(a,e.getKey()),false))pendingDetails.put(e.getKey(),e.getValue());latestPending=pendingDetails.size();if(!canPresent(a)||latestPending==0){removeOverlay();return;}if(!batch.unannounced.isEmpty()){dismissed=false;presentBatch(a,latestPending);}else if(!dismissed)updateOverlay(latestPending);}});
+            ui.post(()->{if(valid(a)&&!foreground){pendingDetails.clear();for(Map.Entry<String,JSONObject> e:details.entrySet())if(!seen.getBoolean(RequestAlertQueue.key(a,e.getKey()),false))pendingDetails.put(e.getKey(),e.getValue());latestPending=pendingDetails.size();if(!canPresent(a)||latestPending==0){removeOverlay();return;}if(!batch.unannounced.isEmpty()){dismissed=false;presentBatch(a,latestPending);if(directSignal&&overlay!=null)AlertSignal.playExternal(this);}else if(!dismissed)updateOverlay(latestPending);}});
         }catch(Exception ignored){/* reconnect on next bounded poll; no secrets or request data in logs */}
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -155,7 +155,7 @@ public final class RequestMonitorService extends Service {
     private void updateOverlay(int count){
         if(overlay==null)return;
         if(count<=0){removeOverlay();return;}
-        tabTitle.setText(count==1?"Nuevo traslado  "+(collapsed?"⌃":"⌄"):count+" traslados nuevos  "+(collapsed?"⌃":"⌄"));
+        tabTitle.setText(count==1?"Nuevo traslado":count+" traslados nuevos");if(tabChevron!=null)tabChevron.setText(collapsed?"⌃":"⌄");
         if(!collapsed)renderDetails();
     }
     private boolean canPresent(String a){
@@ -170,12 +170,12 @@ public final class RequestMonitorService extends Service {
         try{startActivity(new Intent(this,MainActivity.class).setAction(REVIEW).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));}
         catch(RuntimeException e){showOverlay(a,count);return;}
         // Android can silently deny a background start. Keep the approved sheet as fallback.
-        ui.postDelayed(()->{if(valid(a)&&!foreground&&!dismissed&&latestPending>0)showOverlay(a,latestPending);},900);
+        ui.postDelayed(()->{if(valid(a)&&!foreground&&!dismissed&&latestPending>0){boolean absent=overlay==null;showOverlay(a,latestPending);if(absent&&overlay!=null)AlertSignal.playExternal(this);}},900);
     }
     private void setCollapsed(boolean value){
         if(overlay==null||overlayBody==null||overlayParams==null)return;
         if(!value&&!canPresent(actor)){removeOverlay();return;}
-        collapsed=value;overlayBody.setVisibility(value?View.GONE:View.VISIBLE);
+        AlertSignal.stop(this);collapsed=value;overlayBody.setVisibility(value?View.GONE:View.VISIBLE);
         updateOverlay(latestPending);
         // Resize the actual window, not a translated child. No transparent touch-blocking area.
         overlayParams.height=WindowManager.LayoutParams.WRAP_CONTENT;
@@ -217,11 +217,11 @@ public final class RequestMonitorService extends Service {
         LinearLayout details=column();details.setPadding(0,dp(5),0,dp(4));
         LinearLayout person=new LinearLayout(this);person.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout avatar=new FrameLayout(this);avatar.setBackground(shape(0xffdcebe2,25));avatar.setClipToOutline(true);TextView initials=label(name.substring(0,1).toUpperCase(java.util.Locale.ROOT),20,TEAL,true);initials.setGravity(Gravity.CENTER);avatar.addView(initials,new FrameLayout.LayoutParams(-1,-1));android.graphics.Bitmap photo=portrait(x);if(photo!=null){ImageView image=new ImageView(this);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setImageBitmap(photo);avatar.addView(image,new FrameLayout.LayoutParams(-1,-1));}person.addView(avatar,new LinearLayout.LayoutParams(dp(47),dp(47)));
-        LinearLayout who=column();who.setPadding(dp(11),0,0,0);line(who,name,18,INK,true);line(who,"Pasajero · solicitud de traslado",12,MUTED,false);person.addView(who,new LinearLayout.LayoutParams(0,-2,1));details.addView(person);space(details,10);
+        LinearLayout who=column();who.setPadding(dp(11),0,0,0);line(who,name,16,INK,true);line(who,"Pasajero · solicitud de traslado",12,MUTED,false);person.addView(who,new LinearLayout.LayoutParams(0,-2,1));details.addView(person);space(details,10);
         LinearLayout trip=column();trip.setPadding(dp(9),dp(9),dp(9),dp(9));trip.setBackground(satin(0xfff9fcf8,0xffeaf3ed,16));point(trip,"ORIGEN",x.optString("origin"),true);space(trip,5);point(trip,"DESTINO",x.optString("destination"),false);details.addView(trip);space(details,10);
         JSONObject route=x.optJSONObject("route");double km=route==null?Double.NaN:route.optDouble("distanceKm",Double.NaN);int min=route==null?-1:route.optInt("durationMinutes",-1);
         String dist=Double.isFinite(km)&&km>0?String.format(new java.util.Locale("es","UY"),"%.1f km",km):"—";String time=min>0?min+" min":"—";
-        line(details,dist+"  ·  "+time,17,TEAL,true);String date=x.optString("date"),hour=x.optString("time");line(details,date+"  ·  "+hour+"     |     "+x.optInt("passengers",1)+" pax · "+x.optInt("bags",0)+" val.",13,MUTED,false);
+        line(details,dist+"  ·  "+time,15,TEAL,true);String date=x.optString("date"),hour=x.optString("time");line(details,date+"  ·  "+hour+"     |     "+x.optInt("passengers",1)+" pax · "+x.optInt("bags",0)+" val.",13,MUTED,false);
         ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);scroll.addView(details,new ScrollView.LayoutParams(-1,-2));int max=Math.max(dp(110),getResources().getDisplayMetrics().heightPixels/2-dp(110));int width=Math.max(dp(100),getResources().getDisplayMetrics().widthPixels-dp(60));scroll.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(max,View.MeasureSpec.AT_MOST));overlayBody.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(max,scroll.getMeasuredHeight())));
         LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(10),0,0);
         TextView seen=label("Visto",14,TEAL,true);seen.setGravity(Gravity.CENTER);seen.setBackground(satin(PAPER,0xffedf4ee,14));actions.addView(seen,new LinearLayout.LayoutParams(0,dp(48),1));seen.setOnClickListener(v->{if(!valid(actor))return;getSharedPreferences(SEEN,MODE_PRIVATE).edit().putBoolean(RequestAlertQueue.key(actor,id),true).apply();AlertSignal.stop(this);pendingDetails.remove(id);latestPending=pendingDetails.size();if(latestPending==0){NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.cancel(batchTag(actor),ALERT_ID);removeOverlay();}else updateOverlay(latestPending);});
@@ -230,19 +230,19 @@ public final class RequestMonitorService extends Service {
     private void showOverlay(String a,int count){
         if(!canPresent(a)||count<=0||dismissed)return;latestPending=count;
         if(overlay!=null){updateOverlay(count);return;}collapsed=true;
-        LinearLayout box=column();box.setPadding(dp(12),dp(5),dp(12),dp(9));box.setBackground(satin(0xfffffdf7,0xffedf5ee,23));box.setElevation(dp(9));
+        LinearLayout box=column();box.setPadding(dp(12),dp(5),dp(9),dp(5));box.setBackground(satin(0xfffffdf7,0xfff1f6f0,19));box.setElevation(dp(5));
         LinearLayout handle=column();handle.setGravity(Gravity.CENTER_HORIZONTAL);View grip=new View(this);grip.setBackground(shape(0xffa1b8ad,4));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(dp(34),dp(4));gp.gravity=Gravity.CENTER_HORIZONTAL;handle.addView(grip,gp);
         LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView logo=label("V",19,Color.WHITE,true);logo.setGravity(Gravity.CENTER);logo.setBackground(satin(0xff137c70,0xff064c44,11));head.addView(logo,new LinearLayout.LayoutParams(dp(35),dp(35)));
-        LinearLayout titles=column();titles.setPadding(dp(10),0,0,0);line(titles,"VÍA TRASLADOS",10,MUTED,true);tabTitle=label("",15,INK,true);titles.addView(tabTitle);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-        TextView close=label("×",24,MUTED,false);close.setGravity(Gravity.CENTER);close.setContentDescription("Cerrar pestaña sin marcar solicitudes vistas");close.setOnClickListener(v->closeOverlay());head.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));handle.addView(head,new LinearLayout.LayoutParams(-1,dp(47)));box.addView(handle);attachTabGesture(handle);attachTabGesture(titles);attachTabGesture(logo);
+        TextView logo=label("V",17,Color.WHITE,true);logo.setGravity(Gravity.CENTER);logo.setBackground(satin(0xff137c70,0xff064c44,9));head.addView(logo,new LinearLayout.LayoutParams(dp(30),dp(30)));
+        LinearLayout titles=column();titles.setPadding(dp(10),0,0,0);line(titles,"Vía Traslados",10,MUTED,false);LinearLayout titleRow=new LinearLayout(this);titleRow.setGravity(Gravity.CENTER_VERTICAL);View bell=new View(this){@Override protected void onDraw(android.graphics.Canvas canvas){super.onDraw(canvas);canvas.save();canvas.scale(getWidth()/24f,getHeight()/24f);android.graphics.Paint p=new android.graphics.Paint(3);p.setColor(TEAL);p.setStyle(android.graphics.Paint.Style.STROKE);p.setStrokeWidth(1.6f);p.setStrokeCap(android.graphics.Paint.Cap.ROUND);p.setStrokeJoin(android.graphics.Paint.Join.ROUND);android.graphics.Path path=new android.graphics.Path();path.moveTo(5,17);path.cubicTo(7,15,7,13,7,9);path.cubicTo(7,3,17,3,17,9);path.cubicTo(17,13,17,15,19,17);path.close();canvas.drawPath(path,p);canvas.drawArc(10,18,14,22,0,180,false,p);canvas.restore();}};LinearLayout.LayoutParams bellParams=new LinearLayout.LayoutParams(dp(15),dp(15));bellParams.rightMargin=dp(5);titleRow.addView(bell,bellParams);tabTitle=label("",14,INK,false);tabTitle.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));titleRow.addView(tabTitle);titles.addView(titleRow);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));tabChevron=label("⌃",21,TEAL,false);tabChevron.setGravity(Gravity.CENTER);tabChevron.setContentDescription("Expandir o contraer");head.addView(tabChevron,new LinearLayout.LayoutParams(dp(44),dp(44)));attachTabGesture(tabChevron);
+        TextView close=label("×",21,MUTED,false);close.setGravity(Gravity.CENTER);close.setContentDescription("Cerrar pestaña sin marcar solicitudes vistas");close.setOnClickListener(v->closeOverlay());head.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));handle.addView(head,new LinearLayout.LayoutParams(-1,dp(44)));box.addView(handle);attachTabGesture(handle);attachTabGesture(titles);attachTabGesture(logo);
         overlayBody=column();overlayBody.setVisibility(View.GONE);box.addView(overlayBody,new LinearLayout.LayoutParams(-1,-2));
-        WindowManager wm=getSystemService(WindowManager.class);if(wm==null)return;int width=Math.min(dp(440),getResources().getDisplayMetrics().widthPixels-dp(16));
+        WindowManager wm=getSystemService(WindowManager.class);if(wm==null)return;int width=Math.min(dp(480),getResources().getDisplayMetrics().widthPixels-dp(12));
         WindowManager.LayoutParams lp=new WindowManager.LayoutParams(width,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
         lp.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;lp.y=dp(6);if(Build.VERSION.SDK_INT>=30){lp.setFitInsetsTypes(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());lp.setFitInsetsSides(WindowInsets.Side.all());lp.setFitInsetsIgnoringVisibility(true);}
         overlay=box;overlayParams=lp;updateOverlay(count);try{wm.addView(box,lp);}catch(RuntimeException e){removeOverlay();}
     }
-    private void removeOverlay(){View old=overlay;overlay=null;tabTitle=null;overlayBody=null;overlayParams=null;collapsed=false;if(old!=null){try{WindowManager wm=getSystemService(WindowManager.class);if(wm!=null)wm.removeViewImmediate(old);}catch(RuntimeException ignored){}}}
+    private void removeOverlay(){View old=overlay;if(old!=null)AlertSignal.stop(this);overlay=null;tabTitle=null;tabChevron=null;overlayBody=null;overlayParams=null;collapsed=false;if(old!=null){try{WindowManager wm=getSystemService(WindowManager.class);if(wm!=null)wm.removeViewImmediate(old);}catch(RuntimeException ignored){}}}
     @Override public void onTaskRemoved(Intent rootIntent){closeOverlay();super.onTaskRemoved(rootIntent);}
     private void shutdown(){AlertSignal.stop(this);pendingDetails.clear();stopped=true;running=false;activeActor="";token="";nextToken="";nextActor="";removeOverlay();if(executor!=null)executor.shutdownNow();client.dispatcher().cancelAll();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
     @Override public void onTimeout(int startId,int fgsType){state="límite Android · reactivar externo";shutdown();}
