@@ -1,0 +1,100 @@
+name: Vía QA — stable package and signature
+on:
+  push:
+    branches: [via-v36-onboarding-integral-qa-20261127]
+    paths: ['.github/workflows/via-qa-stable-apk.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: via-qa-stable-sign-publish
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Validate regressions and real QA health
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          node --test tests/driver-identity-qa.test.mjs
+          mkdir -p /tmp/qa-tests
+          src=android-driver/app/src/main/java/uy/viatraslados/conductor
+          javac -d /tmp/qa-tests "$src/UruguayPlate.java" "$src/ViaVehicleCatalog.java" tests/UruguayPlateTest.java tests/ViaVehicleCatalogTest.java
+          java -cp /tmp/qa-tests uy.viatraslados.conductor.UruguayPlateTest
+          java -cp /tmp/qa-tests uy.viatraslados.conductor.ViaVehicleCatalogTest
+          curl -fsS --max-time 20 https://via-traslados-api-v36-qa.marcelof-gx.workers.dev/api/health | grep -q V36-PROFILE-PRIVATE
+          curl -fsS --max-time 20 https://via-traslados-api.marcelof-gx.workers.dev/api/health | grep -q '"ok":true'
+      - name: Build release and verify package and monotonic version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gradle -p android-driver :app:assembleRelease -PviaDriverProfileQa=true --no-daemon
+          cfg=android-driver/app/build/generated/source/buildConfig/release/uy/viatraslados/conductor/BuildConfig.java
+          grep -Eq 'VIA_PRODUCTION = false;' "$cfg"
+          grep -Eq 'VIA_DRIVER_PROFILE_QA = true;' "$cfg"
+          tool="$ANDROID_HOME/build-tools/35.0.0"
+          unsigned=android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$tool/aapt" dump badging "$unsigned" > /tmp/via-qa-badging.txt
+          grep -F "package: name='uy.viatraslados.conductor.qa'" /tmp/via-qa-badging.txt
+          code=$(sed -n "s/^package: .*versionCode='\([0-9]*\)'.*/\1/p" /tmp/via-qa-badging.txt)
+          test -n "$code"
+          tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')
+          previous=$(printf '%s\n' "$tags" | sed -n 's/^via-qa-stable-v\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)
+          if [ -n "$previous" ]; then
+            test "$code" -gt "$previous"
+            curl -fLsS --retry 3 "https://github.com/$GITHUB_REPOSITORY/releases/download/via-qa-stable-v$previous/SIGNING_SHA256.txt" -o /tmp/via-qa-previous-cert.txt
+            grep -Eq '^[a-f0-9]{64}$' /tmp/via-qa-previous-cert.txt
+            echo VIA_QA_ALLOW_BOOTSTRAP=0 >> "$GITHUB_ENV"
+          else
+            test "$code" -eq 3604
+            echo VIA_QA_ALLOW_BOOTSTRAP=1 >> "$GITHUB_ENV"
+          fi
+          echo "VIA_QA_VERSION_CODE=$code" >> "$GITHUB_ENV"
+      - name: Retrieve persistent private QA signing credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/qa-signing-vault.mjs
+      - name: Sign and verify exact package, signature and version
+        run: |
+          set -euo pipefail
+          tool="$ANDROID_HOME/build-tools/35.0.0"
+          mkdir -p dist
+          apk=dist/via-traslados-qa.apk
+          "$tool/zipalign" -P 16 -f 4 android-driver/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/via-qa-aligned.apk
+          "$tool/apksigner" sign --ks "$VIA_QA_KEYSTORE" --ks-type PKCS12 --ks-key-alias via-qa --ks-pass env:VIA_QA_KEY_PASS --key-pass env:VIA_QA_KEY_PASS --out "$apk" /tmp/via-qa-aligned.apk
+          "$tool/apksigner" verify --verbose --print-certs "$apk" > /tmp/via-qa-cert.txt
+          awk '/^Signer #1 certificate SHA-256 digest:/ {print $NF}' /tmp/via-qa-cert.txt > dist/SIGNING_SHA256.txt
+          grep -Eq '^[a-f0-9]{64}$' dist/SIGNING_SHA256.txt
+          if [ -f /tmp/via-qa-previous-cert.txt ]; then cmp /tmp/via-qa-previous-cert.txt dist/SIGNING_SHA256.txt; fi
+          "$tool/aapt" dump badging "$apk" | grep -F "package: name='uy.viatraslados.conductor.qa' versionCode='$VIA_QA_VERSION_CODE'"
+          "$tool/zipalign" -c -P 16 4 "$apk"
+          cd dist && sha256sum *.apk > SHA256SUMS.txt
+      - name: Publish QA only and verify direct download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+          tag="via-qa-stable-v$VIA_QA_VERSION_CODE"
+          gh release create "$tag" via-traslados-qa.apk SHA256SUMS.txt SIGNING_SHA256.txt --target "$GH_SHA" --title "Vía QA · compilación $VIA_QA_VERSION_CODE" --notes "Canal QA permanente: paquete y firma estables. Sin datos reales, independiente de producción. Las antiguas QA versionadas se desinstalan una sola vez." --prerelease
+          curl -fLsS --retry 3 --max-time 90 "https://github.com/$GH_REPO/releases/download/$tag/via-traslados-qa.apk" -o /tmp/via-qa-public.apk
+          cmp via-traslados-qa.apk /tmp/via-qa-public.apk
+      - name: Remove private signing file
+        if: always()
+        run: |
+          if [ -n "${VIA_QA_KEYSTORE:-}" ]; then rm -f "$VIA_QA_KEYSTORE"; fi

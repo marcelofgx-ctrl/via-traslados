@@ -1,0 +1,8 @@
+# Política de publicación Android (27/11/2026)
+Dos instalaciones de uso normal como máximo:
+* Producción: uy.viatraslados.conductor.production, nombre Vía Traslados. Conservar certificado original y versionCode monotónico. No mezclar APK QA con producción.
+* QA: uy.viatraslados.conductor.qa, nombre Vía QA, icono azul QA. Desde 3604 (V36.4) el ID y el certificado son fijos. El número de versión vive dentro de la APK y en la publicación, nunca en el ID.
+* Canal QA estable: workflow via-qa-stable-apk.yml. Construye release, comprueba package/flags, compara versionCode y certificado con última publicación estable y verifica el archivo descargado. No publicar APK de depuración o paquetes versionados a usuarios. La firma QA dedicada se guarda en una D1 privada sin binding a ningún Worker, acceso solo mediante credencial de CI; no subir la clave ni su contraseña a repositorio, artefactos, logs ni releases. Si falta la clave o no coincide, detener publicación. No usar la clave de producción para QA.
+* Migración única: conservar producción, desinstalar QA V36/V36.1/V36.2/V36.3 y demos antiguas después de verificar versión. Instalar Vía QA. La nueva instalación crea una cuenta sintética; no transfiere almacenamiento privado entre paquetes. Android no permite purga silenciosa de otros paquetes. En adelante instalar actualización sobre Vía QA sin borrar datos.
+* Rollback: reconstruir fuente conocida con el MISMO ID y certificado y versionCode mayor al instalado. Nunca crear un tercer icono por rollback.
+* La producción actual V35.12 no se modifica en este cambio. Al promover futuras versiones de producción, aplicar la misma regla desde la rama productiva y conservar certificado original. No desplegar el backend histórico de QA en producción.

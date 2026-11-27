@@ -1,7 +1,7 @@
 name: Vía V36 — driver profile contract and isolated Android build
 on:
   push:
-    branches: [via-v36-onboarding-integral-qa-20261127]
+    branches: [archive-v36-compile-only]
     paths: ['.github/workflows/via-v36-driver-profile-qa.yml','backend/**','addons/via-driver-confirmation.*','tests/driver-identity-qa.test.mjs','android-driver/**']
 permissions:
   contents: read
