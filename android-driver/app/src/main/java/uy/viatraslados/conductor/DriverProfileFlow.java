@@ -34,7 +34,7 @@ final class DriverProfileFlow {
     private final ImageView[] previews=new ImageView[3];private final TextView[] feedback=new TextView[3];
     DriverProfileFlow(Activity a,Api api){this.a=a;this.api=api;File dir=new File(a.getCacheDir(),"profile_capture");File[] stale=dir.listFiles();if(stale!=null)for(File x:stale)x.delete();}
     void setAccount(String id){if(!id.equals(account)){clearAccount();account=id;nextReminder=0;}}
-    void onResume(){/* MainActivity checks server at the next idle foreground opportunity. */}
+    void onResume(){if(panel==null&&review==null&&reminder==null)nextReminder=0;}
     void clearAccount(){
         epoch++;account="";checking=false;nextReminder=0;busy=false;clearCapture();
         if(panel!=null)panel.dismiss();if(reminder!=null)reminder.dismiss();if(review!=null)review.dismiss();

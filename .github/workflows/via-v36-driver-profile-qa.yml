@@ -1,0 +1,50 @@
+name: Vía V36 — driver profile contract and isolated Android build
+on:
+  push:
+    branches: [via-v36-onboarding-integral-qa-20261127]
+    paths: ['.github/workflows/via-v36-driver-profile-qa.yml','backend/**','addons/via-driver-confirmation.*','tests/driver-identity-qa.test.mjs','android-driver/**']
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm install --no-audit --no-fund
+      - run: node --check backend/driver-identity.js && node --check backend/worker.js && node --check addons/via-driver-confirmation.js
+      - run: node --test tests/driver-identity-qa.test.mjs
+      - run: npm run check
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - run: |
+          mkdir -p /tmp/alert-tests
+          javac -d /tmp/alert-tests android-driver/app/src/main/java/uy/viatraslados/conductor/RequestAlertQueue.java tests/RequestAlertQueueTest.java android-driver/app/src/main/java/uy/viatraslados/conductor/OverlayGesture.java tests/OverlayGestureTest.java android-driver/app/src/main/java/uy/viatraslados/conductor/LiveTripGuard.java tests/LiveTripGuardTest.java
+          for test in RequestAlertQueueTest OverlayGestureTest LiveTripGuardTest; do java -cp /tmp/alert-tests uy.viatraslados.conductor.$test; done
+          gradle -p android-driver :app:assembleDebug -PviaDriverProfileQa=true --no-daemon
+      - name: Verify QA app ID and flags
+        run: |
+          cfg=android-driver/app/build/generated/source/buildConfig/debug/uy/viatraslados/conductor/BuildConfig.java
+          grep -Eq 'VIA_PRODUCTION = false;' "$cfg"
+          grep -Eq 'VIA_DRIVER_PROFILE_QA = true;' "$cfg"
+          grep -Eq 'VIA_ONLINE_QA = true;' "$cfg"
+          grep -q 'uy.viatraslados.conductor.v36profileqa' "$cfg"
+          mkdir -p dist
+          cp android-driver/app/build/outputs/apk/debug/app-debug.apk dist/via-traslados-v36-profile-qa.apk
+          cd dist && sha256sum *.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: via-v36-profile-qa-compile-only
+          path: dist/
+          retention-days: 7

@@ -10,15 +10,17 @@ export function jpegSize(value){
  if(typeof value!=='string'||value.length<16||value.length>MAX_PHOTO||! /^[A-Za-z0-9+/]+={0,2}$/.test(value)||value.length%4)return null;
  let a;try{a=Uint8Array.from(atob(value),x=>x.charCodeAt(0))}catch{return null}
  if(a[0]!==255||a[1]!==216||a[a.length-2]!==255||a[a.length-1]!==217)return null;
- let i=2;
+ let i=2,dimensions=null;
  while(i+4<a.length){
   if(a[i++]!==255)return null;while(a[i]===255)i++;
-  const marker=a[i++];if(marker===218||marker===217)return null;
+  const marker=a[i++];if(marker===218)return dimensions;if(marker===217)return null;
+  // Android re-encodes images; reject EXIF/XMP, IPTC and comments in direct uploads.
+  if([225,237,254].includes(marker))return null;
   const n=a[i]*256+a[i+1];if(n<2||i+n>a.length)return null;
   if([192,193,194].includes(marker)){
    if(n<8)return null;
    const h=a[i+3]*256+a[i+4],w=a[i+5]*256+a[i+6];
-   return w>=320&&h>=240&&w<=1600&&h<=1600?{w,h}:null;
+   if(w<320||h<240||w>1600||h>1600)return null;dimensions={w,h};
   }
   i+=n;
  }return null;
@@ -67,7 +69,7 @@ export async function driverIdentityRoutes(req,env,path,send,err){
   let p;try{p=validateProfile(await body(req))}catch(e){return err(e.message||'Fotos inválidas',400)}
   const rev=crypto.randomUUID();
   // A single replacement invalidates any prior approval immediately.
-  await env.DB.prepare("INSERT INTO driver_identity_profiles(staff_id,revision,review_state,plate,make,model,color,driver_jpeg,front_jpeg,rear_jpeg,recognition_json,consent_at) VALUES (?,?,'pending',?,?,?,?,?,?,?,?,unixepoch()) ON CONFLICT(staff_id) DO UPDATE SET revision=excluded.revision,review_state='pending',plate=excluded.plate,make=excluded.make,model=excluded.model,color=excluded.color,driver_jpeg=excluded.driver_jpeg,front_jpeg=excluded.front_jpeg,rear_jpeg=excluded.rear_jpeg,recognition_json=excluded.recognition_json,consent_at=unixepoch(),updated_at=unixepoch(),reviewed_at=NULL,reviewed_by=NULL,review_note=''")
+  await env.DB.prepare("INSERT INTO driver_identity_profiles(staff_id,revision,review_state,plate,make,model,color,driver_jpeg,front_jpeg,rear_jpeg,recognition_json,consent_at) VALUES (?,?,'pending',?,?,?,?,?,?,?,?,unixepoch()) ON CONFLICT(staff_id) DO UPDATE SET revision=excluded.revision,review_state='pending',plate=excluded.plate,make=excluded.make,model=excluded.model,color=excluded.color,driver_jpeg=excluded.driver_jpeg,front_jpeg=excluded.front_jpeg,rear_jpeg=excluded.rear_jpeg,recognition_json=excluded.recognition_json,consent_at=unixepoch(),updated_at=unixepoch(),reviewed_at=NULL,reviewed_by=NULL,review_action=NULL,review_note=''")
    .bind(actor.id,rev,p.plate,p.make,p.model,p.color,...p.photos,JSON.stringify(p.recognition)).run();
   return send({state:'pending',revision:rev,missing:[]},201);
  }
@@ -85,11 +87,12 @@ export async function driverIdentityRoutes(req,env,path,send,err){
   let p;try{p=await body(req,2500)}catch{return err('Datos inválidos',400)}
   if(!['approved','rejected'].includes(p.state)||!ID.test(p.revision||''))return err('Revisión inválida',400);
   const note=clean(p.note,350);if(p.state==='rejected'&&!note)return err('Indicá el motivo',400);
-  const q=env.DB.prepare("UPDATE driver_identity_profiles SET review_state=?,reviewed_by=?,reviewed_at=unixepoch(),review_note=? WHERE staff_id=? AND revision=? AND review_state='pending' RETURNING staff_id")
-    .bind(p.state,actor.id,note,match[1],p.revision);
+  const action=crypto.randomUUID();
+  const q=env.DB.prepare("UPDATE driver_identity_profiles SET review_state=?,reviewed_by=?,reviewed_at=unixepoch(),review_note=?,review_action=? WHERE staff_id=? AND revision=? AND review_state='pending' RETURNING staff_id")
+    .bind(p.state,actor.id,note,action,match[1],p.revision);
   if(p.state==='approved'){
    // Keep operational capacity unchanged; synchronize only identity of the car.
-   const v=env.DB.prepare("INSERT INTO driver_vehicle_profiles(staff_id,license_plate,make,model) SELECT staff_id,plate,make,model FROM driver_identity_profiles WHERE staff_id=? AND revision=? AND review_state='approved' AND reviewed_by=? ON CONFLICT(staff_id) DO UPDATE SET license_plate=excluded.license_plate,make=excluded.make,model=excluded.model,updated_at=unixepoch()").bind(match[1],p.revision,actor.id);
+   const v=env.DB.prepare("INSERT INTO driver_vehicle_profiles(staff_id,license_plate,make,model) SELECT staff_id,plate,make,model FROM driver_identity_profiles WHERE staff_id=? AND revision=? AND review_state='approved' AND review_action=? ON CONFLICT(staff_id) DO UPDATE SET license_plate=excluded.license_plate,make=excluded.make,model=excluded.model,updated_at=unixepoch()").bind(match[1],p.revision,action);
    const result=await env.DB.batch([q,v]);if(!result[0]?.results?.length)return err('La ficha cambió. Actualizá la revisión.',409);
   }else if(!await q.first())return err('La ficha cambió. Actualizá la revisión.',409);
   return send({state:p.state,revision:p.revision});

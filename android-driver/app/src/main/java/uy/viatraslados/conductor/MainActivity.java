@@ -537,6 +537,7 @@ public final class MainActivity extends Activity {
 
     private void startQaSession(String persona){
         if(!BuildConfig.VIA_ONLINE_QA)return;
+        if(driverProfile!=null)driverProfile.clearAccount();
         staffToken=null;
         staffRefreshToken=null;
         operatorKey=null;
