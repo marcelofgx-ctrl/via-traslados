@@ -83,6 +83,16 @@ public final class MainActivity extends Activity {
     private boolean requestSearchVisible = false;
     private boolean loading = false;
     private boolean visible = false;
+    private Dialog liveTripNotice;
+    private TripWatch tripWatch;
+    private static final class TripWatch {
+        final Dialog panel;final String id,state,assignment,account;final boolean quoting,canQuote,canRelease;
+        Dialog confirmation;Button submit;TextView info;boolean sending=false;
+        TripWatch(Dialog p,JSONObject item,String account,boolean quoting){
+            panel=p;id=item.optString("id","");state=item.optString("status","");assignment=item.optString("assignedDriverId","");
+            this.account=account;this.quoting=quoting;canQuote=item.optBoolean("canQuote",false);canRelease=item.optBoolean("canRelease",false);
+        }
+    }
     private Dialog newRequestDialog;
     private String newRequestDialogId="";
     private boolean reviewRequestsOnRefresh=false;
@@ -106,7 +116,7 @@ public final class MainActivity extends Activity {
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (visible && (operatorKey != null || staffToken != null)) fetchBookings(false);
-            if (visible) handler.postDelayed(this, 20000);
+            if (visible) handler.postDelayed(this, tripWatch==null?20000:5000);
         }
     };
 
@@ -161,7 +171,7 @@ public final class MainActivity extends Activity {
         handler.removeCallbacks(monitorStatusTick);handler.post(monitorStatusTick);
         if(staffToken!=null&&!staffUserId.isEmpty()&&RequestMonitorService.desired(this,staffUserId))startRequestMonitor();
         handler.removeCallbacks(poll);
-        handler.postDelayed(poll, 20000);
+        handler.postDelayed(poll, tripWatch==null?20000:5000);
         if (operatorKey != null || staffToken != null) fetchBookings(false);
     }
 
@@ -182,6 +192,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        clearTripWatch();
+        if(liveTripNotice!=null)liveTripNotice.dismiss();
         operatorKey = null;
         staffToken = null;
         staffRefreshToken = null;
@@ -977,6 +989,7 @@ public final class MainActivity extends Activity {
     }
 
     private void loginScreen() {
+        clearTripWatch();if(liveTripNotice!=null)liveTripNotice.dismiss();
         if(newRequestDialog!=null)newRequestDialog.dismiss();
         if(!staffUserId.isEmpty())RequestMonitorService.stop(this);
         alertServiceAttempted=false;
@@ -1213,6 +1226,7 @@ public final class MainActivity extends Activity {
                         }
                     }
                     bookings = next;
+                    validateTripWatch(next);
                     boolean review=reviewRequestsOnRefresh&&BuildConfig.VIA_PRODUCTION;
                     if(review){reviewRequestsOnRefresh=false;tab="solicitudes";subtab="nuevas";requestFilter="all";requestSearch="";}
                     if (login || review || !result.equals(lastPayload)) {
@@ -1265,7 +1279,7 @@ public final class MainActivity extends Activity {
     // Conserva solo el identificador de la aceptación ya anunciada, nunca las credenciales.
     private void notifyAcceptedProposals(JSONArray rows) {
         if (BuildConfig.VIA_PREVIEW) return;
-        if(newRequestDialog!=null||!hasWindowFocus())return;
+        if(tripWatch!=null||liveTripNotice!=null||newRequestDialog!=null||!hasWindowFocus())return;
         if (!visible || rows==null || (operatorKey==null && staffToken==null)) return;
         if (acceptanceDialog!=null) {
             boolean stillPending=false;
@@ -1398,7 +1412,7 @@ public final class MainActivity extends Activity {
 
     private void notifyNewRequests(JSONArray rows){
         if(!BuildConfig.VIA_PRODUCTION||staffToken==null||!RequestMonitorService.desired(this,staffUserId))return;
-        if(!visible||isFinishing()||rows==null||authFlow||reviewRequestsOnRefresh||permissionsGuideActive||
+        if(!visible||isFinishing()||rows==null||authFlow||reviewRequestsOnRefresh||permissionsGuideActive||tripWatch!=null||liveTripNotice!=null||
             (operatorKey==null&&staffToken==null))return;
         if(newRequestDialog!=null){
             boolean stillOpen=false;
@@ -1608,7 +1622,7 @@ public final class MainActivity extends Activity {
         if(BuildConfig.VIA_PRODUCTION&&visible&&!isFinishing()&&!isDestroyed())handler.postDelayed(initialPermissionsGuide,350);
     }
     private void maybeGuideAlertPermissions(){
-        if(!BuildConfig.VIA_PRODUCTION||!visible||isFinishing()||isDestroyed()||!hasWindowFocus()||permissionsGuideActive||newRequestDialog!=null||acceptanceDialog!=null)return;
+        if(!BuildConfig.VIA_PRODUCTION||!visible||isFinishing()||isDestroyed()||!hasWindowFocus()||permissionsGuideActive||newRequestDialog!=null||acceptanceDialog!=null||tripWatch!=null||liveTripNotice!=null)return;
         if(getSharedPreferences(GUIDE_PREF,MODE_PRIVATE).getBoolean("explained",false))return;
         if(requestNotificationPermission()&&overlayAllowed()){
             getSharedPreferences(GUIDE_PREF,MODE_PRIVATE).edit().putBoolean("explained",true).apply();return;
@@ -2429,6 +2443,7 @@ public final class MainActivity extends Activity {
         final String state=item.optString("status","");
         LinearLayout[] views=new LinearLayout[2];
         Dialog panel=premiumPage("","Detalle del traslado",id,statusName(state),views);
+        watchTrip(panel,item,false);
         LinearLayout body=views[0],footer=views[1];
 
         LinearLayout facts=row();
@@ -2732,6 +2747,81 @@ public final class MainActivity extends Activity {
         } catch(Exception e) { message("No fue posible abrir el mapa."); }
     }
 
+    private TripWatch watchTrip(Dialog panel,JSONObject item,boolean quoting){
+        clearTripWatch();
+        TripWatch w=new TripWatch(panel,item,staffUserId,quoting);
+        if(!BuildConfig.VIA_PRODUCTION)return w;
+        tripWatch=w;
+        panel.setOnDismissListener(ignored->{
+            if(tripWatch==w){
+                tripWatch=null;
+                if(w.confirmation!=null)w.confirmation.dismiss();
+                scheduleRequestAlerts();
+            }
+        });
+        handler.removeCallbacks(poll);
+        if(visible){handler.postDelayed(poll,5000);fetchBookings(false);}
+        return w;
+    }
+    private void clearTripWatch(){
+        TripWatch w=tripWatch;tripWatch=null;
+        if(w!=null){if(w.confirmation!=null)w.confirmation.dismiss();w.panel.dismiss();}
+    }
+    private JSONObject findTrip(JSONArray rows,String id){
+        if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);if(r!=null&&id.equals(r.optString("id")))return r;}
+        return null;
+    }
+    private int tripGuard(TripWatch w,JSONObject current){
+        return LiveTripGuard.check(w.state,w.assignment,w.quoting,w.canQuote,w.canRelease,current!=null,
+            current==null?"":current.optString("status",""),current==null?"":current.optString("assignedDriverId",""),
+            current!=null&&current.optBoolean("canQuote",false),current!=null&&current.optBoolean("canRelease",false));
+    }
+    private void validateTripWatch(JSONArray rows){
+        TripWatch w=tripWatch;
+        if(w==null||!w.panel.isShowing()||w.sending||!visible)return;
+        int result=tripGuard(w,findTrip(rows,w.id));
+        if(result!=LiveTripGuard.OK)invalidateTrip(w,result);
+    }
+    private void invalidateTrip(TripWatch w,int result){
+        if(tripWatch!=w)return;
+        if(w.submit!=null)w.submit.setEnabled(false);
+        tripWatch=null;
+        if(w.confirmation!=null)w.confirmation.dismiss();
+        w.panel.dismiss();
+        if(!visible||isFinishing()||isDestroyed())return;
+        if(liveTripNotice!=null)liveTripNotice.dismiss();
+        boolean cancelled=result==LiveTripGuard.CANCELLED;
+        AlertDialog notice=new AlertDialog.Builder(this)
+            .setTitle(cancelled?"Solicitud cancelada":result==LiveTripGuard.MISSING?"Solicitud no disponible":"Solicitud actualizada")
+            .setMessage((cancelled?"El traslado fue cancelado mientras lo estabas gestionando.":result==LiveTripGuard.MISSING?
+                "El traslado ya no está disponible para tu cuenta. Puede haber sido cancelado o adjudicado a otro conductor.":
+                "El estado o la asignación del traslado cambió. Volvé al listado para consultar los datos actuales.")+"\n\n"+w.id)
+            .setPositiveButton("Volver a solicitudes",(dialog,which)->{
+                tab="solicitudes";subtab="nuevas";dashboard();fetchBookings(false);
+            }).setCancelable(false).create();
+        liveTripNotice=notice;
+        notice.setOnDismissListener(dialog->{if(liveTripNotice==notice)liveTripNotice=null;scheduleRequestAlerts();});
+        notice.show();
+    }
+    private void withFreshTrip(TripWatch w,Runnable action){
+        if(!BuildConfig.VIA_PRODUCTION){action.run();return;}
+        if(tripWatch!=w||!w.panel.isShowing()||w.sending||!w.account.equals(staffUserId))return;
+        w.sending=true;if(w.submit!=null)w.submit.setEnabled(false);
+        api("GET","/api/operator/requests",null,(status,response,error)->{
+            if(tripWatch!=w||!w.panel.isShowing()||!w.account.equals(staffUserId))return;
+            if(status!=200){
+                w.sending=false;if(w.submit!=null)w.submit.setEnabled(true);
+                message("No se pudo verificar el estado. No se envió ningún cambio. Intentá nuevamente.");return;
+            }
+            try{
+                JSONArray fresh=new JSONArray(response);JSONObject current=findTrip(fresh,w.id);
+                int result=tripGuard(w,current);
+                if(result!=LiveTripGuard.OK){bookings=fresh;w.sending=false;invalidateTrip(w,result);return;}
+                if(!visible){w.sending=false;if(w.submit!=null)w.submit.setEnabled(true);return;}
+                action.run();
+            }catch(Exception e){w.sending=false;if(w.submit!=null)w.submit.setEnabled(true);message("No se pudo verificar la solicitud. No se envió ningún cambio.");}
+        });
+    }
     private void quote(JSONObject item) {
         if(!item.optBoolean("canQuote",BuildConfig.VIA_PREVIEW||
             "admin".equals(staffRole))) {
@@ -2742,6 +2832,7 @@ public final class MainActivity extends Activity {
         LinearLayout[] views=new LinearLayout[2];
         Dialog panel=premiumPage("PRESUPUESTO ORIENTATIVO","Cotizar traslado",
             id,"Tomar viaje",views);
+        TripWatch watch=watchTrip(panel,item,true);
         LinearLayout body=views[0],footer=views[1];
         LinearLayout route=card();
         addLine(route,"RECORRIDO",10,TEAL_DARK,true,8);
@@ -2780,6 +2871,7 @@ public final class MainActivity extends Activity {
 
         Button submit=button("Enviar propuesta y tomar viaje  →",true,null);
         footer.addView(submit,new LinearLayout.LayoutParams(-1,dp(46)));
+        watch.submit=submit;watch.info=info;
         final int[] feeBps={0};
         final boolean[] guideReady={false};
         price.addTextChangedListener(new android.text.TextWatcher(){
@@ -2798,7 +2890,7 @@ public final class MainActivity extends Activity {
         });
         api("GET","/api/operator/requests/"+Uri.encode(id)+"/price-guide",null,
             (status,response,error)->{
-            if(!panel.isShowing())return;
+            if(!panel.isShowing()||watch.sending)return;
             bands.removeAllViews();
             if(status!=200){
                 info.setText("No hay guía disponible. Podés cotizar manualmente.");
@@ -2810,6 +2902,7 @@ public final class MainActivity extends Activity {
                 if(!payload.optBoolean("canQuote",true)){
                     submit.setEnabled(false);
                     info.setText("Esta solicitud ya no se puede cotizar.");
+                    if(BuildConfig.VIA_PRODUCTION)fetchBookings(false);
                     return;
                 }
                 JSONObject example=payload.optJSONObject("exampleAtSuggested");
@@ -2852,45 +2945,66 @@ public final class MainActivity extends Activity {
                 value=Integer.parseInt(price.getText().toString().trim());
                 if(value<1||value>10000000)throw new IllegalArgumentException();
             }catch(Exception e){message("Ingresá una tarifa válida en pesos uruguayos.");return;}
-            new AlertDialog.Builder(this)
+            AlertDialog confirm=new AlertDialog.Builder(this)
                 .setTitle("Confirmar propuesta")
                 .setMessage("Ofertar $ "+String.format(new java.util.Locale("es","UY"),"%,d",value)+
                     " UYU y adjudicarte este viaje. El pasajero todavía deberá aceptar tu propuesta.")
                 .setNegativeButton("Volver",null)
-                .setPositiveButton("Enviar y tomar",(dialog,which)->{
+                .setPositiveButton("Enviar y tomar",null).create();
+            watch.confirmation=confirm;
+            confirm.show();
+            confirm.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button->{
+                if(watch.sending)return;
+                confirm.dismiss();
+                withFreshTrip(watch,()->{
                     submit.setEnabled(false);
                     try{
                         JSONObject patch=new JSONObject().put("status","quoted").put("price",value);
                         api("PATCH","/api/operator/requests/"+Uri.encode(id),patch,
                             (status,result,error)->{
+                            if(BuildConfig.VIA_PRODUCTION&&tripWatch!=watch)return;
+                            watch.sending=false;
                             if(status==200){
                                 panel.dismiss();
                                 message("Propuesta enviada. El viaje quedó asignado a tu cuenta.");
                                 fetchBookings(true);
-                            }else{
-                                submit.setEnabled(true);
-                                message(error.isEmpty()?
-                                    "No se pudo cotizar. Puede haber sido tomado por otro conductor.":
-                                    error);
-                                fetchBookings(false);
-                            }
+                            }else if(BuildConfig.VIA_PRODUCTION){
+                                // Do not re-enable from a rejected write before checking current state.
+                                api("GET","/api/operator/requests",null,(code,bodyText,problem)->{
+                                    if(tripWatch!=watch)return;
+                                    if(code==200)try{
+                                        JSONArray fresh=new JSONArray(bodyText);
+                                        int guard=tripGuard(watch,findTrip(fresh,id));
+                                        if(guard!=LiveTripGuard.OK){bookings=fresh;invalidateTrip(watch,guard);return;}
+                                        submit.setEnabled(true);
+                                    }catch(Exception ignored){}
+                                    if(code!=200)info.setText("No pudimos verificar el estado. Volvé al listado antes de reintentar.");
+                                    message(error.isEmpty()?"No se pudo confirmar el envío. Revisá el estado del traslado.":error);
+                                    fetchBookings(false);
+                                });
+                            }else{submit.setEnabled(true);message(error);fetchBookings(false);}
                         });
-                    }catch(Exception e){submit.setEnabled(true);message("No se pudo enviar la cotización.");}
-                }).show();
+                    }catch(Exception e){watch.sending=false;submit.setEnabled(true);message("No se pudo enviar la cotización.");}
+                });
+            });
         });
     }
 
     private void confirmStatus(JSONObject item,String next,String title) {
-        new AlertDialog.Builder(this).setTitle(title)
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle(title)
           .setMessage("¿Confirmás este cambio de estado para " + item.optString("id") + "?")
           .setNegativeButton("Volver",null)
-          .setPositiveButton("Confirmar",(d,w)->{
-              try {
-                  JSONObject patch=new JSONObject();
-                  patch.put("status",next);
-                  change(item,patch);
-              }catch(Exception e){message("No se pudo preparar la solicitud.");}
-          }).show();
+          .setPositiveButton("Confirmar",null).create();
+        dialog.show();
+        TripWatch watch=watchTrip(dialog,item,false);
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            withFreshTrip(watch,()->{
+                try{
+                    JSONObject patch=new JSONObject().put("status",next);
+                    dialog.dismiss();change(item,patch);
+                }catch(Exception e){watch.sending=false;message("No se pudo preparar la solicitud.");}
+            });
+        });
     }
 
     private void change(JSONObject item,JSONObject patch) {
