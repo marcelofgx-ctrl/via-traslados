@@ -30,11 +30,18 @@ final class AlertSignal {
         NotificationChannel ch=nm.getNotificationChannel(CHANNEL);
         if(ch==null||ch.getImportance()==NotificationManager.IMPORTANCE_NONE)return;
         markSounded(c,key);
+        playExternal(c);
+    }
+    static void playExternal(Context c){
+        ensureChannel(c);NotificationManager nm=c.getSystemService(NotificationManager.class);
+        if(nm==null||!nm.areNotificationsEnabled())return;
+        NotificationChannel ch=nm.getNotificationChannel(CHANNEL);
+        if(ch==null||ch.getImportance()==NotificationManager.IMPORTANCE_NONE)return;
         if(nm.getCurrentInterruptionFilter()!=NotificationManager.INTERRUPTION_FILTER_ALL)return;
         AudioManager audio=c.getSystemService(AudioManager.class);if(audio==null||audio.getRingerMode()==AudioManager.RINGER_MODE_SILENT)return;
         stop(c);
         if(audio.getRingerMode()==AudioManager.RINGER_MODE_NORMAL&&ch.getSound()!=null){
-            try{tone=RingtoneManager.getRingtone(c,ch.getSound());if(tone!=null){tone.setAudioAttributes(attrs());tone.play();}}catch(RuntimeException ignored){}
+            try{tone=RingtoneManager.getRingtone(c,ch.getSound());if(tone==null)tone=RingtoneManager.getRingtone(c,android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);if(tone!=null){tone.setAudioAttributes(attrs());tone.play();}}catch(RuntimeException ignored){}
         }
         if(ch.shouldVibrate()){
             try{if(Build.VERSION.SDK_INT>=31){VibratorManager vm=c.getSystemService(VibratorManager.class);motor=vm==null?null:vm.getDefaultVibrator();}else motor=c.getSystemService(Vibrator.class);
