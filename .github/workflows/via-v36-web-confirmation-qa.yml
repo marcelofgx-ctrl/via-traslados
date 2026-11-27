@@ -1,0 +1,29 @@
+name: Vía V31 — confirmed driver card on exact V30.4.10.26 assets (read-only)
+on:
+  push:
+    branches: [via-v36-onboarding-integral-qa-20261127]
+    paths: ['.github/workflows/via-v36-web-confirmation-qa.yml','scripts/patch-driver-confirmation.py','scripts/via-v36-web-confirmation-browser.mjs']
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    timeout-minutes: 8
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Copy only pinned public assets, never call production writes
+        run: |
+          mkdir -p v36-web-qa
+          base=https://a27c6223-via-traslados-web-prod.marcelof-gx.workers.dev
+          curl --fail --silent --show-error --max-time 25 "$base/index.html" -o /tmp/index-v36.html
+          grep -q V30.4.10.26 /tmp/index-v36.html
+          for file in app.js reserva.html; do curl --fail --silent --show-error --max-time 25 "$base/$file" -o "v36-web-qa/$file"; done
+          python3 scripts/patch-driver-confirmation.py v36-web-qa
+          node --check v36-web-qa/app.js
+      - run: npm install --no-save --no-audit --no-fund playwright@1.56.1
+      - run: node scripts/via-v36-web-confirmation-browser.mjs
