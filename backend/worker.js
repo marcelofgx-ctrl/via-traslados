@@ -1,3 +1,4 @@
+import {driverIdentityRoutes,confirmedDriverProfile,identityProfileEnabled} from './driver-identity.js';
 import {beginOtp,checkOtp,consumeVerifiedSession,normalizeEmail,emailOtpAvailable} from './auth.js';
 import {staffRoutes,identity,webEnabled} from './staff.js';
 import {staffPhoneRoutes} from './staff-phone.js';
@@ -104,6 +105,7 @@ export default {async fetch(req,env,ctx){
   const path=url.pathname;
   if(path==='/api/health'&&req.method==='GET')return send({ok:true,name:'via-traslados',otpAvailable:emailOtpAvailable(env)});
   const phoneHandled=await staffPhoneRoutes(req,env,path,send,err);if(phoneHandled)return phoneHandled;
+  const profileHandled=await driverIdentityRoutes(req,env,path,send,err);if(profileHandled)return profileHandled;
   const handled=await staffRoutes(req,env,path,send,err);if(handled)return handled;
   if(path==='/api/public/route-preview'&&!await webEnabled(env))return err('Vía Traslados está temporalmente fuera de servicio.',503);
   const distanceHandled=await routeEstimateRoutes(req,env,path,send);if(distanceHandled)return distanceHandled;
@@ -132,7 +134,10 @@ export default {async fetch(req,env,ctx){
   const item=path.match(/^\/api\/requests\/([A-Z0-9-]+)(?:\/(accept|cancel))?$/);
   if(item){
    const id=item[1],row=await getBooking(req,env,id);if(!row)return err('Reserva no encontrada o no autorizada',404);
-   if(req.method==='GET'&&!item[2])return send(publicRow(row));
+   if(req.method==='GET'&&!item[2]){
+      const b=publicRow(row);if(identityProfileEnabled(env))b.driverProfile=await confirmedDriverProfile(env,row);
+      return send(b);
+    }
    if(req.method==='POST'&&item[2]){
     const to=item[2]==='accept'?'accepted':'cancelled';
     if(!validTransition(row.status,to))return err('Estado incompatible',409);
