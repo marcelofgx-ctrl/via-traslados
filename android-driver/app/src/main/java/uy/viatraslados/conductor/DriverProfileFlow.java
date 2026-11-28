@@ -191,8 +191,8 @@ final class DriverProfileFlow {
         LinearLayout header=new LinearLayout(a);header.setGravity(Gravity.CENTER_VERTICAL);
         TextView back=new TextView(a);back.setText("‹");back.setTextSize(32);back.setTextColor(TEAL);back.setGravity(Gravity.CENTER);header.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
         TextView title=new TextView(a);title.setText("Mi ficha de conductor");title.setTextColor(INK);title.setTextSize(20);title.setTypeface(null,Typeface.BOLD);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        TextView ver=new TextView(a);ver.setText("V"+BuildConfig.VERSION_NAME.replaceFirst("^0\\.","").replace("-profile-qa","")+" QA");ver.setTextColor(MUTED);ver.setTextSize(11);header.addView(ver);outer.addView(header);
-        stepIndicator=line(outer,"",12,TEAL,true);line(outer,"Entorno de prueba · solo datos ficticios",11,MUTED,false);
+        TextView ver=new TextView(a);ver.setText("V"+BuildConfig.VERSION_NAME.replaceFirst("^0\\.","").replace("-profile-qa","")+(BuildConfig.VIA_DRIVER_PROFILE_QA?" QA":""));ver.setTextColor(MUTED);ver.setTextSize(11);header.addView(ver);outer.addView(header);
+        stepIndicator=line(outer,"",12,TEAL,true);if(BuildConfig.VIA_DRIVER_PROFILE_QA)line(outer,"Entorno QA",11,MUTED,false);
         ScrollView scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.setClipToPadding(false);scroll.setPadding(0,dp(5),0,dp(5));LinearLayout holder=column();scroll.addView(holder);outer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         steps=new LinearLayout[]{column(),column()};holder.addView(steps[0]);holder.addView(steps[1]);
         String state=meta.optString("state","missing");

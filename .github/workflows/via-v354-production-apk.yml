@@ -1,10 +1,10 @@
-name: Vía Traslados V35.12 — live booking state guards
+name: Vía Traslados V37 — production profile integration
 on:
   push:
-    branches: [via-v3512-prod-live-quote-20261127]
+    branches: [via-v37-production-20261128]
     paths: ['.github/workflows/via-v354-production-apk.yml']
 permissions:
-  contents: read
+  contents: write
   actions: read
 concurrency:
   group: via-production-apk-release
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false,fetch-depth: 0}
@@ -31,12 +31,12 @@ jobs:
           java -cp /tmp/alert-tests uy.viatraslados.conductor.OverlayGestureTest
           javac -d /tmp/alert-tests android-driver/app/src/main/java/uy/viatraslados/conductor/LiveTripGuard.java tests/LiveTripGuardTest.java
           java -cp /tmp/alert-tests uy.viatraslados.conductor.LiveTripGuardTest
-          git worktree add --detach /tmp/via-rollback 42ffa6eee786c4a2aff81224de139f30e209f7e2
+          git worktree add --detach /tmp/via-rollback 3c84538515a6302d9a9d06bca67a6f532f5ac8ce
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/via-rollback/android-driver/app/build.gradle')
-          s=p.read_text();assert "versionCode viaProductionRelease ? 366" in s
-          p.write_text(s.replace("versionCode viaProductionRelease ? 366","versionCode viaProductionRelease ? 369").replace("versionName viaProductionRelease ? '0.35.11'","versionName viaProductionRelease ? '0.35.11-rollback'"))
+          s=p.read_text();assert "versionCode viaProductionRelease ? 368" in s
+          p.write_text(s.replace("versionCode viaProductionRelease ? 368","versionCode viaProductionRelease ? 3701").replace("versionName viaProductionRelease ? '0.35.12'","versionName viaProductionRelease ? '0.35.12-rollback'"))
           PY
       - name: Build production package and rollback package
         run: |
@@ -100,26 +100,26 @@ jobs:
           for mode in pilot rollback; do
             if [ "$mode" = pilot ]; then
               src=android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
-              dest=direct-apk/assets/via-traslados-conductor-v3512.apk
-              code=368
-              version=0.35.12
+              dest=direct-apk/assets/via-traslados-conductor-v37.apk
+              code=3700
+              version=0.37.0
               root=android-driver
             else
               src=/tmp/via-rollback/android-driver/app/build/outputs/apk/release/app-release-unsigned.apk
-              dest=direct-apk/assets/via-traslados-conductor-v3511-rollback.apk
-              code=369
-              version=0.35.11-rollback
+              dest=direct-apk/assets/via-traslados-conductor-v3512-rollback.apk
+              code=3701
+              version=0.35.12-rollback
               root=/tmp/via-rollback/android-driver
             fi
             echo "PHASE: $mode generated production build flags"
             cfg="$root/app/build/generated/source/buildConfig/release/uy/viatraslados/conductor/BuildConfig.java"
             test -s "$cfg"
             grep -Eq 'VIA_PRODUCTION = true;' "$cfg"
-            for flag in VIA_PREVIEW VIA_DENSE_PREVIEW VIA_BUSINESS_PREVIEW VIA_LAYOUT_PREVIEW VIA_OPERATION_PREVIEW VIA_ONLINE_QA VIA_ONBOARD_QA; do
+            for flag in VIA_PREVIEW VIA_DENSE_PREVIEW VIA_BUSINESS_PREVIEW VIA_LAYOUT_PREVIEW VIA_OPERATION_PREVIEW VIA_ONLINE_QA VIA_ONBOARD_QA VIA_DRIVER_PROFILE_QA; do
               grep -Eq "$flag = false;" "$cfg"
             done
             echo "PHASE: $mode align"
-            "$tool/zipalign" -f 4 "$src" /tmp/via-aligned.apk
+            "$tool/zipalign" -P 16 -f 4 "$src" /tmp/via-aligned.apk
             echo "PHASE: $mode sign with original certificate"
             "$tool/apksigner" sign --ks "$SIGN_DIR/via-traslados-produccion-guardar.p12" --ks-type PKCS12 --ks-key-alias via-traslados-prod --ks-pass env:SIGNPASS --key-pass env:SIGNPASS --out "$dest" /tmp/via-aligned.apk
             echo "PHASE: $mode verify certificate"
@@ -133,7 +133,7 @@ jobs:
             if grep -F 'android:debuggable(0x0101000f)' /tmp/via-manifest.txt; then
               echo '::error::Debuggable attribute present'; exit 1
             fi
-            "$tool/zipalign" -c 4 "$dest"
+            "$tool/zipalign" -c -P 16 4 "$dest"
           done
           unset SIGNPASS
           sha256sum direct-apk/assets/*.apk
@@ -143,32 +143,43 @@ jobs:
           curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{if(!JSON.parse(s).ok)process.exit(1)})'
           curl -fsSL --retry 3 https://via-traslados-descargas.marcelof-gx.workers.dev/apk/via-traslados-conductor-v35.apk -o /tmp/v35-public.apk
           echo '324c1c5b8ed997ec12e51ba37afe665854d226d4a5dd995a4cc0a531651d65e3  /tmp/v35-public.apk' | sha256sum -c -
-      - name: Publish only APKs on new production downloads Worker
+      - name: Publish signed rollback before API changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create via-v37-prod-rollback direct-apk/assets/via-traslados-conductor-v3512-rollback.apk --target "$GITHUB_SHA" --title "Vía Traslados V35.12 rollback" --notes "Rollback compatible with V37 production package, original signature, versionCode 3701." --prerelease
+          curl -fLsS --retry 3 "https://github.com/$GITHUB_REPOSITORY/releases/download/via-v37-prod-rollback/via-traslados-conductor-v3512-rollback.apk" -o /tmp/via-rollback-public.apk
+          cmp direct-apk/assets/via-traslados-conductor-v3512-rollback.apk /tmp/via-rollback-public.apk
+      - name: Prepare active API additive candidate and deploy
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          cat > direct-apk/assets/_headers <<'EOF'
-          /*.apk
-            Content-Type: application/vnd.android.package-archive
-            Content-Disposition: attachment
-            X-Content-Type-Options: nosniff
-          EOF
-          cat > direct-apk/wrangler.jsonc <<'EOF'
-          {"name":"via-traslados-conductor-v3512","compatibility_date":"2026-11-10","workers_dev":true,"assets":{"directory":"./assets"}}
-          EOF
-          npx --yes wrangler@4.160.1 deploy --config direct-apk/wrangler.jsonc
-      - name: Verify both public APKs byte for byte
+          set -euo pipefail
+          git worktree add --detach /tmp/via-live-tools 00611bbde4333203e1b2809863099293c572ce83
+          cp scripts/v37-prod-profile-api.py /tmp/via-live-tools/
+          mkdir -p /tmp/via-live-tools/v37-profile
+          cp -r backend /tmp/via-live-tools/v37-profile/
+          cd /tmp/via-live-tools
+          python3 v37-prod-profile-api.py prepare
+          npx --yes wrangler@4.160.1 versions upload --config v37-profile/wrangler.jsonc
+          python3 v37-prod-profile-api.py activate
+      - name: Publish verified production APK
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          for file in direct-apk/assets/*.apk; do
-            url="https://via-traslados-conductor-v3512.marcelof-gx.workers.dev/$(basename "$file")"
-            curl -fLsS --retry 8 --retry-all-errors --retry-delay 3 -D /tmp/apk-headers "$url" -o /tmp/apk-check
-            cmp "$file" /tmp/apk-check
-            grep -i 'content-type: application/vnd.android.package-archive' /tmp/apk-headers
-            echo "VIA_PROD_DIRECT_VERIFIED $url"
-          done
-          curl -fsSL --retry 3 https://via-traslados-api.marcelof-gx.workers.dev/api/health | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{if(!JSON.parse(s).ok)process.exit(1)})'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: via-v3512-signed-production-and-rollback
-          path: direct-apk/assets/*.apk
+          set -euo pipefail
+          gh release create via-v37-production direct-apk/assets/via-traslados-conductor-v37.apk --target "$GITHUB_SHA" --title "Vía Traslados V37 Producción" --notes "Perfil de conductor y revisión administrativa integrados, mismo paquete y certificado. Rollback V35.12 disponible." --prerelease
+          curl -fLsS --retry 3 "https://github.com/$GITHUB_REPOSITORY/releases/download/via-v37-production/via-traslados-conductor-v37.apk" -o /tmp/via-v37-public.apk
+          cmp direct-apk/assets/via-traslados-conductor-v37.apk /tmp/via-v37-public.apk
+      - name: Roll back API on failure after activation
+        if: failure()
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -f /tmp/via-live-tools/v37-profile/activated.json ]; then
+            cd /tmp/via-live-tools
+            python3 v37-prod-profile-api.py rollback
+          fi

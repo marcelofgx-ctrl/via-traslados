@@ -134,7 +134,7 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(LIGHT);
         setContentView(root);
-        if(BuildConfig.VIA_DRIVER_PROFILE_QA)driverProfile=new DriverProfileFlow(this,(method,path,payload,done)->api(method,path,payload,done::call));
+        if(BuildConfig.VIA_DRIVER_PROFILE_QA||BuildConfig.VIA_PRODUCTION)driverProfile=new DriverProfileFlow(this,(method,path,payload,done)->api(method,path,payload,done::call));
         // La variante productiva nunca puede iniciar una sesión QA pública.
         if(BuildConfig.VIA_PRODUCTION && (BuildConfig.VIA_ONLINE_QA || BuildConfig.VIA_PREVIEW))
             throw new IllegalStateException("Compilación productiva con indicadores QA");
@@ -1748,7 +1748,7 @@ public final class MainActivity extends Activity {
     private void checkDriverProfile(){
         if(driverProfile==null||!visible||isFinishing()||staffToken==null||staffUserId.isEmpty())return;
         boolean idle=hasWindowFocus()&&!authFlow&&tripWatch==null&&liveTripNotice==null&&newRequestDialog==null&&acceptanceDialog==null;
-        driverProfile.setAccount(staffUserId);if(idle&&!"admin".equals(staffRole))driverProfile.checkReminder();
+        driverProfile.setAccount(staffUserId);if(idle&&(BuildConfig.VIA_PRODUCTION||!"admin".equals(staffRole)))driverProfile.checkReminder();
         scheduleProfileCheck(60000);
     }
     private void dashboard() {
@@ -1808,7 +1808,7 @@ public final class MainActivity extends Activity {
         if(driverProfile!=null&&staffToken!=null&&!staffUserId.isEmpty()){
             driverProfile.setAccount(staffUserId);
             LinearLayout profileActions=row();profileActions.setPadding(dp(14),dp(3),dp(14),dp(3));
-            if(!"admin".equals(staffRole))profileActions.addView(button("Mi perfil",false,v->driverProfile.open()),new LinearLayout.LayoutParams(0,dp(45),1));
+            if(BuildConfig.VIA_PRODUCTION||!"admin".equals(staffRole))profileActions.addView(button("Mi perfil",false,v->driverProfile.open()),new LinearLayout.LayoutParams(0,dp(45),1));
             if("admin".equals(staffRole))profileActions.addView(button("Revisar fichas",false,v->driverProfile.reviewList()),new LinearLayout.LayoutParams(0,dp(45),1));
             root.addView(profileActions);
             scheduleProfileCheck(800);

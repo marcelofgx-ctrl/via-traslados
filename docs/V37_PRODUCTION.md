@@ -1,0 +1,2 @@
+# V37 production
+Production APK uses actual staff sessions and API. Additive wrapper of exact active API, no QA routes or accounts. Rollback APK V35.12 versionCode 3701 and API version recorded. No passenger web changes in this release. Physical login/profile/alerts validation still required; no real customer records modified by smoke. Historical production signing artifact requires separate security remediation.
