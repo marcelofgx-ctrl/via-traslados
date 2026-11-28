@@ -1,4 +1,4 @@
-name: Vía QA V37 — integrated operations and profiles
+name: Vía QA V37 — integrated operations and verified synthetic contacts
 on:
   push:
     branches: [via-v37-integral-qa-20261128]

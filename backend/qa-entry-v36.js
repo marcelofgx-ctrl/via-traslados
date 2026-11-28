@@ -64,6 +64,7 @@ export default {async fetch(req,env,ctx){
   async function seed(){
    const id='VIA-QA-'+driverId.replaceAll('-','').toUpperCase(),token=await sha('qa-booking:'+driverId);
    await env.DB.batch([
+    env.DB.prepare("INSERT OR IGNORE INTO staff_contacts(staff_id,phone,email_verified_at) VALUES(?,?,unixepoch())").bind(driverId,'qa-'+driverId),
     env.DB.prepare("INSERT OR IGNORE INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps) VALUES(?,'partner',1,1,0)").bind(driverId),
     env.DB.prepare("INSERT OR IGNORE INTO driver_vehicle_profiles(staff_id,license_plate,make,model,passenger_capacity,luggage_capacity) VALUES(?,'','Toyota','Corolla',4,3)").bind(driverId),
     env.DB.prepare("INSERT OR IGNORE INTO bookings(id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES(?,'Pasajero QA','000000000',?,'Shangrilá, Canelones','Aeropuerto de Carrasco',date('now','+2 days'),'14:30',2,1,'Traslado sintético de ensayo',?,'requested')").bind(id,'qa-'+driverId+'@qa.invalid',await sha(token)),
