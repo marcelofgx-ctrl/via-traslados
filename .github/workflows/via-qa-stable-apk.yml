@@ -1,4 +1,4 @@
-name: Vía QA — stable package and signature
+name: Vía QA V36.5 — premium icon, stable package and signature
 on:
   push:
     branches: [via-v36-onboarding-integral-qa-20261127]
