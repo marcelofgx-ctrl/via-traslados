@@ -141,7 +141,7 @@ public final class MainActivity extends Activity {
         if(BuildConfig.VIA_ONBOARD_QA){
             qaWelcome();
         }else if(BuildConfig.VIA_ONLINE_QA){
-            startQaSession("admin");
+            startQaSession(BuildConfig.VIA_DRIVER_PROFILE_QA?"driver":"admin");
         }else if (BuildConfig.VIA_PREVIEW) {
             // APK independiente, solo datos ficticios; no accede al Worker ni a D1.
             staffRole = "admin";
@@ -248,7 +248,7 @@ public final class MainActivity extends Activity {
             new LinearLayout.LayoutParams(-1,dp(46)));
         spacer(page,20);
         TextView demo=actionText("Acceder como administrador de demostración  ›",
-            TEAL_DARK,v->startQaSession("admin"));
+            TEAL_DARK,v->startQaSession(BuildConfig.VIA_DRIVER_PROFILE_QA?"driver":"admin"));
         demo.setTextSize(12);
         page.addView(demo,new LinearLayout.LayoutParams(-1,dp(45)));
         addLine(page,"El acceso del administrador de prueba es público. "+
@@ -1262,7 +1262,7 @@ public final class MainActivity extends Activity {
                     message("El servidor devolvió un formato incorrecto.");
                     if(login){
                         if(BuildConfig.VIA_ONBOARD_QA)qaWelcome();
-                        else if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
+                        else if(BuildConfig.VIA_ONLINE_QA)startQaSession(BuildConfig.VIA_DRIVER_PROFILE_QA?"driver":"admin");
                         else loginScreen();
                     }
                 }
@@ -1272,7 +1272,7 @@ public final class MainActivity extends Activity {
                     qaWelcome();
                 }else if(BuildConfig.VIA_ONLINE_QA){
                     message("La sesión QA expiró. Volviendo a conectar.");
-                    startQaSession("admin");
+                    startQaSession(BuildConfig.VIA_DRIVER_PROFILE_QA?"driver":"admin");
                 }else if(login){
                     loginScreen();
                     new AlertDialog.Builder(this).setTitle("No se pudo ingresar")
@@ -1285,7 +1285,7 @@ public final class MainActivity extends Activity {
             } else {
                 message(error.isEmpty() ? "No fue posible actualizar las solicitudes." : error);
                 if(login){
-                    if(BuildConfig.VIA_ONLINE_QA)startQaSession("admin");
+                    if(BuildConfig.VIA_ONLINE_QA)startQaSession(BuildConfig.VIA_DRIVER_PROFILE_QA?"driver":"admin");
                     else loginScreen();
                 }
             }
@@ -1747,7 +1747,7 @@ public final class MainActivity extends Activity {
     private void checkDriverProfile(){
         if(driverProfile==null||!visible||isFinishing()||staffToken==null||staffUserId.isEmpty())return;
         boolean idle=hasWindowFocus()&&!authFlow&&tripWatch==null&&liveTripNotice==null&&newRequestDialog==null&&acceptanceDialog==null;
-        driverProfile.setAccount(staffUserId);if(idle)driverProfile.checkReminder();
+        driverProfile.setAccount(staffUserId);if(idle&&!"admin".equals(staffRole))driverProfile.checkReminder();
         scheduleProfileCheck(60000);
     }
     private void dashboard() {
@@ -1807,13 +1807,13 @@ public final class MainActivity extends Activity {
         if(driverProfile!=null&&staffToken!=null&&!staffUserId.isEmpty()){
             driverProfile.setAccount(staffUserId);
             LinearLayout profileActions=row();profileActions.setPadding(dp(14),dp(3),dp(14),dp(3));
-            profileActions.addView(button("Mi ficha · fotos y matrícula",false,v->driverProfile.open()),new LinearLayout.LayoutParams(0,dp(45),1));
+            if(!"admin".equals(staffRole))profileActions.addView(button("Mi perfil",false,v->driverProfile.open()),new LinearLayout.LayoutParams(0,dp(45),1));
             if("admin".equals(staffRole))profileActions.addView(button("Revisar fichas",false,v->driverProfile.reviewList()),new LinearLayout.LayoutParams(0,dp(45),1));
             root.addView(profileActions);
             scheduleProfileCheck(800);
         }
         if (BuildConfig.VIA_ONLINE_QA) {
-            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36.5 · FICHA DE CONDUCTOR · QA PRIVADA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
+            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36.6 · QA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
                 (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
                 "V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
                 10,TEAL_DARK,true);
@@ -1855,11 +1855,12 @@ public final class MainActivity extends Activity {
         content.setPadding(dp("solicitudes".equals(tab)?13:17),dp(10),dp("solicitudes".equals(tab)?13:17),dp(12));
         scroll.addView(content);
         if(BuildConfig.VIA_DRIVER_PROFILE_QA){
-            addLine(content,"Prueba aislada de ficha",21,INK,true,10);
-            addLine(content,"Esta cuenta de ensayo es privada de esta instalación. No incluye viajes reales ni datos de otros conductores. Usá solo fotos de prueba.",14,MUTED,false,16);
-            content.addView(button("Completar o actualizar mi ficha",true,v->driverProfile.open()),new LinearLayout.LayoutParams(-1,dp(48)));
-            content.addView(button("Revisar ficha de prueba",false,v->driverProfile.reviewList()),new LinearLayout.LayoutParams(-1,dp(48)));
-            content.addView(button("Consultar estado de ficha",false,v->driverProfile.open()),new LinearLayout.LayoutParams(-1,dp(48)));
+            boolean admin="admin".equals(staffRole);
+            addLine(content,admin?"Administración":"Mi cuenta",23,INK,true,10);
+            addLine(content,admin?"Gestioná las fichas y sus revisiones.":"Consultá tu perfil y mantené actualizados los datos de tu vehículo.",14,MUTED,false,16);
+            content.addView(button(admin?"Gestionar conductores":"Ver mi perfil",true,v->{if(admin)driverProfile.reviewList();else driverProfile.open();}),new LinearLayout.LayoutParams(-1,dp(50)));
+            addLine(content,"Entorno QA · perfiles separados de producción",12,MUTED,false,12);
+            content.addView(button(admin?"Ingresar como conductor QA":"Ingresar como administrador QA",false,v->startQaSession(admin?"driver":"admin")),new LinearLayout.LayoutParams(-1,dp(48)));
             return;
         }
         if ("administrar".equals(tab)) manage(content);

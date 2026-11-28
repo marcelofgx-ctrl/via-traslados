@@ -21,7 +21,7 @@ async function session(req,env){
   if(!await limited(env,'new:'+req.headers.get('CF-Connecting-IP'),8,86400))return reply({error:'Límite de nuevas cuentas QA'},429);
   try{
    await env.DB.batch([
-    env.DB.prepare("INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status,approved_at) VALUES(?,?,'Conductor de ensayo QA','disabled','disabled',100000,'admin','approved',unixepoch())").bind(id,email),
+    env.DB.prepare("INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status,approved_at) VALUES(?,?,'Conductor de ensayo QA','disabled','disabled',100000,'driver','approved',unixepoch())").bind(id,email),
     env.DB.prepare('INSERT INTO staff_sessions(token_hash,staff_id,expires_at) VALUES(?,?,unixepoch()+604800)').bind(digest,id)
    ]);
   }catch{}
@@ -29,7 +29,26 @@ async function session(req,env){
  }
  if(!existing)return reply({error:'No se pudo crear la sesión QA'},503);
  await env.DB.prepare('UPDATE staff_sessions SET expires_at=unixepoch()+604800 WHERE token_hash=? AND revoked_at IS NULL').bind(digest).run();
- return reply({token:key,expiresIn:604800,user:{id:existing.staff_id,role:'admin',name:'Conductor de ensayo QA',status:'approved',capabilities:{canManageRoles:false}},qa:true,environment:'V36-PROFILE-PRIVATE'});
+ // The old sandbox used a single self-review account. Demote it on migration.
+ await env.DB.prepare("UPDATE staff_users SET role='driver' WHERE id=? AND email LIKE 'v36-%@qa.invalid'").bind(existing.staff_id).run();
+ if(p.role==='admin'){
+  // Explicit QA-only role simulation, separate staff record and token; restricted to this pair.
+  const adminToken=await sha('v36-qa-admin:'+key),adminHash=await sha(adminToken);
+  let pair=await env.DB.prepare('SELECT admin_id FROM qa_profile_pair WHERE driver_id=?').bind(existing.staff_id).first();
+  if(!pair){
+   const id=crypto.randomUUID();
+   try{await env.DB.batch([
+    env.DB.prepare("INSERT INTO staff_users(id,email,display_name,password_salt,password_hash,iterations,role,status,approved_at) VALUES(?,?,'Administración QA','disabled','disabled',100000,'admin','approved',unixepoch())").bind(id,'v36-'+id+'@qa.invalid'),
+    env.DB.prepare('INSERT INTO qa_profile_pair(driver_id,admin_id) VALUES(?,?)').bind(existing.staff_id,id),
+    env.DB.prepare('INSERT INTO staff_sessions(token_hash,staff_id,expires_at) VALUES(?,?,unixepoch()+604800)').bind(adminHash,id)
+   ]);}catch{}
+   pair=await env.DB.prepare('SELECT admin_id FROM qa_profile_pair WHERE driver_id=?').bind(existing.staff_id).first();
+  }
+  if(!pair)return reply({error:'Administración QA no disponible'},503);
+  await env.DB.prepare('UPDATE staff_sessions SET expires_at=unixepoch()+604800 WHERE token_hash=? AND staff_id=? AND revoked_at IS NULL').bind(adminHash,pair.admin_id).run();
+  return reply({token:adminToken,user:{id:pair.admin_id,role:'admin',name:'Administración QA',capabilities:{canManageRoles:false}},qa:true,environment:'V36-PROFILE-PRIVATE'});
+ }
+ return reply({token:key,expiresIn:604800,user:{id:existing.staff_id,role:'driver',name:'Conductor de ensayo QA',status:'approved',capabilities:{canManageRoles:false}},qa:true,environment:'V36-PROFILE-PRIVATE'});
 }
 export default {async fetch(req,env,ctx){
  const url=new URL(req.url),path=url.pathname,method=req.method;
@@ -41,10 +60,18 @@ export default {async fetch(req,env,ctx){
   const actor=await identity(req,env);if(!actor||actor.master||!actor.email?.startsWith('v36-')||!actor.email.endsWith('@qa.invalid'))return reply({error:'Sesión QA requerida'},401);
   if(method!=='GET'&&!await limited(env,'mutate:'+actor.id,50,86400))return reply({error:'Límite de cambios QA'},429);
   if(path==='/api/operator/requests'&&method==='GET')return reply([]);
-  if(path==='/api/admin/driver-profiles'&&method==='GET'){
-   const r=await env.DB.prepare("SELECT p.staff_id AS id,u.display_name AS name,p.revision,p.review_state AS state,p.plate,p.make,p.model,p.color FROM driver_identity_profiles p JOIN staff_users u ON u.id=p.staff_id WHERE p.staff_id=? AND p.review_state='pending'").bind(actor.id).all();
-   return reply({profiles:r.results||[]});
+  if(path.startsWith('/api/admin/driver-profiles')){
+   if(actor.role!=='admin')return reply({error:'Solo administración'},403);
+   const pair=await env.DB.prepare('SELECT driver_id FROM qa_profile_pair WHERE admin_id=?').bind(actor.id).first();
+   if(!pair)return reply({error:'Administrador QA sin ámbito'},403);
+   if(path==='/api/admin/driver-profiles'&&method==='GET'){
+    const r=await env.DB.prepare("SELECT p.staff_id AS id,u.display_name AS name,p.revision,CASE WHEN p.review_state='rejected' AND p.review_action LIKE 'revoked:%' THEN 'revoked' ELSE p.review_state END AS state,p.plate,p.make,p.model,p.color FROM driver_identity_profiles p JOIN staff_users u ON u.id=p.staff_id WHERE p.staff_id=?").bind(pair.driver_id).all();
+    return reply({profiles:r.results||[]});
+   }
+   if(path==='/api/admin/driver-profiles/'+pair.driver_id&&['GET','PATCH'].includes(method))return worker.fetch(req,env,ctx);
+   return reply({error:'Ficha fuera de esta cuenta QA'},404);
   }
+  if(path==='/api/staff/driver-profile'&&actor.role!=='driver')return reply({error:'Usá la cuenta de conductor'},403);
   if(path==='/api/staff/driver-profile'&&method==='GET'){
    // Synthetic registered car for QA only; never read production or overwrite an existing record.
    await env.DB.batch([
@@ -54,7 +81,7 @@ export default {async fetch(req,env,ctx){
    return worker.fetch(req,env,ctx);
   }
   if(path==='/api/staff/driver-profile'&&method==='POST')return worker.fetch(req,env,ctx);
-  if(path==='/api/admin/driver-profiles/'+actor.id&&['GET','PATCH'].includes(method))return worker.fetch(req,env,ctx);
+
   return reply({error:'Ruta fuera de este ensayo privado'},404);
  }catch(e){console.error('v36-profile-qa',e?.name||'Error');return reply({error:'No se pudo completar la prueba'},500)}
 }};

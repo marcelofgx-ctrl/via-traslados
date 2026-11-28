@@ -10,9 +10,17 @@ const jpeg=n=>Buffer.from([255,216,255,192,0,11,8,1,224,2,128,1,1,17,n,255,218,0
 const p={consent:true,plate:'ABC1234',make:'Marca QA',model:'Modelo QA',color:'Blanco',year:2023,photos:{driver:jpeg(1),front:jpeg(2),rear:jpeg(3)},recognition:{face:'pass',front:'pass',rear:'review',frontPlate:'ABC1234',rearPlate:'ABC1234'}};
 const uploaded=await req('/api/staff/driver-profile','POST',keys[0],p);assert.equal(uploaded.status,201,JSON.stringify(uploaded.j));
 const path='/api/admin/driver-profiles';
-assert.equal((await req(path,'GET',keys[0])).j.profiles.length,1);assert.equal((await req(path,'GET',keys[1])).j.profiles.length,0);
-assert.equal((await req(path+'/'+sessions[0],'GET',keys[1])).status,404);
-assert.equal((await req(path+'/'+sessions[0],'GET',keys[0])).j.photos.front,jpeg(2));
-assert.equal((await req(path+'/'+sessions[0],'PATCH',keys[0],{state:'approved',revision:uploaded.j.revision})).status,200);
+const admin=await req('/api/qa/session','POST','',{installKey:keys[0],role:'admin'});assert.equal(admin.status,200);assert.notEqual(admin.j.user.id,sessions[0]);const adminKey=admin.j.token;
+assert.equal((await req(path,'GET',keys[0])).status,403);
+assert.equal((await req(path+'/'+sessions[0],'PATCH',keys[0],{state:'approved',revision:uploaded.j.revision})).status,403);
+assert.equal((await req(path,'GET',adminKey)).j.profiles.length,1);assert.equal((await req(path,'GET',keys[1])).status,403);
+assert.equal((await req(path+'/'+sessions[0],'GET',keys[1])).status,403);
+assert.equal((await req(path+'/'+sessions[0],'GET',adminKey)).j.photos.front,jpeg(2));
+assert.equal((await req(path+'/'+sessions[0],'PATCH',adminKey,{state:'approved',revision:uploaded.j.revision})).status,200);
 const approved=(await req('/api/staff/driver-profile','GET',keys[0])).j;assert.equal(approved.state,'approved');assert.equal(approved.vehicle.year,2023);assert.equal(approved.vehicle.color,'Blanco');
 console.log('V36 live QA login, photo storage, isolated review, approval and session persistence PASS');
+
+const profile=await req('/api/staff/driver-profile?include=photos','GET',keys[0]);assert.equal(profile.j.photos.front,jpeg(2));assert.equal(profile.j.history[0].state,'approved');
+assert.equal((await req(path+'/'+sessions[0],'PATCH',adminKey,{state:'revoked',revision:uploaded.j.revision,note:'Ensayo de revocación'})).status,200);
+assert.equal((await req('/api/staff/driver-profile?include=photos','GET',keys[0])).j.state,'revoked');
+console.log('V36.6 separate roles, stored photos, approval and revocation PASS');

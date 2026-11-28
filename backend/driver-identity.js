@@ -50,9 +50,9 @@ export function validateProfile(p){
   plateMatch:frontPlate===plate&&rearPlate===plate,vehicleYear:year};
  return {plate,make,model,color,photos,recognition};
 }
-const metadata=r=>r?{revision:r.revision,state:r.review_state,plate:r.plate,make:r.make,model:r.model,color:r.color,
+const metadata=r=>r?{revision:r.revision,state:r.review_state==='rejected'&&String(r.review_action||'').startsWith('revoked:')?'revoked':r.review_state,plate:r.plate,make:r.make,model:r.model,color:r.color,
  year:r.vehicle_year??(r.recognition_json?JSON.parse(r.recognition_json).vehicleYear??null:null),missing:[],reviewNote:r.review_note||'',updatedAt:r.updated_at}: {state:'missing',missing:['driver','front','rear','plate']};
-const META="revision,review_state,plate,make,model,color,review_note,updated_at,json_extract(recognition_json,'$.vehicleYear') AS vehicle_year";
+const META="revision,review_state,plate,make,model,color,review_note,review_action,updated_at,json_extract(recognition_json,'$.vehicleYear') AS vehicle_year";
 export async function driverIdentityRoutes(req,env,path,send,err){
  const own=path==='/api/staff/driver-profile';
  const list=path==='/api/admin/driver-profiles';
@@ -66,7 +66,13 @@ export async function driverIdentityRoutes(req,env,path,send,err){
   const v=await env.DB.prepare('SELECT v.license_plate AS plate,v.make,v.model,v.passenger_capacity AS passengerCapacity,v.luggage_capacity AS luggageCapacity,d.color,d.model_year AS year,d.vehicle_type AS type FROM driver_vehicle_profiles v LEFT JOIN driver_vehicle_prefill d ON d.staff_id=v.staff_id AND d.make=v.make AND d.model=v.model WHERE v.staff_id=?').bind(actor.id).first();
   const info=metadata(r);if(r?.review_state==='approved'&&(!v||normalizePlate(v.plate)!==r.plate||v.make!==r.make||v.model!==r.model)){info.state='vehicle_changed';info.missing=['front','rear','plate'];}
   const vehicle=v?{...v,color:v.color||(r&&r.make===v.make&&r.model===v.model?r.color:'')}:null;
-  return send({...info,vehicle});
+  const include=new URL(req.url).searchParams.get('include')==='photos';
+  if(include&&r){
+   const details=await env.DB.prepare('SELECT driver_jpeg,front_jpeg,rear_jpeg,recognition_json FROM driver_identity_profiles WHERE staff_id=? AND revision=?').bind(actor.id,r.revision).first();
+   if(details){info.photos={driver:details.driver_jpeg,front:details.front_jpeg,rear:details.rear_jpeg};info.recognition=JSON.parse(details.recognition_json);}
+   info.history=(await env.DB.prepare("SELECT h.state,h.note,h.created_at AS at,u.display_name AS reviewer FROM driver_profile_review_history h JOIN staff_users u ON u.id=h.actor_id WHERE h.staff_id=? ORDER BY h.created_at DESC,h.rowid DESC LIMIT 30").bind(actor.id).all()).results||[];
+  }
+  return send({...info,name:actor.name,vehicle});
  }
  if(own&&req.method==='POST'){
   let p;try{p=validateProfile(await body(req))}catch(e){return err(e.message||'Fotos inválidas',400)}
@@ -78,27 +84,32 @@ export async function driverIdentityRoutes(req,env,path,send,err){
  }
  if(actor.role!=='admin')return err('Solo administración',403);
  if(list&&req.method==='GET'){
-  const r=await env.DB.prepare("SELECT p.staff_id AS id,u.display_name AS name,p.revision,p.review_state AS state,p.plate,p.make,p.model,p.color FROM driver_identity_profiles p JOIN staff_users u ON u.id=p.staff_id WHERE p.review_state='pending' ORDER BY p.updated_at LIMIT 50").all();
+  const r=await env.DB.prepare("SELECT p.staff_id AS id,u.display_name AS name,p.revision,CASE WHEN p.review_state='rejected' AND p.review_action LIKE 'revoked:%' THEN 'revoked' ELSE p.review_state END AS state,p.plate,p.make,p.model,p.color FROM driver_identity_profiles p JOIN staff_users u ON u.id=p.staff_id ORDER BY CASE WHEN p.review_state='pending' THEN 0 ELSE 1 END,p.updated_at DESC LIMIT 100").all();
   return send({profiles:r.results||[]});
  }
  if(match&&req.method==='GET'){
   const r=await env.DB.prepare('SELECT p.*,u.display_name AS name FROM driver_identity_profiles p JOIN staff_users u ON u.id=p.staff_id WHERE p.staff_id=?').bind(match[1]).first();
   if(!r)return err('Ficha inexistente',404);
-  return send({...metadata(r),id:match[1],name:r.name,recognition:JSON.parse(r.recognition_json),photos:{driver:r.driver_jpeg,front:r.front_jpeg,rear:r.rear_jpeg}});
+  const history=(await env.DB.prepare("SELECT h.state,h.note,h.created_at AS at,u.display_name AS reviewer FROM driver_profile_review_history h JOIN staff_users u ON u.id=h.actor_id WHERE h.staff_id=? ORDER BY h.created_at DESC,h.rowid DESC LIMIT 30").bind(match[1]).all()).results||[];
+  return send({...metadata(r),id:match[1],name:r.name,history,recognition:JSON.parse(r.recognition_json),photos:{driver:r.driver_jpeg,front:r.front_jpeg,rear:r.rear_jpeg}});
  }
  if(match&&req.method==='PATCH'){
   let p;try{p=await body(req,2500)}catch{return err('Datos inválidos',400)}
-  if(!['approved','rejected'].includes(p.state)||!ID.test(p.revision||''))return err('Revisión inválida',400);
-  const note=clean(p.note,350);if(p.state==='rejected'&&!note)return err('Indicá el motivo',400);
-  const action=crypto.randomUUID();
-  const q=env.DB.prepare("UPDATE driver_identity_profiles SET review_state=?,reviewed_by=?,reviewed_at=unixepoch(),review_note=?,review_action=? WHERE staff_id=? AND revision=? AND review_state='pending' RETURNING staff_id")
-    .bind(p.state,actor.id,note,action,match[1],p.revision);
+  if(!['approved','rejected','revoked'].includes(p.state)||!ID.test(p.revision||''))return err('Revisión inválida',400);
+  if(match[1]===actor.id)return err('No podés revisar tu propia ficha',403);
+  const note=clean(p.note,350);if(p.state!=='approved'&&!note)return err('Indicá el motivo',400);
+  const action=(p.state==='revoked'?'revoked:':'')+crypto.randomUUID();
+  const stored=p.state==='revoked'?'rejected':p.state;
+  const allowed=p.state==='approved'?['pending']:p.state==='revoked'?['approved']:['pending','approved'];
+  const q=env.DB.prepare("UPDATE driver_identity_profiles SET review_state=?,reviewed_by=?,reviewed_at=unixepoch(),review_note=?,review_action=? WHERE staff_id=? AND revision=? AND review_state IN (?,?) RETURNING staff_id")
+    .bind(stored,actor.id,note,action,match[1],p.revision,allowed[0],allowed[1]||allowed[0]);
+  const history=env.DB.prepare('INSERT INTO driver_profile_review_history(action_id,staff_id,revision,actor_id,state,note) SELECT ?,staff_id,revision,?,?,? FROM driver_identity_profiles WHERE staff_id=? AND revision=? AND review_action=?').bind(action,actor.id,p.state,note,match[1],p.revision,action);
   if(p.state==='approved'){
    // Keep operational capacity unchanged; synchronize only identity of the car.
    const v=env.DB.prepare("INSERT INTO driver_vehicle_profiles(staff_id,license_plate,make,model) SELECT staff_id,plate,make,model FROM driver_identity_profiles WHERE staff_id=? AND revision=? AND review_state='approved' AND review_action=? ON CONFLICT(staff_id) DO UPDATE SET license_plate=excluded.license_plate,make=excluded.make,model=excluded.model,updated_at=unixepoch()").bind(match[1],p.revision,action);
    const descriptors=env.DB.prepare("INSERT INTO driver_vehicle_prefill(staff_id,make,model,color,model_year,vehicle_type) SELECT p.staff_id,p.make,p.model,p.color,COALESCE(json_extract(p.recognition_json,'$.vehicleYear'),CASE WHEN d.make=p.make AND d.model=p.model THEN d.model_year END),CASE WHEN d.make=p.make AND d.model=p.model THEN COALESCE(d.vehicle_type,'') ELSE '' END FROM driver_identity_profiles p LEFT JOIN driver_vehicle_prefill d ON d.staff_id=p.staff_id WHERE p.staff_id=? AND p.revision=? AND p.review_state='approved' AND p.review_action=? ON CONFLICT(staff_id) DO UPDATE SET make=excluded.make,model=excluded.model,color=excluded.color,model_year=excluded.model_year,vehicle_type=excluded.vehicle_type").bind(match[1],p.revision,action);
-   const result=await env.DB.batch([q,v,descriptors]);if(!result[0]?.results?.length)return err('La ficha cambió. Actualizá la revisión.',409);
-  }else if(!await q.first())return err('La ficha cambió. Actualizá la revisión.',409);
+   const result=await env.DB.batch([q,v,descriptors,history]);if(!result[0]?.results?.length)return err('La ficha cambió. Actualizá la revisión.',409);
+  }else{const result=await env.DB.batch([q,history]);if(!result[0]?.results?.length)return err('La ficha cambió. Actualizá la revisión.',409);}
   return send({state:p.state,revision:p.revision});
  }
  return err('Método no permitido',405);

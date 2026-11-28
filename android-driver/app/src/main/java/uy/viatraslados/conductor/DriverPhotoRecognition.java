@@ -30,7 +30,7 @@ final class DriverPhotoRecognition {
                 android.graphics.Rect r=faces.get(0).getBoundingBox();
                 boolean clear=r.width()>=100&&r.height()>=100;
                 return new Result(clear?"pass":"review","",clear?"Rostro detectado":"Rostro pequeño: acercate o solicitá revisión.",false);
-            }catch(Exception e){return new Result("review","","No se pudo analizar el rostro. Requiere revisión manual.",false);}
+            }catch(Exception e){return new Result("review","","No se pudo analizar el rostro. Intentá nuevamente.",true);}
             finally{detector.close();}
         }
         boolean car=false,moto=false;String plate="";
@@ -42,7 +42,7 @@ final class DriverPhotoRecognition {
                 if(n.matches(".*\\b(motorcycle|motorbike|moped|scooter|bicycle)\\b.*")&&label.getConfidence()>=.75f)moto=true;
             }
         }catch(Exception ignored){}finally{labeler.close();}
-        if(moto&&!car)return new Result("review","","La foto parece mostrar una moto o bicicleta. Usá una foto del automóvil.",true);
+        if(!car)return new Result("review","","No se detectó un automóvil con suficiente confianza. Tomá otra foto del vehículo completo.",true);
         TextRecognizer reader=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
         try{plate=plateFrom(Tasks.await(reader.process(image),20,java.util.concurrent.TimeUnit.SECONDS).getText());}catch(Exception ignored){}finally{reader.close();}
         return new Result(car?"pass":"review",plate,(car?"Automóvil probable":"Vehículo no concluyente: revisión manual")+(plate.isEmpty()?" · Matrícula no detectada":" · "+plate),false);

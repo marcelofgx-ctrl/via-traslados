@@ -1,4 +1,4 @@
-name: Vía QA V36.5 — premium icon, stable package and signature
+name: Vía QA V36.6 — driver and administrator lifecycle
 on:
   push:
     branches: [via-v36-onboarding-integral-qa-20261127]
@@ -34,6 +34,17 @@ jobs:
           java -cp /tmp/qa-tests uy.viatraslados.conductor.ViaVehicleCatalogTest
           curl -fsS --max-time 20 https://via-traslados-api-v36-qa.marcelof-gx.workers.dev/api/health | grep -q V36-PROFILE-PRIVATE
           curl -fsS --max-time 20 https://via-traslados-api.marcelof-gx.workers.dev/api/health | grep -q '"ok":true'
+      - name: Deploy and test isolated QA review lifecycle
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node scripts/v36-provision.mjs
+          grep -Fx 'name = "via-traslados-api-v36-qa"' wrangler.v36qa.toml
+          grep -Fx 'database_name = "via-traslados-v36-qa-db"' wrangler.v36qa.toml
+          npx --yes wrangler@4.160.1 d1 execute via-traslados-v36-qa-db --remote --config wrangler.v36qa.toml --file backend/schema.sql
+          npx --yes wrangler@4.160.1 deploy --config wrangler.v36qa.toml
+          node scripts/v36-live-profile-smoke.mjs
       - name: Build release and verify package and monotonic version
         env:
           GH_TOKEN: ${{ github.token }}

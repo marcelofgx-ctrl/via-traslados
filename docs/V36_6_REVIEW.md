@@ -1,0 +1,2 @@
+# V36.6
+QA only: separate synthetic driver and reviewer records; explicit role switch on same installation for end-to-end testing, scoped to its own pair. This is not production administrator authentication. Production requires the real authenticated admin role; no self-approval. Profile photos are available only to the owner and authorized reviewer. Revocation stored as rejected with a distinct action marker, history records reviewer, date and reason. Revoking profile visibility does not automatically cancel existing trips or disable account login. No production deployment.

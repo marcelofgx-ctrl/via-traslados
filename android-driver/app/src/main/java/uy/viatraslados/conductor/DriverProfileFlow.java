@@ -45,7 +45,7 @@ final class DriverProfileFlow {
     private boolean alive(int e){return !destroyed&&!a.isFinishing()&&!a.isDestroyed()&&epoch==e&&!account.isEmpty();}
     private int dp(int n){return Math.round(n*a.getResources().getDisplayMetrics().density);}
     private void msg(String s){Toast.makeText(a,s,Toast.LENGTH_LONG).show();}
-    private boolean incomplete(){String s=meta.optString("state");return s.equals("missing")||s.equals("rejected")||s.equals("vehicle_changed");}
+    private boolean incomplete(){String s=meta.optString("state");return s.equals("missing")||s.equals("rejected")||s.equals("revoked")||s.equals("vehicle_changed");}
     void checkReminder(){
         if(account.isEmpty()||checking||panel!=null||reminder!=null||review!=null||SystemClock.elapsedRealtime()<nextReminder)return;
         checking=true;int e=epoch;
@@ -56,15 +56,15 @@ final class DriverProfileFlow {
             if(!incomplete()||!a.hasWindowFocus()||panel!=null||review!=null)return;
             AlertDialog d=new AlertDialog.Builder(a).setTitle("Completá tu perfil")
               .setMessage(meta.optString("state").equals("rejected")?"Tu ficha necesita correcciones. "+meta.optString("reviewNote"):"Agregá tu foto, dos fotos del automóvil y confirmá la matrícula para que el pasajero pueda reconocerte.")
-              .setPositiveButton("Completar ahora",(x,w)->showForm()).setNegativeButton("Más tarde",null).create();
+              .setPositiveButton("Completar ahora",(x,w)->open()).setNegativeButton("Más tarde",null).create();
             reminder=d;d.setOnDismissListener(x->{if(reminder==d)reminder=null;});d.show();
         });
     }
     void open(){
         if(account.isEmpty()||panel!=null)return;int e=epoch;
-        api.call("GET",PATH,null,(status,body,error)->{
+        api.call("GET",PATH+"?include=photos",null,(status,body,error)->{
             if(!alive(e))return;if(status!=200){msg("Ficha no disponible. "+error);return;}
-            try{meta=new JSONObject(body);}catch(Exception ex){msg("Respuesta de ficha inválida");return;}showForm();
+            try{meta=new JSONObject(body);}catch(Exception ex){msg("Respuesta de ficha inválida");return;}if(meta.optJSONObject("photos")==null)showForm();else showProfile();
         });
     }
     private LinearLayout column(){LinearLayout l=new LinearLayout(a);l.setOrientation(1);return l;}
@@ -76,7 +76,7 @@ final class DriverProfileFlow {
     private Dialog page(String title,LinearLayout content){
         Dialog d=new Dialog(a,android.R.style.Theme_Material_Light_NoActionBar);
         LinearLayout outer=column();outer.setBackgroundColor(0xfff8fbf9);outer.setPadding(dp(16),dp(12),dp(16),dp(8));
-        button(outer,"‹ Volver",d::dismiss);line(outer,title,23,INK,true);
+        LinearLayout head=new LinearLayout(a);head.setGravity(Gravity.CENTER_VERTICAL);TextView back=new TextView(a);back.setText("‹");back.setTextSize(32);back.setGravity(Gravity.CENTER);back.setTextColor(TEAL);head.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));back.setOnClickListener(v->d.dismiss());TextView heading=new TextView(a);heading.setText(title);heading.setTextSize(20);heading.setTextColor(INK);heading.setTypeface(null,Typeface.BOLD);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));outer.addView(head);
         ScrollView scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.addView(content);outer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         d.setContentView(outer);d.show();if(d.getWindow()!=null)d.getWindow().setLayout(-1,-1);return d;
     }
@@ -154,6 +154,36 @@ final class DriverProfileFlow {
         nextAction.setText(index==0?"Continuar  →":"Enviar ficha para revisión");
         if(index==1)plate.clearFocus();scroll.post(()->scroll.scrollTo(0,0));
     }
+    private String statusLabel(String state){switch(state){case "approved":return "Perfil aprobado";case "pending":return "Pendiente de revisión";case "rejected":return "Rectificación solicitada";case "revoked":return "Aprobación revocada";case "vehicle_changed":return "Vehículo actualizado";default:return "Perfil incompleto";}}
+    private Bitmap decode(String image){try{byte[] data=Base64.decode(image,Base64.DEFAULT);return BitmapFactory.decodeByteArray(data,0,data.length);}catch(Exception e){return null;}}
+    private void photoView(LinearLayout parent,String title,String encoded,boolean face){
+        LinearLayout card=column();parent.addView(card,new LinearLayout.LayoutParams(face?-1:0,-2,face?0:1));card.setPadding(dp(4),dp(4),dp(4),dp(4));
+        ImageView img=new ImageView(a);img.setImageBitmap(decode(encoded));img.setScaleType(face?ImageView.ScaleType.CENTER_CROP:ImageView.ScaleType.FIT_CENTER);
+        android.graphics.drawable.GradientDrawable bg=rounded(SOFT,0xffdce9e4,12);if(face)bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);img.setBackground(bg);img.setClipToOutline(true);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(face?dp(108):-1,dp(face?108:112));p.gravity=Gravity.CENTER_HORIZONTAL;card.addView(img,p);TextView label=line(card,title,12,MUTED,true);label.setGravity(Gravity.CENTER);
+        img.setOnClickListener(v->{ImageView full=new ImageView(a);full.setImageBitmap(decode(encoded));full.setAdjustViewBounds(true);full.setScaleType(ImageView.ScaleType.FIT_CENTER);new AlertDialog.Builder(a).setTitle(title).setView(full).setPositiveButton("Cerrar",null).show();});
+    }
+    private void summary(LinearLayout l,JSONObject p){
+        JSONObject photos=p.optJSONObject("photos");if(photos==null)photos=new JSONObject();
+        LinearLayout person=section(l);photoView(person,"Conductor",photos.optString("driver"),true);
+        TextView name=line(person,p.optString("name","Mi perfil"),20,INK,true);name.setGravity(Gravity.CENTER);
+        TextView state=line(person,statusLabel(p.optString("state")),14,p.optString("state").equals("approved")?TEAL:0xffa45e21,true);state.setGravity(Gravity.CENTER);
+        if(!p.optString("reviewNote").isEmpty())line(person,p.optString("reviewNote"),14,INK,false);
+        LinearLayout vehicle=section(l);line(vehicle,"MI VEHÍCULO",11,MUTED,true);line(vehicle,p.optString("make")+" "+p.optString("model"),21,INK,true);
+        line(vehicle,p.optString("color")+(p.isNull("year")?"":" · "+p.optString("year")),14,MUTED,false);
+        TextView plateView=line(vehicle,UruguayPlate.format(p.optString("plate")),24,INK,true);plateView.setGravity(Gravity.CENTER);plateView.setBackground(rounded(0xfff5f8fa,0xffb2c4cc,10));plateView.setPadding(0,dp(10),0,dp(10));
+        LinearLayout pair=new LinearLayout(a);vehicle.addView(pair);photoView(pair,"Frente",photos.optString("front"),false);photoView(pair,"Trasera",photos.optString("rear"),false);
+        JSONObject r=p.optJSONObject("recognition");if(r!=null){line(vehicle,"Verificación automática",13,INK,true);line(vehicle,("pass".equals(r.optString("face"))?"Rostro detectado":"Retrato requiere revisión")+" · "+("pass".equals(r.optString("front"))&&"pass".equals(r.optString("rear"))?"Vehículo detectado":"Fotos del vehículo requieren revisión"),12,MUTED,false);line(vehicle,r.optBoolean("plateMatch")?"Matrícula coincide con ambas fotos":"Matrícula requiere comprobación",12,MUTED,false);}
+    }
+    private void history(LinearLayout l,JSONObject p){
+        JSONArray h=p.optJSONArray("history");if(h==null||h.length()==0)return;LinearLayout card=section(l);line(card,"Historial de revisión",16,INK,true);
+        for(int i=0;i<h.length();i++){JSONObject row=h.optJSONObject(i);if(row==null)continue;line(card,statusLabel(row.optString("state"))+" · "+row.optString("reviewer"),13,TEAL,true);line(card,new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm",Locale.getDefault()).format(new java.util.Date(row.optLong("at")*1000))+"  "+row.optString("note"),12,MUTED,false);}
+    }
+    private void showProfile(){
+        LinearLayout l=column();summary(l,meta);history(l,meta);
+        action(l,"Editar mi ficha",true,()->{Dialog old=panel;if(old!=null)old.dismiss();panel=null;showForm();});
+        Dialog d=page("Mi perfil",l);panel=d;d.setOnDismissListener(x->{if(panel==d)panel=null;});
+    }
     private void showForm(){
         if(panel!=null||account.isEmpty())return;
         Dialog d=new Dialog(a,android.R.style.Theme_Material_Light_NoActionBar);
@@ -168,7 +198,7 @@ final class DriverProfileFlow {
         String state=meta.optString("state","missing");
         LinearLayout firstCard=section(steps[0]);line(firstCard,"Tu presentación",21,INK,true);line(firstCard,"Una foto clara ayuda al pasajero a reconocerte.",13,MUTED,false);
         if(state.equals("approved")||state.equals("pending"))line(firstCard,state.equals("approved")?"Ficha aprobada · actualizar requiere nueva revisión":"Ficha enviada · pendiente de revisión",13,TEAL,true);
-        if(state.equals("rejected"))line(firstCard,value(meta,"reviewNote"),13,0xffa45e21,true);
+        if(state.equals("rejected")||state.equals("revoked"))line(firstCard,value(meta,"reviewNote"),13,0xffa45e21,true);
         photoTile(firstCard,0,"Foto del conductor","Una sola cara, bien iluminada.",true);
         JSONObject old=meta.optJSONObject("vehicle");if(old==null)old=new JSONObject();
         boolean changed=state.equals("vehicle_changed"),initial=state.equals("missing")||changed;
@@ -189,7 +219,7 @@ final class DriverProfileFlow {
         boolean same=existingMake.equals(value(old,"make"))&&existingModel.equals(value(old,"model"));
         TextView extra=line(data,same?(!type.isEmpty()?type+"  ·  ":"")+(!pax.isEmpty()?pax+" pasajeros  ":"")+(!bags.isEmpty()?bags+" valijas":""):"",12,TEAL,true);
         if(extra.getText().length()==0)extra.setVisibility(View.GONE);
-        Runnable changedVehicle=()->{year.setText("");extra.setVisibility(View.GONE);};
+        Runnable changedVehicle=()->{year.setText("");extra.setVisibility(View.GONE);for(int i=1;i<3;i++){jpeg[i]="";signal[i]="review";plates[i-1]="";if(previews[i]!=null){previews[i].setImageDrawable(null);feedback[i].setText("Agregá una foto del nuevo vehículo");}}refreshPlate();};
         ((View)make.getParent()).setOnClickListener(v->chooseOption("Marca",ViaVehicleCatalog.brands(),make.getText().toString(),picked->{
             if(!picked.equals(make.getText().toString())){make.setText(picked);model.setText("");changedVehicle.run();}
         }));
@@ -211,6 +241,12 @@ final class DriverProfileFlow {
         nextAction=action(outer,"Continuar  →",true,()->{if(busy)return;if(currentStep==0){if(jpeg[0].isEmpty()){msg("Agregá primero la foto del conductor.");return;}switchStep(1,scroll);}else submit(consentBox.isChecked());});
         back.setOnClickListener(v->{if(busy)return;if(currentStep==1)switchStep(0,scroll);else d.dismiss();});
         d.setOnKeyListener((dialog,key,event)->{if(key==KeyEvent.KEYCODE_BACK&&event.getAction()==KeyEvent.ACTION_UP&&currentStep==1){switchStep(0,scroll);return true;}return false;});
+        JSONObject saved=meta.optJSONObject("photos"),signals=meta.optJSONObject("recognition");
+        if(saved!=null&&signals!=null){
+            String[] keys={"driver","front","rear"},checks={"face","front","rear"};
+            for(int i=0;i<3;i++){if(!"pass".equals(signals.optString(checks[i]))||(changed&&i>0))continue;String encoded=saved.optString(keys[i]);Bitmap img=decode(encoded);if(img==null)continue;jpeg[i]=encoded;signal[i]="pass";previews[i].setImageBitmap(img);feedback[i].setText("Foto guardada · podés reemplazarla");if(i>0)plates[i-1]=signals.optString(i==1?"frontPlate":"rearPlate");}
+            refreshPlate();
+        }
         panel=d;switchStep(0,scroll);
         d.setContentView(outer);d.show();if(d.getWindow()!=null){d.getWindow().setLayout(-1,-1);d.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);}outer.requestFocus();
         d.setOnDismissListener(x->{if(panel==d){panel=null;Arrays.fill(jpeg,"");Arrays.fill(signal,"review");Arrays.fill(plates,"");clearCapture();busy=false;slot=-1;}});
@@ -296,8 +332,8 @@ final class DriverProfileFlow {
         api.call("GET",ADMIN,null,(status,body,error)->{
             if(!alive(e))return;if(status!=200){msg("Revisión no disponible. "+error);return;}
             try{JSONArray rows=new JSONObject(body).getJSONArray("profiles");LinearLayout l=column();
-                if(rows.length()==0)line(l,"No hay fichas pendientes.",15,MUTED,false);
-                for(int i=0;i<rows.length();i++){JSONObject r=rows.getJSONObject(i);button(l,r.optString("name")+" · "+UruguayPlate.format(r.optString("plate")),()->reviewOne(r.optString("id")));}
+                if(rows.length()==0)line(l,"No hay fichas registradas.",15,MUTED,false);
+                for(int i=0;i<rows.length();i++){JSONObject r=rows.getJSONObject(i);LinearLayout card=section(l);line(card,statusLabel(r.optString("state")),12,TEAL,true);action(card,r.optString("name")+" · "+UruguayPlate.format(r.optString("plate")),false,()->reviewOne(r.optString("id")));}
                 Dialog d=page("Revisar fichas",l);review=d;d.setOnDismissListener(x->{if(review==d)review=null;});
             }catch(Exception ex){msg("No se pudo leer la lista.");}
         });
@@ -307,23 +343,18 @@ final class DriverProfileFlow {
         api.call("GET",ADMIN+"/"+Uri.encode(id),null,(status,body,error)->{
             if(!alive(e))return;if(status!=200){msg(error);return;}
             try{JSONObject p=new JSONObject(body);if(review!=null)review.dismiss();LinearLayout l=column();
-                line(l,p.optString("name"),19,INK,true);line(l,UruguayPlate.format(p.optString("plate"))+" · "+p.optString("make")+" "+p.optString("model")+" · "+p.optString("color")+(p.isNull("year")?"":" · "+p.optString("year")),15,INK,false);
-                line(l,"Comprobá el rostro, las dos vistas, el vehículo declarado y la matrícula. Las señales del teléfono no son prueba de identidad.",13,MUTED,false);
-                JSONObject photos=p.getJSONObject("photos");for(String k:new String[]{"driver","front","rear"}){
-                    line(l,k.equals("driver")?"Conductor":k.equals("front")?"Frente":"Trasera",14,TEAL,true);
-                    byte[] bytes=Base64.decode(photos.getString(k),Base64.DEFAULT);ImageView img=new ImageView(a);img.setImageBitmap(BitmapFactory.decodeByteArray(bytes,0,bytes.length));img.setScaleType(ImageView.ScaleType.FIT_CENTER);l.addView(img,new LinearLayout.LayoutParams(-1,dp(200)));
-                }
-                JSONObject r=p.optJSONObject("recognition");if(r!=null)line(l,"Señales: "+r.optString("face")+" / "+r.optString("front")+" / "+r.optString("rear")+" · OCR "+r.optString("frontPlate")+" / "+r.optString("rearPlate"),12,MUTED,false);
-                EditText note=field(l,"Motivo si rechazás","");
-                CheckBox checked=new CheckBox(a);checked.setText("Revisé personalmente las fotos y la matrícula.");l.addView(checked);
-                button(l,"Aprobar ficha",()->{if(!checked.isChecked()){msg("Confirmá la revisión.");return;}reviewSave(id,p.optString("revision"),"approved","");});
-                button(l,"Solicitar correcciones",()->reviewSave(id,p.optString("revision"),"rejected",note.getText().toString()));
+                summary(l,p);history(l,p);
+                LinearLayout controls=section(l);line(controls,"Decisión administrativa",17,INK,true);String state=p.optString("state");
+                EditText note=neatField(controls,"MOTIVO DE RECTIFICACIÓN O REVOCACIÓN","","Escribí el motivo");
+                if(state.equals("pending")){CheckBox checked=new CheckBox(a);checked.setText("Verifiqué identidad, vehículo y matrícula.");controls.addView(checked);action(controls,"Aprobar ficha",true,()->{if(!checked.isChecked()){msg("Confirmá la revisión.");return;}reviewSave(id,p.optString("revision"),"approved","");});}
+                if(state.equals("pending")||state.equals("approved"))action(controls,"Solicitar rectificaciones",false,()->reviewSave(id,p.optString("revision"),"rejected",note.getText().toString()));
+                if(state.equals("approved"))action(controls,"Revocar aprobación",false,()->{if(note.getText().toString().trim().isEmpty()){msg("Indicá el motivo.");return;}new AlertDialog.Builder(a).setTitle("Revocar aprobación").setMessage("El perfil dejará de estar aprobado.").setNegativeButton("Cancelar",null).setPositiveButton("Revocar",(x,w)->reviewSave(id,p.optString("revision"),"revoked",note.getText().toString())).show();});
                 Dialog d=page("Revisión de conductor",l);review=d;d.setOnDismissListener(x->{if(review==d)review=null;});
             }catch(Exception ex){msg("No se pudo mostrar la ficha.");}
         });
     }
     private void reviewSave(String id,String rev,String state,String note){
-        if(state.equals("rejected")&&note.trim().isEmpty()){msg("Indicá el motivo.");return;}
+        if(!state.equals("approved")&&note.trim().isEmpty()){msg("Indicá el motivo.");return;}
         int e=epoch;Dialog owner=review;try{
             api.call("PATCH",ADMIN+"/"+Uri.encode(id),new JSONObject().put("revision",rev).put("state",state).put("note",note),(code,body,error)->{
                 if(!alive(e)||review!=owner)return;if(code==200){owner.dismiss();nextReminder=0;msg("Revisión guardada.");reviewList();}else msg(error);
