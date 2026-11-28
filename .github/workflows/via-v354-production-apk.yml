@@ -115,9 +115,10 @@ jobs:
             cfg="$root/app/build/generated/source/buildConfig/release/uy/viatraslados/conductor/BuildConfig.java"
             test -s "$cfg"
             grep -Eq 'VIA_PRODUCTION = true;' "$cfg"
-            for flag in VIA_PREVIEW VIA_DENSE_PREVIEW VIA_BUSINESS_PREVIEW VIA_LAYOUT_PREVIEW VIA_OPERATION_PREVIEW VIA_ONLINE_QA VIA_ONBOARD_QA VIA_DRIVER_PROFILE_QA; do
+            for flag in VIA_PREVIEW VIA_DENSE_PREVIEW VIA_BUSINESS_PREVIEW VIA_LAYOUT_PREVIEW VIA_OPERATION_PREVIEW VIA_ONLINE_QA VIA_ONBOARD_QA; do
               grep -Eq "$flag = false;" "$cfg"
             done
+            if [ "$mode" = pilot ]; then grep -Eq 'VIA_DRIVER_PROFILE_QA = false;' "$cfg"; fi
             echo "PHASE: $mode align"
             "$tool/zipalign" -P 16 -f 4 "$src" /tmp/via-aligned.apk
             echo "PHASE: $mode sign with original certificate"
