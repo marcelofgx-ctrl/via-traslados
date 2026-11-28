@@ -1,0 +1,2 @@
+# V37 QA
+Integrated production-derived navigation, private QA booking scope, profile review and synthetic trip lifecycle. QA only. Fixed route fixture, no production geocoding. Admin general settings, manual assignment and contractor scenario remain to be integrated. Physical verification required.

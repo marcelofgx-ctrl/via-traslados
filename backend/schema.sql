@@ -354,3 +354,5 @@ CREATE INDEX IF NOT EXISTS driver_profile_review_history_staff ON driver_profile
 CREATE TABLE IF NOT EXISTS qa_profile_pair (
  driver_id TEXT PRIMARY KEY REFERENCES staff_users(id), admin_id TEXT UNIQUE NOT NULL REFERENCES staff_users(id)
 );
+
+CREATE TABLE IF NOT EXISTS qa_booking_scope(booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,driver_id TEXT NOT NULL REFERENCES staff_users(id));

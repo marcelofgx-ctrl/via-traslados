@@ -125,7 +125,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        reviewRequestsOnRefresh=BuildConfig.VIA_PRODUCTION&&RequestMonitorService.reviewIntent(getIntent());
+        reviewRequestsOnRefresh=(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)&&RequestMonitorService.reviewIntent(getIntent());
         getWindow().setStatusBarColor(Color.WHITE);
         getWindow().setNavigationBarColor(LIGHT);
         getWindow().getDecorView().setSystemUiVisibility(
@@ -163,7 +163,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onNewIntent(Intent intent){
         super.onNewIntent(intent);setIntent(intent);
-        if(BuildConfig.VIA_PRODUCTION&&RequestMonitorService.reviewIntent(intent)){
+        if((BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)&&RequestMonitorService.reviewIntent(intent)){
             reviewRequestsOnRefresh=true;
             if(visible&&staffToken!=null)fetchBookings(false);
         }
@@ -500,7 +500,7 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         super.onActivityResult(requestCode,resultCode,data);
         if(driverProfile!=null&&driverProfile.onResult(requestCode,resultCode,data))return;
-        if(requestCode==GUIDE_OVERLAY&&BuildConfig.VIA_PRODUCTION){
+        if(requestCode==GUIDE_OVERLAY&&(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)){
             finishPermissionsGuide();
             return;
         }
@@ -539,6 +539,7 @@ public final class MainActivity extends Activity {
     private void startQaSession(String persona){
         if(!BuildConfig.VIA_ONLINE_QA)return;
         if(driverProfile!=null)driverProfile.clearAccount();
+        if(BuildConfig.VIA_DRIVER_PROFILE_QA)stopService(new Intent(this,RequestMonitorService.class));
         staffToken=null;
         staffRefreshToken=null;
         operatorKey=null;
@@ -554,7 +555,7 @@ public final class MainActivity extends Activity {
         LinearLayout loading=column();
         loading.setPadding(dp(22),dp(28),dp(22),dp(20));
         addLine(loading,"VÍA TRASLADOS · QA ONLINE",12,TEAL_DARK,true,10);
-        addLine(loading,"Conexión de prueba",25,INK,true,10);
+        addLine(loading,"Iniciando sesión",25,INK,true,10);
         addLine(loading,"Datos sintéticos en Cloudflare D1 QA. "+
             "No se utiliza la base de producción.",13,MUTED,false,20);
         Button retry=button("Conectar nuevamente",false,v->startQaSession(persona));
@@ -600,8 +601,8 @@ public final class MainActivity extends Activity {
     }
     private void chooseQaRole(){
         if(!BuildConfig.VIA_ONLINE_QA)return;
-        String[] choices={"Administrador QA","Socio QA","Contratado QA"};
-        String[] roles={"admin","partner","contractor"};
+        String[] choices=BuildConfig.VIA_DRIVER_PROFILE_QA?new String[]{"Administración","Conductor"}:new String[]{"Administrador QA","Socio QA","Contratado QA"};
+        String[] roles=BuildConfig.VIA_DRIVER_PROFILE_QA?new String[]{"admin","driver"}:new String[]{"admin","partner","contractor"};
         new AlertDialog.Builder(this)
             .setTitle("Perfil de prueba")
             .setMessage("Cada perfil consulta permisos reales del backend QA. "+
@@ -1244,7 +1245,7 @@ public final class MainActivity extends Activity {
                     }
                     bookings = next;
                     validateTripWatch(next);
-                    boolean review=reviewRequestsOnRefresh&&BuildConfig.VIA_PRODUCTION;
+                    boolean review=reviewRequestsOnRefresh&&(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA);
                     if(review){reviewRequestsOnRefresh=false;tab="solicitudes";subtab="nuevas";requestFilter="all";requestSearch="";}
                     if (login || review || !result.equals(lastPayload)) {
                         lastPayload = result;
@@ -1252,7 +1253,7 @@ public final class MainActivity extends Activity {
                     } else {
                         requestVisibleRoutes();
                     }
-                    if(BuildConfig.VIA_PRODUCTION&&visible&&!staffUserId.isEmpty()&&staffToken!=null){
+                    if((BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)&&visible&&!staffUserId.isEmpty()&&staffToken!=null){
                         RequestMonitorService.stopIfOther(this,staffUserId);
                         if(RequestMonitorService.desired(this,staffUserId))startRequestMonitor();
                     }
@@ -1428,7 +1429,7 @@ public final class MainActivity extends Activity {
     }
 
     private void notifyNewRequests(JSONArray rows){
-        if(!BuildConfig.VIA_PRODUCTION||staffToken==null||!RequestMonitorService.desired(this,staffUserId))return;
+        if(!(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)||staffToken==null||!RequestMonitorService.desired(this,staffUserId))return;
         if(!visible||isFinishing()||rows==null||authFlow||reviewRequestsOnRefresh||permissionsGuideActive||tripWatch!=null||liveTripNotice!=null||
             (operatorKey==null&&staffToken==null))return;
         if(newRequestDialog!=null){
@@ -1603,7 +1604,7 @@ public final class MainActivity extends Activity {
         return android.os.Build.VERSION.SDK_INT<33||checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
     private void startRequestMonitor(){
-        if(!BuildConfig.VIA_PRODUCTION||!visible||staffToken==null||staffUserId.isEmpty()||!requestNotificationPermission())return;
+        if(!(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)||!visible||staffToken==null||staffUserId.isEmpty()||!requestNotificationPermission())return;
         if(RequestMonitorService.runningFor(staffUserId)){RequestMonitorService.updateToken(staffUserId,staffToken);return;}
         long now=android.os.SystemClock.elapsedRealtime();
         if(lastMonitorAttempt!=0&&now-lastMonitorAttempt<10000)return;
@@ -1636,10 +1637,10 @@ public final class MainActivity extends Activity {
     private boolean overlayAllowed(){return android.provider.Settings.canDrawOverlays(this);}
     private void schedulePermissionsGuide(){
         handler.removeCallbacks(initialPermissionsGuide);
-        if(BuildConfig.VIA_PRODUCTION&&visible&&!isFinishing()&&!isDestroyed())handler.postDelayed(initialPermissionsGuide,350);
+        if((BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)&&visible&&!isFinishing()&&!isDestroyed())handler.postDelayed(initialPermissionsGuide,350);
     }
     private void maybeGuideAlertPermissions(){
-        if(!BuildConfig.VIA_PRODUCTION||!visible||isFinishing()||isDestroyed()||!hasWindowFocus()||permissionsGuideActive||newRequestDialog!=null||acceptanceDialog!=null||tripWatch!=null||liveTripNotice!=null)return;
+        if(!(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)||!visible||isFinishing()||isDestroyed()||!hasWindowFocus()||permissionsGuideActive||newRequestDialog!=null||acceptanceDialog!=null||tripWatch!=null||liveTripNotice!=null)return;
         if(getSharedPreferences(GUIDE_PREF,MODE_PRIVATE).getBoolean("explained",false))return;
         if(requestNotificationPermission()&&overlayAllowed()){
             getSharedPreferences(GUIDE_PREF,MODE_PRIVATE).edit().putBoolean("explained",true).apply();return;
@@ -1647,7 +1648,7 @@ public final class MainActivity extends Activity {
         showAlertPermissionsGuide();
     }
     private void showAlertPermissionsGuide(){
-        if(!BuildConfig.VIA_PRODUCTION||permissionsGuideActive||isFinishing()||isDestroyed())return;
+        if(!(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)||permissionsGuideActive||isFinishing()||isDestroyed())return;
         permissionsGuideActive=true;
         new AlertDialog.Builder(this).setTitle("Configurá tus avisos")
             .setMessage("Para recibir nuevas solicitudes aunque uses otra aplicación, Vía Traslados necesita autorización de Android para las notificaciones y para mostrar el aviso sobre otras apps. Te guiamos en dos pasos. Podés continuar sin permisos y consultar las solicitudes dentro de la aplicación.")
@@ -1701,7 +1702,7 @@ public final class MainActivity extends Activity {
             }).setNegativeButton("Cerrar",null).show();
     }
     private void addRequestAvailability(){
-        if(!BuildConfig.VIA_PRODUCTION||staffToken==null||staffUserId.isEmpty())return;
+        if(!(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)||staffToken==null||staffUserId.isEmpty())return;
         boolean on=RequestMonitorService.desired(this,staffUserId),running=RequestMonitorService.runningFor(staffUserId);
         LinearLayout line=row();line.setPadding(dp(17),dp(4),dp(17),dp(4));line.setBackgroundColor(SOFT);
         LinearLayout label=column();
@@ -1724,7 +1725,7 @@ public final class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
         super.onRequestPermissionsResult(code,permissions,results);
-        if(code==GUIDE_NOTIFICATION&&BuildConfig.VIA_PRODUCTION){
+        if(code==GUIDE_NOTIFICATION&&(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)){
             // Do not change availability merely because a system permission was granted.
             guideOverlayStep();return;
         }
@@ -1813,7 +1814,7 @@ public final class MainActivity extends Activity {
             scheduleProfileCheck(800);
         }
         if (BuildConfig.VIA_ONLINE_QA) {
-            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V36.6 · QA · SOLO DATOS FICTICIOS":BuildConfig.VIA_ONBOARD_QA?
+            TextView qa=text(BuildConfig.VIA_DRIVER_PROFILE_QA?"V37 · QA":BuildConfig.VIA_ONBOARD_QA?
                 (BuildConfig.VERSION_CODE == 34 ? "V34 · CATÁLOGO DE VEHÍCULOS · QA AISLADA" : "V33 · REGISTRO DE CONDUCTORES · QA AISLADA") :
                 "V32 · PRUEBA ONLINE · D1 QA AISLADA · SIN PRODUCCIÓN",
                 10,TEAL_DARK,true);
@@ -1854,15 +1855,6 @@ public final class MainActivity extends Activity {
         LinearLayout content = column();
         content.setPadding(dp("solicitudes".equals(tab)?13:17),dp(10),dp("solicitudes".equals(tab)?13:17),dp(12));
         scroll.addView(content);
-        if(BuildConfig.VIA_DRIVER_PROFILE_QA){
-            boolean admin="admin".equals(staffRole);
-            addLine(content,admin?"Administración":"Mi cuenta",23,INK,true,10);
-            addLine(content,admin?"Gestioná las fichas y sus revisiones.":"Consultá tu perfil y mantené actualizados los datos de tu vehículo.",14,MUTED,false,16);
-            content.addView(button(admin?"Gestionar conductores":"Ver mi perfil",true,v->{if(admin)driverProfile.reviewList();else driverProfile.open();}),new LinearLayout.LayoutParams(-1,dp(50)));
-            addLine(content,"Entorno QA · perfiles separados de producción",12,MUTED,false,12);
-            content.addView(button(admin?"Ingresar como conductor QA":"Ingresar como administrador QA",false,v->startQaSession(admin?"driver":"admin")),new LinearLayout.LayoutParams(-1,dp(48)));
-            return;
-        }
         if ("administrar".equals(tab)) manage(content);
         else if ("ajustes".equals(tab)) settings(content);
         else if ("historial".equals(tab)) lists(content, "historial");
@@ -3006,7 +2998,7 @@ public final class MainActivity extends Activity {
                         JSONObject patch=new JSONObject().put("status","quoted").put("price",value);
                         api("PATCH","/api/operator/requests/"+Uri.encode(id),patch,
                             (status,result,error)->{
-                            if(BuildConfig.VIA_PRODUCTION&&tripWatch!=watch)return;
+                            if((BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)&&tripWatch!=watch)return;
                             watch.sending=false;
                             if(status==200){
                                 panel.dismiss();
@@ -3568,6 +3560,7 @@ public final class MainActivity extends Activity {
             addLine(content,"Acceso restringido",19,ORANGE,true,0);
             return;
         }
+        if(BuildConfig.VIA_DRIVER_PROFILE_QA){addLine(content,"Administración",23,INK,true,8);content.addView(button("Gestionar fichas de conductores",true,v->driverProfile.reviewList()),new LinearLayout.LayoutParams(-1,dp(50)));spacer(content,10);content.addView(button("Solicitudes",false,v->{tab="solicitudes";dashboard();}),new LinearLayout.LayoutParams(-1,dp(50)));return;}
         addLine(content,"Gestión de traslados",25,INK,true,4);
         addLine(content,"Servicio, conductores y autorizaciones",13,MUTED,false,19);
         if(!adminLoaded){
@@ -4583,8 +4576,8 @@ public final class MainActivity extends Activity {
                 13,MUTED,false,14);
             LinearLayout qa=card();
             addLine(qa,"ENTORNO",10,TEAL_DARK,true,8);
-            addLine(qa,"QA Online · V32",18,INK,true,6);
-            addLine(qa,"Conectado a via-traslados-api-qa y D1 exclusiva. "+
+            addLine(qa,"Vía QA · V37",18,INK,true,6);
+            addLine(qa,"Conectado a D1 QA exclusiva. "+
                 "No utiliza reservas ni usuarios productivos.",13,MUTED,false,13);
             addLine(qa,"PERFIL ACTUAL",10,MUTED,true,5);
             addLine(qa,staffName,15,INK,true,10);

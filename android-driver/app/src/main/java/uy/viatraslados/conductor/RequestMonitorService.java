@@ -16,7 +16,7 @@ import okhttp3.*;
 
 /** Temporary production pilot, opt-in, session bearer only in RAM. No FCM or reservation writes. */
 public final class RequestMonitorService extends Service {
-    private static final String API="https://via-traslados-api.marcelof-gx.workers.dev/api/operator/requests";
+    private static final String API=(BuildConfig.VIA_DRIVER_PROFILE_QA?"https://via-traslados-api-v36-qa.marcelof-gx.workers.dev":"https://via-traslados-api.marcelof-gx.workers.dev")+"/api/operator/requests";
     private static final String PREF="via_driver_monitor_v1",SEEN="via_new_request_alerts_v351",ONGOING="via_monitor_v1",ALERTS=AlertSignal.CHANNEL;
     private static final String STOP="uy.viatraslados.STOP_MONITOR";
     private static final int MONITOR_ID=3540,ALERT_ID=3541;
@@ -55,7 +55,7 @@ public final class RequestMonitorService extends Service {
     static void setAutoOpen(Context c,String id,boolean on){if(id!=null&&!id.isEmpty())prefs(c).edit().putBoolean("auto_open_"+id,on).apply();}
     static void setDesired(Context c,String id,boolean on){if(id!=null&&!id.isEmpty())prefs(c).edit().putBoolean("available_"+id,on).apply();}
     static void start(Context c,String id,String bearer){
-        if(!BuildConfig.VIA_PRODUCTION||id==null||id.isEmpty()||!validBearer(bearer)){state="sesión no válida";return;}
+        if(!(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)||id==null||id.isEmpty()||!validBearer(bearer)){state="sesión no válida";return;}
         state="iniciando monitoreo";
         // Keep credentials out of Intent extras, saved state, logs and SharedPreferences.
         nextActor=id;nextToken=bearer;
@@ -72,7 +72,7 @@ public final class RequestMonitorService extends Service {
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent!=null&&STOP.equals(intent.getAction())){setDesired(this,actor,false);clearAlerts(this);shutdown();return START_NOT_STICKY;}
         final String a=nextActor,t=nextToken;nextActor="";nextToken="";
-        if(!BuildConfig.VIA_PRODUCTION||a.isEmpty()||!validBearer(t)||!desired(this,a)){state="sesión no disponible";shutdown();return START_NOT_STICKY;}
+        if(!(BuildConfig.VIA_PRODUCTION||BuildConfig.VIA_DRIVER_PROFILE_QA)||a.isEmpty()||!validBearer(t)||!desired(this,a)){state="sesión no disponible";shutdown();return START_NOT_STICKY;}
         if(executor!=null)executor.shutdownNow();
         actor=a;token=t;stopped=false;activeActor=a;
         NotificationManager nm=getSystemService(NotificationManager.class);

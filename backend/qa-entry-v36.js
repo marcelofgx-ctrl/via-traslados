@@ -59,7 +59,42 @@ export default {async fetch(req,env,ctx){
   if(path==='/api/qa/session'&&method==='POST')return session(req,env);
   const actor=await identity(req,env);if(!actor||actor.master||!actor.email?.startsWith('v36-')||!actor.email.endsWith('@qa.invalid'))return reply({error:'Sesión QA requerida'},401);
   if(method!=='GET'&&!await limited(env,'mutate:'+actor.id,50,86400))return reply({error:'Límite de cambios QA'},429);
-  if(path==='/api/operator/requests'&&method==='GET')return reply([]);
+  const driverId=actor.role==='admin'?(await env.DB.prepare('SELECT driver_id FROM qa_profile_pair WHERE admin_id=?').bind(actor.id).first())?.driver_id:actor.id;
+  if(!driverId)return reply({error:'Cuenta QA sin ámbito'},403);
+  async function seed(){
+   const id='VIA-QA-'+driverId.replaceAll('-','').toUpperCase(),token=await sha('qa-booking:'+driverId);
+   await env.DB.batch([
+    env.DB.prepare("INSERT OR IGNORE INTO driver_commercial_profiles(staff_id,mode,can_quote_all,can_release,commission_bps) VALUES(?,'partner',1,1,0)").bind(driverId),
+    env.DB.prepare("INSERT OR IGNORE INTO driver_vehicle_profiles(staff_id,license_plate,make,model,passenger_capacity,luggage_capacity) VALUES(?,'','Toyota','Corolla',4,3)").bind(driverId),
+    env.DB.prepare("INSERT OR IGNORE INTO bookings(id,customer_name,phone,email,origin,destination,trip_date,trip_time,passengers,bags,notes,access_token_hash,status) VALUES(?,'Pasajero QA','000000000',?,'Shangrilá, Canelones','Aeropuerto de Carrasco',date('now','+2 days'),'14:30',2,1,'Traslado sintético de ensayo',?,'requested')").bind(id,'qa-'+driverId+'@qa.invalid',await sha(token)),
+    env.DB.prepare("INSERT OR IGNORE INTO qa_booking_scope(booking_id,driver_id) VALUES(?,?)").bind(id,driverId),
+    env.DB.prepare("INSERT OR IGNORE INTO booking_routes(booking_id,distance_m,duration_s,provider) VALUES(?,2900,360,'qa-fixture')").bind(id)
+   ]);
+  }
+  if(path==='/api/operator/requests'&&method==='GET'){
+   await seed();
+   const allowed=await env.DB.prepare('SELECT booking_id FROM qa_booking_scope WHERE driver_id=?').bind(driverId).all();
+   const ids=new Set(allowed.results.map(x=>x.booking_id));
+   const response=await worker.fetch(req,env,{});if(!response.ok)return response;
+   const rows=await response.json();return reply(rows.filter(x=>ids.has(x.id)));
+  }
+  const op=path.match(/^\/api\/operator\/requests\/([A-Z0-9-]+)(?:\/(route|price-guide|release))?$/);
+  if(op){
+   if(!await env.DB.prepare('SELECT booking_id FROM qa_booking_scope WHERE booking_id=? AND driver_id=?').bind(op[1],driverId).first())return reply({error:'Solicitud fuera de tu ámbito'},404);
+   if(op[2]==='route'&&method==='GET')return reply({distanceKm:2.9,durationMinutes:6,source:'QA sintético',estimate:true,trafficIncluded:false});
+   return worker.fetch(req,env,{});
+  }
+  if(path==='/api/qa/accept'&&method==='POST'){
+   if(actor.role!=='admin')return reply({error:'Solo administración QA'},403);
+   const p=await req.json();if(!await env.DB.prepare('SELECT booking_id FROM qa_booking_scope WHERE booking_id=? AND driver_id=?').bind(p.id,driverId).first())return reply({error:'Solicitud fuera de tu ámbito'},404);
+   const token=await sha('qa-booking:'+driverId);
+   return worker.fetch(new Request(url.origin+'/api/requests/'+p.id+'/accept',{method:'POST',headers:{'X-Booking-Token':token}}),env,{});
+  }
+  if(path==='/api/qa/reset'&&method==='POST'){
+   if(actor.role!=='admin')return reply({error:'Solo administración QA'},403);
+   const p=await req.json();if(p.confirm!=='REINICIAR_QA')return reply({error:'Confirmación requerida'},400);
+   await env.DB.prepare('DELETE FROM bookings WHERE id IN (SELECT booking_id FROM qa_booking_scope WHERE driver_id=?)').bind(driverId).run();await seed();return reply({ok:true});
+  }
   if(path.startsWith('/api/admin/driver-profiles')){
    if(actor.role!=='admin')return reply({error:'Solo administración'},403);
    const pair=await env.DB.prepare('SELECT driver_id FROM qa_profile_pair WHERE admin_id=?').bind(actor.id).first();

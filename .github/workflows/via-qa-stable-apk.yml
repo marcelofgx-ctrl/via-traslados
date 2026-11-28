@@ -1,7 +1,7 @@
-name: Vía QA V36.6 — driver and administrator lifecycle
+name: Vía QA V37 — integrated operations and profiles
 on:
   push:
-    branches: [via-v36-onboarding-integral-qa-20261127]
+    branches: [via-v37-integral-qa-20261128]
     paths: ['.github/workflows/via-qa-stable-apk.yml']
   workflow_dispatch:
 permissions:
@@ -45,6 +45,7 @@ jobs:
           npx --yes wrangler@4.160.1 d1 execute via-traslados-v36-qa-db --remote --config wrangler.v36qa.toml --file backend/schema.sql
           npx --yes wrangler@4.160.1 deploy --config wrangler.v36qa.toml
           node scripts/v36-live-profile-smoke.mjs
+          node scripts/v37-operation-smoke.mjs
       - name: Build release and verify package and monotonic version
         env:
           GH_TOKEN: ${{ github.token }}
